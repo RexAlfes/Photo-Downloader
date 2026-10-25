@@ -166,8 +166,8 @@
             const containerEl = document.getElementById('release-container');
             const assetsListEl = document.getElementById('release-assets-list');
 
-            try {
-                // FIXED: Corrected domain endpoint, added missing '$', and added appropriate path forward slashes
+                        try {
+                // 1. Fetch from the correct API endpoint
                 const response = await fetch(`https://github.com{GITHUB_USER}/${GITHUB_REPO}/releases`);
                 
                 if (!response.ok) {
@@ -176,23 +176,23 @@
 
                 const releases = await response.json();
                 
-                // Grab the first item in the array (the most recent push)
+                // 2. FIXED: Must specify index [0] to target the absolute newest release object
                 const data = releases[0]; 
                 
                 if (!data) {
                     throw new Error('No release data found.');
                 }
                 
-                // Populate metadata
+                // 3. Populate your metadata text values
                 document.getElementById('release-title').innerText = data.name || `Release ${data.tag_name}`;
                 document.getElementById('release-tag').innerText = data.tag_name;
                 
                 const pubDate = new Date(data.published_at);
                 document.getElementById('release-date').innerText = pubDate.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 
-                // Loop through assets and generate download buttons
+                // 4. Render asset rows safely
                 if (data.assets && data.assets.length > 0) {
-                    assetsListEl.innerHTML = ''; // Clear fallback string
+                    assetsListEl.innerHTML = ''; 
                     data.assets.forEach(asset => {
                         const sizeInMB = (asset.size / (1024 * 1024)).toFixed(2);
                         const assetRow = document.createElement('div');
@@ -207,7 +207,7 @@
                     assetsListEl.innerHTML = '<p class="loading">No build files attached to this release.</p>';
                 }
 
-                // FIXED: Restored completion blocks that were missing from your snippet
+                // 5. Swap the display states to show the layout elements
                 loadingEl.style.display = 'none';
                 contentEl.style.display = 'block';
 
@@ -215,6 +215,7 @@
                 console.error(error);
                 loadingEl.innerText = 'Failed to load latest builds. Please check back later.';
             }
+
         }
 
         // Run fetch when document tree completes building
