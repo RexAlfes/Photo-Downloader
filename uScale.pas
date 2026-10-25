@@ -9,7 +9,7 @@ unit uScale;
 interface
 
 uses
-  Classes, SysUtils, Math, FPImage, FPReadJPEG, FPReadPNG, FPReadBMP, uExif;
+  Classes, SysUtils, Math, FPImage, FPReadJPEG, FPReadPNG, FPReadBMP, uExif, uRotate;
 
 type
   TPicKind = (pkJpeg, pkPng, pkBmp);
@@ -20,6 +20,8 @@ type
 function LoadMemImage(S: TStream; Kind: TPicKind; SrcW, SrcH, Target: Integer): TFPMemoryImage;
 { Reads the uncompressed image of a TIFF/DNG file, averaged down to about Target pixels. }
 function LoadTiffMemImage(const FileName: string; Target: Integer): TFPMemoryImage;
+{ Turns a picture upright for an EXIF orientation of 2..8; Img is replaced by the new picture. }
+procedure OrientMemImage(var Img: TFPMemoryImage; Orient: Integer);
 { Scales Src to NW x NH and writes it to Ms as a 24-bit BMP file. }
 function SmoothScaleToBmp(Src: TFPCustomImage; NW, NH: Integer; Ms: TMemoryStream): Boolean;
 
@@ -172,6 +174,29 @@ begin
   finally
     Img.Free;
   end;
+end;
+
+procedure OrientMemImage(var Img: TFPMemoryImage; Orient: Integer);
+var
+  Nw, Nh, X, Y, NX, NY: Integer;
+  Res: TFPMemoryImage;
+begin
+  if (Img = nil) or (Orient < 2) or (Orient > 8) then Exit;
+  OrientDims(Orient, Img.Width, Img.Height, Nw, Nh);
+  Res := TFPMemoryImage.Create(Nw, Nh);
+  try
+    for Y := 0 to Img.Height - 1 do
+      for X := 0 to Img.Width - 1 do
+      begin
+        OrientPoint(Orient, Img.Width, Img.Height, X, Y, NX, NY);
+        Res.Colors[NX, NY] := Img.Colors[X, Y];
+      end;
+  except
+    Res.Free;
+    Exit;
+  end;
+  Img.Free;
+  Img := Res;
 end;
 
 function SmoothScaleToBmp(Src: TFPCustomImage; NW, NH: Integer; Ms: TMemoryStream): Boolean;

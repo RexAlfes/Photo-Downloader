@@ -12,6 +12,32 @@ const
   AppVersion = '1.0';
   WebsiteURL = 'https://rexalfes.github.io/Photo-Downloader/';
   UpdatesURL = 'https://github.com/RexAlfes/Photo-Downloader/releases';
+  DonatePayPalURL = 'https://paypal.me/PhotoDownLoader';
+  DonateVenmoURL = 'https://venmo.com/u/RexAlfes';
+
+const
+  FileTypeCount = 15;
+  { File type groups of the filter (View > File Types). Key = name in the ini file. }
+  FileTypeKeys: array[0..FileTypeCount - 1] of string =
+    ('Jpeg', 'Png', 'Bmp', 'Tiff', 'CanonRaw', 'NikonRaw', 'NikonNrw', 'SonyRaw', 'Dng', 'OtherRaw',
+     'Heic', 'Avif', 'Video', 'Audio', 'Thm');
+  FileTypeNames: array[0..FileTypeCount - 1] of string =
+    ('JPEG (.jpg .jpeg .jpe)', 'PNG (.png)', 'BMP (.bmp)', 'TIFF (.tif .tiff)',
+     'Canon RAW (.cr2 .cr3 .crw)', 'Nikon RAW (.nef)', 'Nikon Coolpix RAW (.nrw)', 'Sony RAW (.arw .srf .sr2)',
+     'Adobe DNG (.dng)', 'Other RAW (.orf .raf .rw2 .pef .srw .raw)',
+     'HEIC / HEIF (.heic .heif)', 'AVIF (.avif)', 'Video (.mp4 .mov .lrv)', 'Audio (.mp3)',
+     'Camera thumbnail files (.thm)');
+  FileTypeExts: array[0..FileTypeCount - 1] of string =
+    (';.jpg;.jpeg;.jpe;', ';.png;', ';.bmp;', ';.tif;.tiff;', ';.cr2;.cr3;.crw;', ';.nef;', ';.nrw;',
+     ';.arw;.srf;.sr2;', ';.dng;', ';.orf;.raf;.rw2;.pef;.srw;.raw;', ';.heic;.heif;', ';.avif;',
+     ';.mp4;.mov;.lrv;', ';.mp3;', ';.thm;');
+
+var
+  { False while logging is switched off (Help > Logging) }
+  LogEnabled: Boolean = True;
+
+{ Index of the file type group an extension (with dot, any case) belongs to, or -1 }
+function FileTypeIndex(const Ext: string): Integer;
 
 type
   TSourceMode = (smAuto, smCamera, smCardReader);
@@ -42,7 +68,7 @@ type
     AutoAtStartup, AutoMenu, AutoPrompt, AutoDownload, AutoDelete, AutoSoftEject,
     AutoLaunch, AutoExit: Boolean;
     // Custom button tab
-    CustomEnabled, CustomLinkBreeze: Boolean;
+    CustomEnabled: Boolean;
     CustomCaption, CustomCmd: string;
     // Mapping tab: lines 'Camera|T8|T9'; line 0 is the default mapping
     Mappings: TStringList;
@@ -55,6 +81,9 @@ type
     // View state
     ShowDownloaded, ShowDuplicates, ShowDateSelector: Boolean;
     ViewMode: Integer;              // 0 list, 1 small thumbs, 2 large thumbs
+    LoggingOn: Boolean;             // write thumbnail.log (Help > Logging)
+    TypeOn: array[0..FileTypeCount - 1] of Boolean;   // file type filter (all on by default)
+    function TypeShown(const FileName: string): Boolean;
     constructor Create;
     destructor Destroy; override;
     procedure SetDefaults;
@@ -186,11 +215,9 @@ procedure TAppSettings.SetDefaults;
 var
   I: Integer;
 begin
-  {$IFDEF WINDOWS}
-  DownloadDir := 'N:\photos\{Y}\{Y}-{m}-{D}-{J}\Master\';
-  {$ELSE}
-  DownloadDir := IncludeTrailingPathDelimiter(GetUserDir) + 'Pictures/{Y}/{Y}-{m}-{D}-{J}/Master/';
-  {$ENDIF}
+  // generic default: the Pictures folder of whoever runs the program
+  DownloadDir := IncludeTrailingPathDelimiter(GetUserDir) + 'Pictures' + PathDelim +
+    'Photo Downloader' + PathDelim + '{Y}' + PathDelim + '{Y}-{m}-{D}-{J}' + PathDelim;
   FileNameMask := 'RA{Y}{m}{D}-{r}';
   JobCode := '{Job Name}';
   PromptJobCode := True;
@@ -200,7 +227,7 @@ begin
   DateJobCodes.Clear;
 
   SourceMode := smAuto;
-  DriveLetters := 'H';
+  DriveLetters := 'E';
   DisablePTP := True;
   SaveReadOnly := False;
   PreserveReadOnly := False;
@@ -237,7 +264,6 @@ begin
   AutoExit := False;
 
   CustomEnabled := False;
-  CustomLinkBreeze := False;
   CustomCaption := 'C&ustom';
   CustomCmd := '';
 
@@ -255,7 +281,32 @@ begin
   ShowDownloaded := True;
   ShowDuplicates := True;
   ShowDateSelector := True;
-  ViewMode := 1;
+  ViewMode := 2;
+  for I := 0 to FileTypeCount - 1 do TypeOn[I] := True;
+  // video, audio and camera thumbnail files are not verified yet: off until they are
+  for I := 0 to FileTypeCount - 1 do
+    if (FileTypeKeys[I] = 'Video') or (FileTypeKeys[I] = 'Audio') or (FileTypeKeys[I] = 'Thm') then
+      TypeOn[I] := False;
+  LoggingOn := True;
+end;
+
+function FileTypeIndex(const Ext: string): Integer;
+var
+  I: Integer;
+  E: string;
+begin
+  E := ';' + LowerCase(Ext) + ';';
+  for I := 0 to FileTypeCount - 1 do
+    if Pos(E, FileTypeExts[I]) > 0 then Exit(I);
+  Result := -1;
+end;
+
+function TAppSettings.TypeShown(const FileName: string): Boolean;
+var
+  I: Integer;
+begin
+  I := FileTypeIndex(ExtractFileExt(FileName));
+  Result := (I < 0) or TypeOn[I];
 end;
 
 procedure TAppSettings.LoadFrom(Ini: TCustomIniFile);
@@ -311,7 +362,6 @@ begin
     AutoExit := ReadBool('Automation', 'AutoExit', AutoExit);
 
     CustomEnabled := ReadBool('Custom', 'Enabled', CustomEnabled);
-    CustomLinkBreeze := ReadBool('Custom', 'LinkBreeze', CustomLinkBreeze);
     CustomCaption := ReadString('Custom', 'Caption', CustomCaption);
     CustomCmd := ReadString('Custom', 'Command', CustomCmd);
 
@@ -321,8 +371,11 @@ begin
     ShowDownloaded := ReadBool('View', 'ShowDownloaded', ShowDownloaded);
     ShowDuplicates := ReadBool('View', 'ShowDuplicates', ShowDuplicates);
     ShowDateSelector := ReadBool('View', 'ShowDateSelector', ShowDateSelector);
-    ViewMode := ReadInteger('View', 'ViewMode', ViewMode);
-    if (ViewMode < 0) or (ViewMode > 2) then ViewMode := 1;
+    ViewMode := ReadInteger('View', 'ThumbView', ViewMode);
+    if (ViewMode < 0) or (ViewMode > 2) then ViewMode := 2;
+    for I := 0 to FileTypeCount - 1 do
+      TypeOn[I] := ReadBool('FileTypes', FileTypeKeys[I], TypeOn[I]);
+    LoggingOn := ReadBool('General', 'Logging', LoggingOn);
 
     if SectionExists('JobHistory') then LoadList(Ini, 'JobHistory', JobHistory);
     if SectionExists('Mappings') then LoadList(Ini, 'Mappings', Mappings);
@@ -340,6 +393,8 @@ begin
 end;
 
 procedure TAppSettings.SaveTo(Ini: TCustomIniFile);
+var
+  I: Integer;
 begin
   with Ini do
   begin
@@ -388,7 +443,6 @@ begin
     WriteBool('Automation', 'AutoExit', AutoExit);
 
     WriteBool('Custom', 'Enabled', CustomEnabled);
-    WriteBool('Custom', 'LinkBreeze', CustomLinkBreeze);
     WriteString('Custom', 'Caption', CustomCaption);
     WriteString('Custom', 'Command', CustomCmd);
 
@@ -398,7 +452,10 @@ begin
     WriteBool('View', 'ShowDownloaded', ShowDownloaded);
     WriteBool('View', 'ShowDuplicates', ShowDuplicates);
     WriteBool('View', 'ShowDateSelector', ShowDateSelector);
-    WriteInteger('View', 'ViewMode', ViewMode);
+    WriteInteger('View', 'ThumbView', ViewMode);
+    for I := 0 to FileTypeCount - 1 do
+      WriteBool('FileTypes', FileTypeKeys[I], TypeOn[I]);
+    WriteBool('General', 'Logging', LoggingOn);
   end;
   SaveList(Ini, 'JobHistory', JobHistory);
   SaveList(Ini, 'Mappings', Mappings);

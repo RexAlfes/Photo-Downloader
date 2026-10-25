@@ -6,11 +6,12 @@ interface
 
 uses
   Classes, SysUtils, Math, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
-  ComCtrls, Spin, Clipbrd, LCLType, LCLIntf, uSettings, uItems, uExif, uDrives, uVersion;
+  ComCtrls, CheckLst, Spin, Clipbrd, LCLType, LCLIntf, uSettings, uItems, uExif, uDrives, uVersion;
 
 function ExecuteJobCode(S: TAppSettings; var Job: string; const CurrentCamera: string): Boolean;
 function ExecutePreferences(S: TAppSettings; const CurrentCamera: string): Boolean;
 function ExecuteIptc(L: TStringList): Boolean;
+function ExecuteFileTypes(S: TAppSettings): Boolean;
 function ChooseFromList(const ATitle, APrompt: string; Items: TStrings; out Choice: string): Boolean;
 procedure ShowTokenHelp;
 procedure ShowAbout;
@@ -176,7 +177,7 @@ begin
   inherited CreateNew(AOwner);
   InitDialog(Self, 'Register', 520, 400);
   MkLabel(Self, AppTitle + ' ' + AppVersionString, 12, 12);
-  MkWrap(Self, 'No registration or licence key is needed. This software is free ' +
+  MkWrap(Self, 'No registration or license key is needed. This software is free ' +
     'software released under the GNU General Public License:', 12, 36, 496, 34);
   M := TMemo.Create(Self);
   M.Parent := Self;
@@ -402,6 +403,66 @@ begin
 end;
 
 { ====================================================================== }
+{ File type filter                                                        }
+{ ====================================================================== }
+
+type
+  TTypesHelper = class
+    List: TCheckListBox;
+    procedure AllClick(Sender: TObject);
+    procedure NoneClick(Sender: TObject);
+  end;
+
+procedure TTypesHelper.AllClick(Sender: TObject);
+var
+  I: Integer;
+begin
+  for I := 0 to List.Items.Count - 1 do List.Checked[I] := True;
+end;
+
+procedure TTypesHelper.NoneClick(Sender: TObject);
+var
+  I: Integer;
+begin
+  for I := 0 to List.Items.Count - 1 do List.Checked[I] := False;
+end;
+
+function ExecuteFileTypes(S: TAppSettings): Boolean;
+var
+  F: TForm;
+  H: TTypesHelper;
+  B: TButton;
+  I: Integer;
+begin
+  F := TForm.CreateNew(Application);
+  H := TTypesHelper.Create;
+  try
+    InitDialog(F, 'File Types', 360, 360);
+    MkLabel(F, 'Show these file types:', 10, 10);
+    H.List := TCheckListBox.Create(F);
+    H.List.Parent := F;
+    H.List.SetBounds(10, 32, 340, 250);
+    for I := 0 to FileTypeCount - 1 do
+    begin
+      H.List.Items.Add(FileTypeNames[I]);
+      H.List.Checked[I] := S.TypeOn[I];
+    end;
+    B := MkButton(F, 'Select all', 10, 292, 100);
+    B.OnClick := @H.AllClick;
+    B := MkButton(F, 'Clear all', 120, 292, 100);
+    B.OnClick := @H.NoneClick;
+    MkButton(F, 'OK', 180, 326, 80, mrOK).Default := True;
+    MkButton(F, 'Cancel', 270, 326, 80, mrCancel).Cancel := True;
+    Result := F.ShowModal = mrOK;
+    if Result then
+      for I := 0 to FileTypeCount - 1 do S.TypeOn[I] := H.List.Checked[I];
+  finally
+    H.Free;
+    F.Free;
+  end;
+end;
+
+{ ====================================================================== }
 { IPTC / XMP dialog                                                       }
 { ====================================================================== }
 
@@ -496,7 +557,7 @@ type
     chkALaunch, chkAExit: TCheckBox;
     grpActions: TGroupBox;
     // Custom button
-    chkCustom, chkBreeze: TCheckBox;
+    chkCustom: TCheckBox;
     edCaption, edCmd: TEdit;
     btnCmd: TButton;
     // Mapping
@@ -608,8 +669,10 @@ const
 begin
   MkLabel(TS, 'Download directory:', 8, 6);
   cbDir := MkCombo(TS, 8, 26, 436);
-  cbDir.Items.Add('N:\photos\{Y}\{Y}-{m}-{D}-{J}\Master\');
-  cbDir.Items.Add('D:\Photos\{Y}\{Y}-{m}-{D}-{J}\');
+  cbDir.Items.Add(IncludeTrailingPathDelimiter(GetUserDir) + 'Pictures' + PathDelim +
+    'Photo Downloader' + PathDelim + '{Y}' + PathDelim + '{Y}-{m}-{D}-{J}' + PathDelim);
+  cbDir.Items.Add(IncludeTrailingPathDelimiter(GetUserDir) + 'Pictures' + PathDelim +
+    '{Y}' + PathDelim + '{Y}-{m}-{D}-{J}' + PathDelim);
   cbDir.OnChange := @ExampleChange;
   MkButton(TS, '...', 452, 25, 28).OnClick := @BrowseClick;
 
@@ -834,12 +897,11 @@ begin
   G.Caption := 'Custom button';
   G.SetBounds(16, 24, 458, 160);
   chkCustom := MkCheck(G, 'Enable custom button', 10, 6);
-  chkBreeze := MkCheck(G, 'Link button to BreezeBrowser Pro or BreezeBrowser', 10, 30);
-  MkLabel(G, 'Button caption:', 10, 64);
-  edCaption := MkEdit(G, 110, 60, 150);
-  MkLabel(G, 'Command line (use %f for file and %d for directory):', 10, 92);
-  edCmd := MkEdit(G, 10, 112, 392);
-  btnCmd := MkButton(G, '...', 410, 111, 28);
+  MkLabel(G, 'Button caption:', 10, 40);
+  edCaption := MkEdit(G, 110, 36, 150);
+  MkLabel(G, 'Command line (use %f for file and %d for directory):', 10, 68);
+  edCmd := MkEdit(G, 10, 88, 392);
+  btnCmd := MkButton(G, '...', 410, 87, 28);
   btnCmd.OnClick := @CmdBrowseClick;
   MkWrap(TS, 'Select "Enable custom button" to add a custom button to Downloader. The ' +
     'custom button can be used to launch the application of your choice. Pressing the ' +
@@ -851,7 +913,6 @@ end;
 
 procedure TPrefsForm.CustomChange(Sender: TObject);
 begin
-  chkBreeze.Enabled := False;   // BreezeBrowser integration is not available
   edCaption.Enabled := chkCustom.Checked;
   edCmd.Enabled := chkCustom.Checked;
   btnCmd.Enabled := chkCustom.Checked;
@@ -1171,7 +1232,6 @@ begin
     chkAExit.Checked := FS.AutoExit;
 
     chkCustom.Checked := FS.CustomEnabled;
-    chkBreeze.Checked := FS.CustomLinkBreeze;
     edCaption.Text := FS.CustomCaption;
     edCmd.Text := FS.CustomCmd;
 
@@ -1239,7 +1299,6 @@ begin
   FS.AutoExit := chkAExit.Checked;
 
   FS.CustomEnabled := chkCustom.Checked;
-  FS.CustomLinkBreeze := chkBreeze.Checked;
   FS.CustomCaption := edCaption.Text;
   FS.CustomCmd := edCmd.Text;
 

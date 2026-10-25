@@ -23,6 +23,7 @@ uses
 const
   MutexName = 'PhotoDownloader.SingleInstance';
   WindowMark = 'PhotoDownloader.MainWindow';
+  EnumTag = 1;                  // passed through EnumWindows and checked in EnumProc
 
 var
   GMutex: THandle = 0;
@@ -30,7 +31,7 @@ var
 
 function EnumProc(Wnd: HWND; LParam: LPARAM): WINBOOL; stdcall;
 begin
-  if GetPropA(Wnd, WindowMark) <> 0 then
+  if (LParam = EnumTag) and (GetPropA(Wnd, WindowMark) <> 0) then
   begin
     GFound := Wnd;
     Result := False;          // stop enumerating
@@ -46,7 +47,7 @@ begin
   if GMutex = 0 then Exit;
   if GetLastError <> ERROR_ALREADY_EXISTS then Exit;     // we are the first copy
   GFound := 0;
-  EnumWindows(@EnumProc, 0);
+  EnumWindows(@EnumProc, EnumTag);
   if GFound <> 0 then
   begin
     if IsIconic(GFound) then ShowWindow(GFound, SW_RESTORE);

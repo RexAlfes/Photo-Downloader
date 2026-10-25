@@ -10,7 +10,7 @@ interface
 
 uses
   Classes, SysUtils, Math, Forms, Controls, Graphics, ExtCtrls, Menus, LCLType, FPImage,
-  uSettings, uItems, uExif, uScale, uDialogs;
+  uSettings, uItems, uExif, uScale, uDialogs, uHeic;
 
 procedure ShowImageViewer(Items: TList; StartIndex: Integer);
 
@@ -212,7 +212,12 @@ begin
         end;
         if (FSrc = nil) and IsTiff then
           FSrc := LoadTiffMemImage(It.FullPath, Target);
-      end;
+      end
+      else if HeicEnabled and (Pos(';' + Ext + ';', HeicExts) > 0) then
+        FSrc := LoadHeicMemImage(It.FullPath, Target);
+      // turn the picture upright (HEIC decoders already apply the file's own rotation)
+      if (FSrc <> nil) and (It.Orientation > 1) and (Pos(';' + Ext + ';', HeicExts) = 0) then
+        OrientMemImage(FSrc, It.Orientation);
     except
       FreeAndNil(FSrc);
     end;
