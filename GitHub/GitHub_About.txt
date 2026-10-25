@@ -1,0 +1,8 @@
+Description (223 chars):
+Free, open source Windows photo ingest tool: copies images from memory cards, renames with EXIF and job-code tokens, flags duplicates and name clashes, previews RAW/TIFF/DNG, writes XMP sidecars. Built with Lazarus. GPL v3.
+
+Website:
+https://rexalfes.github.io/Photo-Downloader/
+
+Topics:
+photography, photo-downloader, photo-ingest, raw, exif, xmp, lazarus, free-pascal, delphi-alternative, windows, desktop-app, gplv3

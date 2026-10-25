@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo Downloader - Open Source Photo Ingest for Windows</title>
+    <meta name="description" content="Photo Downloader is a free, open source (GPL v3) Windows desktop tool that copies photos from memory cards and folders, renames them with tokens and sorts them into job-code folders. Built with Lazarus and Free Pascal.">
+    <style>
+        :root {
+            --bg-color: #f8f9fa;
+            --text-color: #212529;
+            --muted: #475569;
+            --primary: #0066cc;
+            --card-bg: #ffffff;
+            --border: #e9ecef;
+            --success: #15803d;
+        }
+        * { box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+        header {
+            background: linear-gradient(135deg, #1e293b, #0f172a);
+            color: #ffffff;
+            padding: 4rem 2rem;
+            text-align: center;
+        }
+        header h1 { margin: 0.25rem 0 0.5rem; }
+        header p { max-width: 640px; margin: 0.5rem auto; }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        .badge {
+            background-color: #fef08a;
+            color: #854d0e;
+            padding: 0.25rem 0.75rem;
+            border-radius: 50px;
+            font-size: 0.85rem;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 1rem;
+        }
+        .badge-pre { background-color: #fef08a; color: #854d0e; margin: 0 0 0 0.5rem; vertical-align: middle; }
+        .btn {
+            display: inline-block;
+            background-color: var(--primary);
+            color: white;
+            padding: 0.75rem 1.5rem;
+            text-decoration: none;
+            border-radius: 6px;
+            font-weight: bold;
+            margin-top: 1rem;
+        }
+        .btn:hover, .btn:focus { filter: brightness(1.1); }
+        .btn-success { background-color: var(--success); }
+        a { color: var(--primary); }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+        @media (max-width: 600px) { .grid { grid-template-columns: 1fr; } }
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .card h3 { margin-top: 0; }
+        h2 { border-bottom: 2px solid var(--border); padding-bottom: 0.5rem; margin-top: 2.5rem; }
+        code { background: #e2e8f0; padding: 0.1rem 0.35rem; border-radius: 4px; }
+        ul.plain { padding-left: 1.25rem; }
+
+        .release-box {
+            background: #f1f5f9;
+            border: 1px solid #cbd5e1;
+            padding: 1.5rem;
+            border-radius: 8px;
+            margin-top: 1.5rem;
+        }
+        .release-box h3 { margin-top: 0; }
+        .release-meta { font-size: 0.9rem; color: #64748b; margin-bottom: 1rem; }
+        .asset-row { margin: 1rem 0; }
+        .asset-size { margin-left: 1rem; font-size: 0.9rem; color: var(--muted); }
+        .loading { font-style: italic; color: #64748b; }
+        .support { text-align: center; }
+        .btn-paypal { background-color: #003087; }
+        .btn-venmo { background-color: #008cff; }
+        .support .btn { margin: 0.5rem 0.4rem 0; }
+        footer { text-align: center; color: var(--muted); font-size: 0.9rem; padding: 2rem 1rem 3rem; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <span class="badge">Alpha Testing</span>
+        <h1>Photo Downloader</h1>
+        <p>A free, open source Windows desktop tool that copies photos from memory cards and folders, renames them from templates and files them into job-code folders. Built with Lazarus &amp; Free Pascal.</p>
+        <a href="#download" class="btn">Get Latest Alpha</a>
+    </header>
+
+    <div class="container">
+
+        <section id="download">
+            <h2>Latest Download</h2>
+            <p>Builds are compiled from the Lazarus project in the repository and attached to each
+               <a href="https://github.com/RexAlfes/Photo-Downloader/releases" target="_blank" rel="noopener">GitHub release</a>.
+               This is alpha software: keep your original files until you have checked the copies.</p>
+
+            <div class="release-box" id="release-container">
+                <div class="loading" id="release-loading">Fetching the latest build from GitHub...</div>
+                <div id="release-content" hidden>
+                    <h3><span id="release-title">Photo Downloader</span><span id="release-pre" class="badge badge-pre" hidden>Pre-release</span></h3>
+                    <div class="release-meta">
+                        Published: <span id="release-date">-</span> | Tag: <span id="release-tag">-</span> |
+                        <a id="release-notes" href="https://github.com/RexAlfes/Photo-Downloader/releases" target="_blank" rel="noopener">Release notes</a>
+                    </div>
+                    <div id="release-assets-list"></div>
+                </div>
+            </div>
+            <noscript><p>JavaScript is off. Download builds from the
+                <a href="https://github.com/RexAlfes/Photo-Downloader/releases">releases page</a>.</p></noscript>
+        </section>
+
+        <section>
+            <h2>Take Back Control of Your Workflow</h2>
+            <p><strong>Photo Downloader</strong> is a local desktop ingest tool licensed under the GNU GPL v3 or later.
+               It scans a memory card or folder, shows thumbnails (including RAW previews), renames files from
+               templates built from EXIF data and your own job codes, and copies them into an organised
+               folder tree. Nothing is uploaded anywhere and no account is needed. There are no subscriptions, no paid upgrades and no license keys.</p>
+        </section>
+
+        <section>
+            <h2>Features</h2>
+            <div class="grid">
+                <div class="card">
+                    <h3>&#9889; Native Desktop App</h3>
+                    <p>Compiled with Lazarus 4.8 / Free Pascal 3.2.2 into a single Windows executable. No runtime, no installer
+                       framework and no background services.</p>
+                </div>
+                <div class="card">
+                    <h3>&#127991;&#65039; Token Renaming</h3>
+                    <p>Name files and folders from the capture date and time, camera model and serial, original name,
+                       sequence counters and per-day job codes.</p>
+                </div>
+                <div class="card">
+                    <h3>&#128269; Duplicate &amp; Clash Checks</h3>
+                    <p>Flags images that are already downloaded, duplicate copies (same size, capture time and camera) and
+                       name clashes, and tells you why a file is flagged.</p>
+                </div>
+                <div class="card">
+                    <h3>&#128247; JPEG, RAW, TIFF &amp; DNG</h3>
+                    <p>Thumbnails and a viewer for JPEG, PNG, BMP, TIFF and DNG, and for the embedded previews in NEF, NRW, CR2,
+                       CR3, CRW, ARW, SR2, SRF and other RAW files.</p>
+                </div>
+                <div class="card">
+                    <h3>&#128230; Metadata Output</h3>
+                    <p>Writes XMP sidecars from your IPTC/XMP details and can add author and copyright to JPEG EXIF fields
+                       that are empty. Existing values are never overwritten.</p>
+                </div>
+                <div class="card">
+                    <h3>&#128737;&#65039; Careful Deleting</h3>
+                    <p>Files are only deleted from the card after they have been downloaded and the copy is confirmed to
+                       exist in the destination.</p>
+                </div>
+            </div>
+        </section>
+
+        <section>
+            <h2>Known Limitations</h2>
+            <ul class="plain">
+                <li>Photo Downloader is a 64-bit Windows program. A 32-bit build is not provided at this time; request one through the <a href="https://github.com/RexAlfes/Photo-Downloader/issues" target="_blank" rel="noopener">GitHub testing process</a> or the online testing form.</li>
+                <li>Windows is the primary platform. Card-reader detection, eject and the single-instance option are Windows only.</li>
+                <li>In development: video and audio files. HEIC pictures are supported out of the box.</li>
+                <li>Direct USB camera (PTP/MTP) download, GPS geotagging, MD5-verified copy and auto-rotate of progressive JPEGs are not implemented yet.</li>
+                <li>Compressed (LZW/Deflate) TIFF files without a JPEG preview show a placeholder instead of a thumbnail.</li>
+            </ul>
+        </section>
+
+        <section>
+            <h2>How to Help Test</h2>
+            <p>Feedback from real photography workflows is what this project needs most. If you find an EXIF, thumbnail or
+               naming problem, open an issue and describe the camera and file type. For thumbnail problems, attach
+               <code>thumbnail.log</code> from the Photo Downloader folder inside your local application data folder
+               (<code>%LOCALAPPDATA%</code>).</p>
+            <a href="https://github.com/RexAlfes/Photo-Downloader/issues" target="_blank" rel="noopener">Open a GitHub Issue &rarr;</a>
+        </section>
+
+        <section class="support" id="support">
+            <h2>Support the Project</h2>
+            <p>Photo Downloader is free, with no subscription or paid upgrade. If it saves you time, you can help cover development with an optional donation.
+               Donations do not unlock anything.</p>
+            <a class="btn btn-paypal" href="https://paypal.me/PhotoDownLoader" target="_blank" rel="noopener">Donate with PayPal</a>
+            <a class="btn btn-venmo" href="https://venmo.com/u/RexAlfes" target="_blank" rel="noopener">Donate with Venmo (US)</a>
+        </section>
+
+    </div>
+
+    <footer>
+        Photo Downloader is free software released under the
+        <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GNU GPL v3 or later</a> &middot;
+        <a href="https://github.com/RexAlfes/Photo-Downloader" target="_blank" rel="noopener">Source code on GitHub</a>
+    </footer>
+
+    <script>
+        // CONFIGURATION: change these to match your GitHub details
+        const GITHUB_USER = 'RexAlfes';
+        const GITHUB_REPO = 'Photo-Downloader';
+
+        function setText(id, value) {
+            document.getElementById(id).textContent = value;
+        }
+
+        function showError(message) {
+            const loadingEl = document.getElementById('release-loading');
+            loadingEl.textContent = '';
+            loadingEl.append(message + ' You can still get builds from the ');
+            const link = document.createElement('a');
+            link.href = `https://github.com/${GITHUB_USER}/${GITHUB_REPO}/releases`;
+            link.textContent = 'releases page';
+            loadingEl.append(link, '.');
+        }
+
+        async function fetchLatestRelease() {
+            const loadingEl = document.getElementById('release-loading');
+            const contentEl = document.getElementById('release-content');
+            const assetsListEl = document.getElementById('release-assets-list');
+
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 10000);
+            try {
+                // The list endpoint is used (not /releases/latest) so that pre-releases such as alphas are included.
+                const response = await fetch(
+                    `https://api.github.com/repos/${GITHUB_USER}/${GITHUB_REPO}/releases?per_page=10`,
+                    { headers: { 'Accept': 'application/vnd.github+json' }, signal: controller.signal }
+                );
+                if (!response.ok) {
+                    throw new Error(response.status === 403
+                        ? 'GitHub rate limit reached.'
+                        : 'Could not read the release list.');
+                }
+
+                const releases = await response.json();
+                // Newest published release that is not a draft.
+                const data = Array.isArray(releases) ? releases.find(r => !r.draft) : null;
+                if (!data) {
+                    throw new Error('No public releases yet.');
+                }
+
+                setText('release-title', data.name || `Release ${data.tag_name}`);
+                setText('release-tag', data.tag_name);
+                document.getElementById('release-pre').hidden = !data.prerelease;
+                if (data.html_url && data.html_url.startsWith('https://github.com/')) {
+                    document.getElementById('release-notes').href = data.html_url;
+                }
+
+                const when = data.published_at ? new Date(data.published_at) : null;
+                setText('release-date', when && !isNaN(when)
+                    ? when.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
+                    : 'unknown');
+
+                // Build the asset rows with DOM calls (file names are never parsed as HTML).
+                assetsListEl.textContent = '';
+                const assets = Array.isArray(data.assets) ? data.assets : [];
+                if (assets.length > 0) {
+                    assets.forEach(asset => {
+                        const row = document.createElement('div');
+                        row.className = 'asset-row';
+
+                        const link = document.createElement('a');
+                        link.className = 'btn btn-success';
+                        link.href = asset.browser_download_url;
+                        link.textContent = `Download ${asset.name}`;
+
+                        const size = document.createElement('span');
+                        size.className = 'asset-size';
+                        size.textContent = `(${(asset.size / (1024 * 1024)).toFixed(2)} MB)`;
+
+                        row.append(link, size);
+                        assetsListEl.appendChild(row);
+                    });
+                } else {
+                    const none = document.createElement('p');
+                    none.className = 'loading';
+                    none.textContent = 'No build files are attached to this release yet.';
+                    assetsListEl.appendChild(none);
+                }
+
+                loadingEl.hidden = true;
+                contentEl.hidden = false;
+            } catch (error) {
+                console.error(error);
+                showError(error.name === 'AbortError' ? 'GitHub did not respond in time.' : error.message);
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', fetchLatestRelease);
+    </script>
+</body>
+</html>
