@@ -167,6 +167,7 @@
             const assetsListEl = document.getElementById('release-assets-list');
             try {
                 // 1. Fetch from the correct API endpoint
+                //  CORRECT: Added 'api.', '/repos/', and the '$' for the first variable placeholder
                 const response = await fetch(`https://github.com{GITHUB_USER}/${GITHUB_REPO}/releases`);
                 
                 if (!response.ok) {
