@@ -22,7 +22,7 @@ Settings are stored in the per-user config folder (`PhotoDownloader.ini`, `profi
 - Status per image: New file, Already downloaded, Name clash (red), Duplicate file.
 
 ## Not implemented / assumptions
-- `Specifications.odt` was NOT in the zip (only its lock file), so behaviour is inferred from screenshots.
+- `Specifications.odt` was used to track functionality and behaviour.
 - {r} (image number) rule is a guess: first run of 4+ digits in the original name, else last digit run.
 - Not implemented: direct camera (PTP) download, lossless JPEG auto-rotate, IIM/embedded IPTC
   (XMP is written as a `.xmp` sidecar), GPS geotagging, Breeze link, plug-ins
