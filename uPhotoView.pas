@@ -7,6 +7,9 @@ interface
 uses
   Classes, SysUtils, Math, Controls, Graphics, StdCtrls, ExtCtrls, Forms, LCLType, uItems;
 
+const
+  SmallCellWidth = 200;
+
 type
   TViewMode = (vmList, vmSmall, vmLarge);
   TOpenItemEvent = procedure(Sender: TObject; Index: Integer) of object;
@@ -17,7 +20,7 @@ type
     FItems: TList;                  // visible items, not owned
     FMode: TViewMode;
     FScroll: TScrollBar;
-    FCellW, FCellH, FCols, FLineH, FThumbBox, FTotalH: Integer;
+    FCellW, FCellH, FCols, FLineH, FThumbBox, FTotalH, FLargeW: Integer;
     FFocusIdx, FAnchor: Integer;
     FLaidOut: Boolean;
     FLoadBudget: Integer;           // thumbnails that may still be decoded in this paint
@@ -53,6 +56,11 @@ type
     procedure SetItems(const L: TList);
     procedure SelectionChanged;
     procedure ScrollToItem(Item: TImageItem);
+    { width of one large-thumbnail card (wide enough for the first text line) }
+    function LargeCellWidth: Integer;
+    { width of one card in the current view (0 for the list view) }
+    function CellWidthNow: Integer;
+    function ScrollBarWidth: Integer;
     property Mode: TViewMode read FMode write SetMode;
     property OnSelectionChange: TNotifyEvent read FOnSelChange write FOnSelChange;
     property OnOpenItem: TOpenItemEvent read FOnOpenItem write FOnOpenItem;
@@ -65,6 +73,8 @@ const
   ColProblem = $006060FF;     // RGB(255,96,96)
   ColSelected = $00FAD7BE;    // RGB(190,215,250)
   ColSelProblem = $009664EB;  // RGB(235,100,150)
+  ColDownloaded = $00C8C8C8;  // RGB(200,200,200): already downloaded
+  ColSelDownloaded = $00CDB4A0;  // RGB(160,180,205)
 
 constructor TPhotoView.Create(AOwner: TComponent);
 begin
@@ -129,6 +139,43 @@ begin
   if Assigned(FOnSelChange) then FOnSelChange(Self);
 end;
 
+function TPhotoView.LargeCellWidth: Integer;
+var
+  Bmp: TBitmap;
+begin
+  if FLargeW > 0 then
+  begin
+    Result := FLargeW;
+    Exit;
+  end;
+  // 3 px margin + 160 px thumbnail + 4 px gap + the longest usual first line, e.g.
+  // "1234) DSC_00000000_ABCD.NEF (99.99 MB)"
+  Bmp := TBitmap.Create;
+  try
+    Bmp.Canvas.Font.Assign(Font);
+    Result := 3 + 160 + 4 + Bmp.Canvas.TextWidth('0000) WWWW_00000000_WWWW.WWW (999.99 MB)') + 8;
+  finally
+    Bmp.Free;
+  end;
+  if Result < 340 then Result := 340;
+  FLargeW := Result;
+end;
+
+function TPhotoView.CellWidthNow: Integer;
+begin
+  case FMode of
+    vmSmall: Result := SmallCellWidth;
+    vmLarge: Result := LargeCellWidth;
+  else
+    Result := 0;
+  end;
+end;
+
+function TPhotoView.ScrollBarWidth: Integer;
+begin
+  Result := FScroll.Width;
+end;
+
 procedure TPhotoView.DoLayout;
 var
   W, Rows: Integer;
@@ -150,13 +197,13 @@ begin
     vmSmall:
       begin
         FThumbBox := 64;
-        FCellW := 200;
+        FCellW := SmallCellWidth;
         FCellH := FLineH * 5 + 10;
       end;
   else
     begin
       FThumbBox := 160;
-      FCellW := 340;
+      FCellW := LargeCellWidth;
       FCellH := FThumbBox + FLineH + 12;
     end;
   end;
@@ -338,6 +385,8 @@ begin
   Inner := Rect(R.Left, R.Top, R.Right - 1, R.Bottom - 1);
   if Item.IsProblem then
     if Item.Selected then Bg := ColSelProblem else Bg := ColProblem
+  else if Item.Status = isDownloaded then
+    if Item.Selected then Bg := ColSelDownloaded else Bg := ColDownloaded
   else
     if Item.Selected then Bg := ColSelected else Bg := ColNormal;
   Canvas.Brush.Style := bsSolid;

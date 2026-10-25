@@ -25,6 +25,8 @@ function ReadExifFromFile(const FileName: string; out Info: TExifInfo): Boolean;
   for a field that is missing or empty in the file; existing values are never
   overwritten. Returns True if the file is now in the wanted state. }
 function WriteExifOwnerFields(const FileName, Artist, Copyright: string): Boolean;
+{ Largest picture size stored in a HEIC/HEIF file (its 'ispe' property), before any rotation. }
+function ReadHeifStoredSize(const FileName: string; out W, H: Integer): Boolean;
 
 { Copies an embedded baseline/progressive JPEG (the preview RAW files carry) to Dest.
   Rank 0 is the largest one, 1 the next largest, and so on. W/H are its pixel size. }
@@ -548,6 +550,373 @@ begin
 end;
 
 
+{ ---- ISO base media files: Canon CR3 and HEIC/HEIF ---- }
+
+function BoxHeader(Strm: TStream; Pos, Stop: Int64; out Typ: string;
+  out Payload, BoxEnd: Int64): Boolean;
+var
+  Sz: Int64;
+  B: array[0..3] of Byte;
+  I: Integer;
+begin
+  Result := False;
+  Typ := '';
+  Payload := 0;
+  BoxEnd := 0;
+  if Pos + 8 > Stop then Exit;
+  Sz := RdU32(Strm, True, Pos);
+  B[0] := 0; B[1] := 0; B[2] := 0; B[3] := 0;
+  if not StreamRead(Strm, Pos + 4, B, 4) then Exit;
+  for I := 0 to 3 do Typ := Typ + Chr(B[I]);
+  Payload := Pos + 8;
+  if Sz = 1 then
+  begin
+    Sz := RdU32(Strm, True, Pos + 8) * 4294967296 + RdU32(Strm, True, Pos + 12);
+    Payload := Pos + 16;
+  end
+  else if Sz = 0 then
+    Sz := Stop - Pos;
+  if Sz < 8 then Exit;
+  BoxEnd := Pos + Sz;
+  if BoxEnd > Stop then BoxEnd := Stop;
+  Result := Payload <= BoxEnd;
+end;
+
+function FindChild(Strm: TStream; Start, Stop: Int64; const Want: string;
+  out Payload, BoxEnd: Int64): Boolean;
+var
+  P, PL, BE: Int64;
+  Typ: string;
+  Guard: Integer;
+begin
+  Result := False;
+  Payload := 0;
+  BoxEnd := 0;
+  P := Start;
+  Guard := 0;
+  while (Guard < 4096) and BoxHeader(Strm, P, Stop, Typ, PL, BE) do
+  begin
+    if Typ = Want then
+    begin
+      Payload := PL;
+      BoxEnd := BE;
+      Result := True;
+      Exit;
+    end;
+    if BE <= P then Break;
+    P := BE;
+    Inc(Guard);
+  end;
+end;
+
+{ copies a TIFF structure (II*/MM*) from the file into T, with Base = 0 }
+function LoadTiffBlock(Strm: TStream; Ofs, Count: Int64; out T: TTiff): Boolean;
+begin
+  Result := False;
+  T.Buf := nil;
+  T.Base := 0;
+  T.Big := False;
+  if (Count < 16) or (Count > 1048576) then Exit;
+  SetLength(T.Buf, Integer(Count));
+  if not StreamRead(Strm, Ofs, T.Buf[0], Integer(Count)) then Exit;
+  if (T.Buf[0] = $4D) and (T.Buf[1] = $4D) then
+    T.Big := True
+  else if not ((T.Buf[0] = $49) and (T.Buf[1] = $49)) then
+    Exit;
+  Result := U16(T, 2) = 42;
+end;
+
+{ the Canon-specific string tag 0x0096 (body serial) from a maker note block }
+function CanonMakerSerial(const T: TTiff): string;
+var
+  P, N, I, E: Integer;
+begin
+  Result := '';
+  P := Integer(U32(T, 4));
+  if (P <= 0) or (P + 2 > Length(T.Buf)) then Exit;
+  N := U16(T, P);
+  if N > 300 then Exit;
+  for I := 0 to N - 1 do
+  begin
+    E := P + 2 + I * 12;
+    if E + 12 > Length(T.Buf) then Break;
+    if U16(T, E) = $0096 then
+    begin
+      Result := GetStr(T, E);
+      Exit;
+    end;
+  end;
+end;
+
+function ReadCr3Exif(Strm: TStream; MoovStart, MoovEnd: Int64; var Info: TExifInfo): Boolean;
+const
+  CanonUuid: array[0..15] of Byte =
+    ($85, $C0, $B6, $87, $82, $0F, $11, $E0, $81, $11, $F4, $CE, $46, $2B, $6A, $48);
+var
+  P, PL, BE, CP, CE: Int64;
+  Typ: string;
+  U: array[0..15] of Byte;
+  I, Guard: Integer;
+  Same: Boolean;
+  T: TTiff;
+begin
+  Result := False;
+  P := MoovStart;
+  Guard := 0;
+  while (Guard < 256) and BoxHeader(Strm, P, MoovEnd, Typ, PL, BE) do
+  begin
+    Inc(Guard);
+    if Typ = 'uuid' then
+    begin
+      for I := 0 to 15 do U[I] := 0;
+      Same := StreamRead(Strm, PL, U, 16);
+      if Same then
+        for I := 0 to 15 do
+          if U[I] <> CanonUuid[I] then Same := False;
+      if Same then
+      begin
+        // CMT1 = TIFF IFD0, CMT2 = EXIF IFD, CMT3 = Canon maker note
+        if FindChild(Strm, PL + 16, BE, 'CMT1', CP, CE) and LoadTiffBlock(Strm, CP, CE - CP, T) then
+          ReadIFD(T, U32(T, 4), 0, Info);
+        if FindChild(Strm, PL + 16, BE, 'CMT2', CP, CE) and LoadTiffBlock(Strm, CP, CE - CP, T) then
+          ReadIFD(T, U32(T, 4), 0, Info);
+        if (Info.Serial = '') and FindChild(Strm, PL + 16, BE, 'CMT3', CP, CE) and
+           LoadTiffBlock(Strm, CP, CE - CP, T) then
+          Info.Serial := CanonMakerSerial(T);
+        Result := True;
+        Exit;
+      end;
+    end;
+    if BE <= P then Break;
+    P := BE;
+  end;
+end;
+
+function RdN(Strm: TStream; Ofs: Int64; N: Integer): Int64;
+begin
+  case N of
+    4: Result := RdU32(Strm, True, Ofs);
+    8: Result := RdU32(Strm, True, Ofs) * 4294967296 + RdU32(Strm, True, Ofs + 4);
+  else
+    Result := 0;
+  end;
+end;
+
+function ReadHeifExif(Strm: TStream; MetaStart, MetaEnd: Int64; var Info: TExifInfo): Boolean;
+var
+  IinfP, IinfE, IlocP, IlocE, P, PL, BE, Q, ExtOfs, ExtLen, BaseOfs, ExtOne, HdrOfs: Int64;
+  Typ: string;
+  Ver, Cnt, I, J, OffSz, LenSz, BaseSz, IdxSz, K, ExtCnt: Integer;
+  ExifId, ItemId: Int64;
+  B: array[0..3] of Byte;
+  T: TTiff;
+  Guard: Integer;
+begin
+  Result := False;
+  if not FindChild(Strm, MetaStart, MetaEnd, 'iinf', IinfP, IinfE) then Exit;
+  if not FindChild(Strm, MetaStart, MetaEnd, 'iloc', IlocP, IlocE) then Exit;
+
+  // 1. item id of the Exif item
+  ExifId := -1;
+  B[0] := 0; B[1] := 0; B[2] := 0; B[3] := 0;
+  StreamRead(Strm, IinfP, B, 1);
+  if B[0] = 0 then P := IinfP + 4 + 2 else P := IinfP + 4 + 4;
+  Guard := 0;
+  while (Guard < 4096) and BoxHeader(Strm, P, IinfE, Typ, PL, BE) do
+  begin
+    Inc(Guard);
+    if Typ = 'infe' then
+    begin
+      B[0] := 0;
+      StreamRead(Strm, PL, B, 1);
+      if B[0] = 2 then
+      begin
+        ItemId := RdU16(Strm, True, PL + 4);
+        K := 8;
+      end
+      else if B[0] = 3 then
+      begin
+        ItemId := RdU32(Strm, True, PL + 4);
+        K := 10;
+      end
+      else
+      begin
+        ItemId := -1;
+        K := 0;
+      end;
+      if (ItemId >= 0) and StreamRead(Strm, PL + K, B, 4) then
+        if (B[0] = Ord('E')) and (B[1] = Ord('x')) and (B[2] = Ord('i')) and (B[3] = Ord('f')) then
+        begin
+          ExifId := ItemId;
+          Break;
+        end;
+    end;
+    if BE <= P then Break;
+    P := BE;
+  end;
+  if ExifId < 0 then Exit;
+
+  // 2. its location (iloc, construction method 0 = offset in the file)
+  B[0] := 0;
+  StreamRead(Strm, IlocP, B, 1);
+  Ver := B[0];
+  if Ver > 2 then Exit;
+  StreamRead(Strm, IlocP + 4, B, 2);
+  OffSz := B[0] shr 4;
+  LenSz := B[0] and 15;
+  BaseSz := B[1] shr 4;
+  if Ver = 0 then IdxSz := 0 else IdxSz := B[1] and 15;
+  if Ver < 2 then
+  begin
+    Cnt := RdU16(Strm, True, IlocP + 6);
+    Q := IlocP + 8;
+  end
+  else
+  begin
+    Cnt := Integer(RdU32(Strm, True, IlocP + 6));
+    Q := IlocP + 10;
+  end;
+  if Cnt > 20000 then Exit;
+  for I := 0 to Cnt - 1 do
+  begin
+    if Ver < 2 then
+    begin
+      ItemId := RdU16(Strm, True, Q);
+      Inc(Q, 2);
+    end
+    else
+    begin
+      ItemId := RdU32(Strm, True, Q);
+      Inc(Q, 4);
+    end;
+    if Ver >= 1 then
+    begin
+      K := RdU16(Strm, True, Q) and 15;   // construction method
+      Inc(Q, 2);
+    end
+    else
+      K := 0;
+    Inc(Q, 2);                             // data reference index
+    BaseOfs := RdN(Strm, Q, BaseSz);
+    Inc(Q, BaseSz);
+    ExtCnt := RdU16(Strm, True, Q);
+    Inc(Q, 2);
+    ExtOne := -1;
+    ExtLen := 0;
+    for J := 0 to ExtCnt - 1 do
+    begin
+      if IdxSz > 0 then Inc(Q, IdxSz);
+      ExtOfs := RdN(Strm, Q, OffSz);
+      Inc(Q, OffSz);
+      ExtLen := RdN(Strm, Q, LenSz);
+      Inc(Q, LenSz);
+      if J = 0 then ExtOne := BaseOfs + ExtOfs;
+    end;
+    if (ItemId = ExifId) and (K = 0) and (ExtOne >= 0) and (ExtLen > 8) then
+    begin
+      // payload = 4 byte offset to the TIFF header, then the data
+      HdrOfs := RdU32(Strm, True, ExtOne);
+      if (HdrOfs < 0) or (HdrOfs + 4 >= ExtLen) then Exit;
+      if LoadTiffBlock(Strm, ExtOne + 4 + HdrOfs, ExtLen - 4 - HdrOfs, T) then
+      begin
+        ReadIFD(T, U32(T, 4), 0, Info);
+        Result := True;
+      end;
+      Exit;
+    end;
+  end;
+end;
+
+{ Canon CR3 and HEIC/HEIF: EXIF data from the container boxes }
+function ReadBmffFromFile(const FileName: string; var Info: TExifInfo): Boolean;
+var
+  Strm: TFileStream;
+  Size, P, PL, BE: Int64;
+  Typ: string;
+  Guard: Integer;
+begin
+  Result := False;
+  try
+    Strm := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);
+  except
+    Exit;
+  end;
+  try
+    Size := Strm.Size;
+    P := 0;
+    Guard := 0;
+    while (Guard < 64) and BoxHeader(Strm, P, Size, Typ, PL, BE) do
+    begin
+      Inc(Guard);
+      if Typ = 'moov' then
+        ReadCr3Exif(Strm, PL, BE, Info)
+      else if Typ = 'meta' then
+        ReadHeifExif(Strm, PL + 4, BE, Info);
+      if BE <= P then Break;
+      P := BE;
+    end;
+  finally
+    Strm.Free;
+  end;
+  Result := (Info.Make <> '') or (Info.Model <> '') or Info.HasDate;
+end;
+
+function ReadHeifStoredSize(const FileName: string; out W, H: Integer): Boolean;
+var
+  Strm: TFileStream;
+  Size, P, PL, BE, IP, IE, CP, CE, Q, QL, QE, AW, AH, Best: Int64;
+  Typ, Typ2: string;
+  Guard, G2: Integer;
+begin
+  Result := False;
+  W := 0;
+  H := 0;
+  try
+    Strm := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);
+  except
+    Exit;
+  end;
+  try
+    Size := Strm.Size;
+    P := 0;
+    Guard := 0;
+    while (Guard < 64) and BoxHeader(Strm, P, Size, Typ, PL, BE) do
+    begin
+      Inc(Guard);
+      if Typ = 'meta' then
+        if FindChild(Strm, PL + 4, BE, 'iprp', IP, IE) and FindChild(Strm, IP, IE, 'ipco', CP, CE) then
+        begin
+          Q := CP;
+          G2 := 0;
+          Best := 0;
+          while (G2 < 4096) and BoxHeader(Strm, Q, CE, Typ2, QL, QE) do
+          begin
+            Inc(G2);
+            if Typ2 = 'ispe' then
+            begin
+              AW := RdU32(Strm, True, QL + 4);
+              AH := RdU32(Strm, True, QL + 8);
+              if AW * AH > Best then
+              begin
+                Best := AW * AH;
+                W := Integer(AW);
+                H := Integer(AH);
+              end;
+            end;
+            if QE <= Q then Break;
+            Q := QE;
+          end;
+          Result := Best > 0;
+          Exit;
+        end;
+      if BE <= P then Break;
+      P := BE;
+    end;
+  finally
+    Strm.Free;
+  end;
+end;
+
 function ReadExifFromFile(const FileName: string; out Info: TExifInfo): Boolean;
 var
   FS: TFileStream;
@@ -581,6 +950,15 @@ begin
   begin
     // Canon CRW is not a TIFF file: read make, model and time from its CIFF directories
     Info.Valid := ReadCiffFromFile(FileName, Info);
+    Result := Info.Valid;
+    Exit;
+  end;
+
+  if (T.Buf[4] = Ord('f')) and (T.Buf[5] = Ord('t')) and (T.Buf[6] = Ord('y')) and
+     (T.Buf[7] = Ord('p')) then
+  begin
+    // Canon CR3 and HEIC/HEIF are ISO base media files
+    Info.Valid := ReadBmffFromFile(FileName, Info);
     Result := Info.Valid;
     Exit;
   end;

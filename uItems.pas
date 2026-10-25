@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Contnrs, Math, StrUtils, DateUtils, Graphics, FPReadJPEG,
-  LazFileUtils, uSettings, uExif;
+  LazFileUtils, md5, uSettings, uExif, uHeic, uRotate;
 
 type
   TItemStatus = (isNew, isDownloaded, isNameClash, isDuplicate);
@@ -22,6 +22,7 @@ type
     FileTime, CaptureTime: TDateTime;
     Camera, Make, Serial, Owner: string;
     ISO: Integer;
+    Orientation: Integer;           // EXIF orientation 1..8 (0 = unknown)
     IsReadOnly: Boolean;
     Status: TItemStatus;
     Selected: Boolean;
@@ -38,6 +39,10 @@ type
   end;
 
 function ItemAt(L: TObjectList; I: Integer): TImageItem;
+var
+  { Set to True (e.g. from the progress callback) to stop a running scan }
+  ScanAbort: Boolean = False;
+
 procedure ScanFolder(const Root: string; S: TAppSettings; Items: TObjectList;
   Progress: TScanProgress);
 procedure EvaluateItems(Items: TObjectList; S: TAppSettings);
@@ -46,6 +51,8 @@ function ComputeDest(S: TAppSettings; Item: TImageItem; SeqDown, SeqSess: Intege
 function ExampleDest(S: TAppSettings; const DirMask, NameMask, Job: string): string;
 function UniqueName(const Dest: string): string;
 procedure EnsureThumb(Item: TImageItem; Box: Integer);
+{ Turns the bitmap upright for an EXIF orientation of 2..8; Bmp may be replaced. }
+procedure OrientBitmap(var Bmp: TBitmap; Orient: Integer);
 { Builds a bitmap (at most MaxSide pixels on the long side) from the uncompressed
   image data of a TIFF/DNG file. False if the file has no such image. }
 function LoadTiffBitmap(const FileName: string; MaxSide: Integer; Bmp: TBitmap): Boolean;
@@ -62,11 +69,11 @@ const
   AttrHidden = $02;   // portable copies of faHidden / faSysFile
   AttrSystem = $04;
   ImageExts = ';.jpg;.jpeg;.jpe;.png;.tif;.tiff;.bmp;.nef;.nrw;.cr2;.cr3;.crw;' +
-              '.arw;.srf;.sr2;.dng;.orf;.raf;.rw2;.pef;.srw;.raw;.heic;.heif;' +
+              '.arw;.srf;.sr2;.dng;.orf;.raf;.rw2;.pef;.srw;.raw;.heic;.heif;.avif;' +
               '.mp4;.mov;.lrv;.mp3;.thm;';
   TiffExts = ';.tif;.tiff;.dng;';
   RawExts = ';.nef;.nrw;.cr2;.cr3;.crw;.arw;.srf;.sr2;.dng;.orf;.raf;.rw2;.pef;.srw;.raw;';
-  ExifExts = ';.jpg;.jpeg;.jpe;.tif;.tiff;.nef;.nrw;.cr2;.crw;.arw;.sr2;.dng;.pef;.srw;';
+  ExifExts = ';.jpg;.jpeg;.jpe;.tif;.tiff;.nef;.nrw;.cr2;.cr3;.heic;.heif;.avif;.crw;.arw;.sr2;.dng;.pef;.srw;';
 
 { TImageItem }
 
@@ -141,6 +148,9 @@ begin
     Result := CompareText(X.FileName, Y.FileName);
 end;
 
+var
+  LastProgTick: QWord = 0;
+
 procedure ScanDir(const Dir: string; Items: TObjectList; var Cnt: Integer;
   Progress: TScanProgress);
 var
@@ -152,6 +162,7 @@ begin
   if FindFirstUTF8(IncludeTrailingPathDelimiter(Dir) + '*', faAnyFile, SR) <> 0 then Exit;
   try
     repeat
+      if ScanAbort then Break;
       if (SR.Name = '.') or (SR.Name = '..') or (SR.Name[1] = '.') then Continue;
       Full := IncludeTrailingPathDelimiter(Dir) + SR.Name;
       if (SR.Attr and faDirectory) <> 0 then
@@ -182,11 +193,16 @@ begin
             It.Make := Info.Make;
             It.Serial := Info.Serial;
             It.ISO := Info.ISO;
+            It.Orientation := Info.Orientation;
             if Info.Owner <> '' then It.Owner := Info.Owner else It.Owner := Info.Artist;
           end;
         Items.Add(It);
         Inc(Cnt);
-        if Assigned(Progress) and ((Cnt mod 10) = 0) then Progress(Cnt);
+        if Assigned(Progress) and (GetTickCount64 - LastProgTick >= 80) then
+        begin
+          LastProgTick := GetTickCount64;
+          Progress(Cnt);
+        end;
       end;
     until FindNextUTF8(SR) <> 0;
   finally
@@ -202,6 +218,7 @@ var
 begin
   Items.Clear;
   Cnt := 0;
+  ScanAbort := False;
   Dcim := IncludeTrailingPathDelimiter(Root) + 'DCIM';
   if (not S.ScanWholeDisk) and DirectoryExistsUTF8(Dcim) then
     ScanDir(Dcim, Items, Cnt, Progress)
@@ -503,6 +520,9 @@ begin
           J := PtrInt(Firsts.Objects[Firsts.IndexOf(It.DestPath)]);
           if J = It.Index then
             It.ClashInfo := 'same new name as other files'
+          else if (J >= 1) and (J <= Items.Count) then
+            It.ClashInfo := 'same new name (' + ExtractFileName(It.DestPath) + ') as #' + IntToStr(J) +
+              ' ' + ItemAt(Items, J - 1).FullPath
           else
             It.ClashInfo := 'same new name as #' + IntToStr(J);
         end;
@@ -517,12 +537,40 @@ end;
 
 { ---- thumbnails ---- }
 
+procedure OrientBitmap(var Bmp: TBitmap; Orient: Integer);
+var
+  Nb: TBitmap;
+  X, Y, W, H, NW, NH, NX, NY: Integer;
+begin
+  if (Bmp = nil) or (Orient < 2) or (Orient > 8) then Exit;
+  W := Bmp.Width;
+  H := Bmp.Height;
+  if (W <= 0) or (H <= 0) then Exit;
+  OrientDims(Orient, W, H, NW, NH);
+  Nb := TBitmap.Create;
+  try
+    Nb.SetSize(NW, NH);
+    for Y := 0 to H - 1 do
+      for X := 0 to W - 1 do
+      begin
+        OrientPoint(Orient, W, H, X, Y, NX, NY);
+        Nb.Canvas.Pixels[NX, NY] := Bmp.Canvas.Pixels[X, Y];
+      end;
+  except
+    Nb.Free;
+    Exit;
+  end;
+  Bmp.Free;
+  Bmp := Nb;
+end;
+
 { appends a line to thumbnail.log in the settings folder (diagnostics for unreadable previews) }
 procedure LogThumb(const Msg: string);
 var
   FN, Line: string;
   Strm: TFileStream;
 begin
+  if not LogEnabled then Exit;
   try
     FN := ConfigDir + 'thumbnail.log';
     if FileExistsUTF8(FN) then
@@ -664,8 +712,66 @@ begin
   else Result := jsFullSize;
 end;
 
+const
+  { Change when the decoders change so that thumbnails kept from an older version are rebuilt }
+  ThumbCacheVersion = '2';
+
+function ThumbCacheName(Item: TImageItem; Box: Integer): string;
+begin
+  Result := ConfigDir + 'thumbcache' + PathDelim + MD5Print(MD5String(
+    ThumbCacheVersion + '|' + LowerCase(Item.FullPath) + '|' + IntToStr(Item.Size) + '|' +
+    FloatToStr(Item.FileTime) + '|' + IntToStr(Box))) + '.jpg';
+end;
+
+function LoadCachedThumb(Item: TImageItem; Box: Integer): Boolean;
+var
+  FN: string;
+  J: TJPEGImage;
+  B: TBitmap;
+begin
+  Result := False;
+  FN := ThumbCacheName(Item, Box);
+  if not FileExistsUTF8(FN) then Exit;
+  J := TJPEGImage.Create;
+  try
+    try
+      J.LoadFromFile(FN);
+      if J.Empty then Exit;
+      B := TBitmap.Create;
+      B.SetSize(J.Width, J.Height);
+      B.Canvas.Draw(0, 0, J);
+      Item.Thumb := B;
+      Result := True;
+    except
+      Result := False;
+    end;
+  finally
+    J.Free;
+  end;
+end;
+
+procedure SaveCachedThumb(Item: TImageItem; Box: Integer);
+var
+  J: TJPEGImage;
+begin
+  try
+    ForceDirectoriesUTF8(ConfigDir + 'thumbcache');
+    J := TJPEGImage.Create;
+    try
+      J.Assign(Item.Thumb);
+      J.CompressionQuality := 88;
+      J.SaveToFile(ThumbCacheName(Item, Box));
+    finally
+      J.Free;
+    end;
+  except
+    // the cache is only a speed-up
+  end;
+end;
+
 procedure EnsureThumb(Item: TImageItem; Box: Integer);
 var
+  Heavy: Boolean;
   Ext: string;
   Jpg: TJPEGImage;
   Pic: TPicture;
@@ -682,6 +788,9 @@ begin
   if Item.ThumbTried then Exit;
   Item.ThumbTried := True;
   Ext := LowerCase(ExtractFileExt(Item.FileName));
+  // slow-to-decode types are kept in a small on-disk cache
+  Heavy := (Pos(';' + Ext + ';', HeicExts) > 0) or (Pos(';' + Ext + ';', TiffExts) > 0);
+  if Heavy and LoadCachedThumb(Item, Box) then Exit;
   Jpg := nil;
   Pic := nil;
   Mem := nil;
@@ -744,8 +853,10 @@ begin
           Bmp := TBitmap.Create;
           if LoadTiffBitmap(Item.FullPath, Box, Bmp) then
           begin
+            if Pos(';' + Ext + ';', HeicExts) = 0 then OrientBitmap(Bmp, Item.Orientation);
             Item.Thumb := Bmp;
             Bmp := nil;
+            if Heavy then SaveCachedThumb(Item, Box);
             Exit;
           end;
           FreeAndNil(Bmp);
@@ -758,6 +869,17 @@ begin
         Pic := TPicture.Create;
         Pic.LoadFromFile(Item.FullPath);
         G := Pic.Graphic;
+      end
+      else if Pos(';' + Ext + ';', HeicExts) > 0 then
+      begin
+        // HEIC / HEIF / AVIF: bundled decoder (see uHeic); the placeholder stays if it cannot decode
+        Pic := TPicture.Create;
+        if LoadHeicPicture(Item.FullPath, Pic, Box * 2, True) then
+          G := Pic.Graphic
+        else if HeicEnabled then
+          LogThumb(Item.FileName + ': HEIC/AVIF decode failed: ' + HeicLastError)
+        else
+          LogThumb(Item.FileName + ': HEIC preview is not compiled in');
       end;
       if (G = nil) or G.Empty then Exit;
       W := G.Width;
@@ -770,8 +892,14 @@ begin
       Bmp := TBitmap.Create;
       Bmp.SetSize(NW, NH);
       Bmp.Canvas.StretchDraw(Rect(0, 0, NW, NH), G);
+      // HEIC decoders normally apply the file's own rotation; HeicExtraOrientation checks that
+      if Pos(';' + Ext + ';', HeicExts) = 0 then
+        OrientBitmap(Bmp, Item.Orientation)
+      else
+        OrientBitmap(Bmp, HeicExtraOrientation(Item.FullPath, W, H, Item.Orientation));
       Item.Thumb := Bmp;
       Bmp := nil;
+      if Heavy then SaveCachedThumb(Item, Box);
     except
       on E: Exception do
         LogThumb(Item.FileName + ': ' + E.ClassName + ' ' + E.Message);

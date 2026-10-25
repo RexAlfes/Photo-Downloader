@@ -7,7 +7,7 @@ interface
 uses
   Classes, SysUtils, Contnrs, Math, Forms, Controls, Graphics, Dialogs, Menus,
   ExtCtrls, StdCtrls, ComCtrls, LCLType, LCLIntf, LazFileUtils,
-  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uDrives, uViewer, uSingle;
+  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uSingle, uRotate;
 
 type
   TMainForm = class(TForm)
@@ -18,15 +18,17 @@ type
     FDateKeys: TStringList;         // parallel to lstDates
     FSourcePath, FCamera, FLastFile, FLastDir: string;
     FSession: Integer;
+    FThumbCols: Integer;            // thumbnail columns the window was sized for
     FCancel: Boolean;
     FSyncing: Boolean;              // true while list/grid selections are being mirrored
     FProg: TForm;
     FProgBar: TProgressBar;
-    FProgLbl: TLabel;
+    FProgLbl, FProgLbl2: TLabel;
+    FProgBar2: TProgressBar;
     FTimer: TTimer;
     FPopup: TPopupMenu;
     miPopView, miPopLocation, miPopProps, miPopDownload, miPopDelete: TMenuItem;
-    miAuto, miEject, miShowDown, miShowDup, miList, miSmall, miLarge, miDateSel: TMenuItem;
+    miAuto, miEject, miShowDown, miShowDup, miList, miSmall, miLarge, miDateSel, miLogging: TMenuItem;
     pnlLeft, pnlStatus, pnlButtons: TPanel;
     lblDate, lblStatus: TLabel;
     lstDates: TListBox;
@@ -42,6 +44,8 @@ type
     // helpers
     procedure SaveSettingsNow;
     procedure ApplyState;
+    procedure SizeForThumbColumns(Cols: Integer);
+    procedure FixThumbWidth;
     procedure SetViewMode(M: Integer);
     procedure SetStatus(const S: string);
     procedure UpdateCaption;
@@ -69,7 +73,9 @@ type
     procedure DateMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState;
       X, Y: Integer);
     procedure WriteXmp(const Dest: string);
-    procedure ShowProgress(AMax: Integer);
+    procedure ShowProgress(AMax: Integer; const ACaption: string = 'Downloading...';
+      TwoBars: Boolean = False);
+    function ItemVisible(It: TImageItem): Boolean;
     procedure HideProgress;
     function DoDownload(Silent: Boolean): Boolean;
     procedure DeleteFiles(OnlyDownloaded, Silent: Boolean);
@@ -90,6 +96,7 @@ type
     procedure ProfileDeleteClick(Sender: TObject);
     procedure StatusClick(Sender: TObject);
     procedure PrefsClick(Sender: TObject);
+    procedure FileTypesClick(Sender: TObject);
     procedure ExportClick(Sender: TObject);
     procedure AutoClick(Sender: TObject);
     procedure RefreshClick(Sender: TObject);
@@ -113,8 +120,12 @@ type
     procedure HelpContentsClick(Sender: TObject);
     procedure WebsiteClick(Sender: TObject);
     procedure UpdatesClick(Sender: TObject);
+    procedure DonatePayPalClick(Sender: TObject);
+    procedure DonateVenmoClick(Sender: TObject);
     procedure RegisterClick(Sender: TObject);
     procedure AboutClick(Sender: TObject);
+    procedure LoggingClick(Sender: TObject);
+    procedure SaveLogClick(Sender: TObject);
     procedure DownloadClick(Sender: TObject);
     procedure DeleteClick(Sender: TObject);
     procedure CloseClick(Sender: TObject);
@@ -129,6 +140,8 @@ var
 
 implementation
 
+function WantedColumns(Mode: TViewMode): Integer; forward;
+
 { ====================================================================== }
 { construction                                                            }
 { ====================================================================== }
@@ -142,12 +155,14 @@ begin
   ClientHeight := 700;
   FS := TAppSettings.Create;
   FS.LoadFromFile(SettingsFileName);
+  LogEnabled := FS.LoggingOn;
   FItems := TObjectList.Create(True);
   FVisible := TList.Create;
   FDateKeys := TStringList.Create;
   BuildMenu;
   BuildUI;
   ApplyState;
+  SizeForThumbColumns(WantedColumns(FView.Mode));
   OnClose := @FormClose;
   FTimer := TTimer.Create(Self);
   FTimer.Interval := 150;
@@ -218,6 +233,7 @@ begin
   MView := AddMenu(MM.Items, '&View', nil, 0);
   miShowDown := AddMenu(MView, 'Show ''Downloaded'' files', @ShowDownClick, 0);
   miShowDup := AddMenu(MView, 'Show ''Duplicate'' files', @ShowDupClick, 0);
+  AddMenu(MView, 'File Types...', @FileTypesClick, 0);
   AddMenu(MView, '-', nil, 0);
   miList := AddMenu(MView, 'List View', @ListViewClick, ShortCut(VK_L, [ssCtrl]));
   miSmall := AddMenu(MView, 'Thumbnail View (small thumbnails)', @SmallViewClick,
@@ -233,7 +249,13 @@ begin
   AddMenu(MHelp, '-', nil, 0);
   AddMenu(MHelp, 'Visit website', @WebsiteClick, 0);
   AddMenu(MHelp, 'Check for updates', @UpdatesClick, 0);
+  AddMenu(MHelp, 'Support: donate with PayPal', @DonatePayPalClick, 0);
+  AddMenu(MHelp, 'Support: donate with Venmo', @DonateVenmoClick, 0);
   AddMenu(MHelp, 'Register', @RegisterClick, 0);
+  AddMenu(MHelp, '-', nil, 0);
+  miLogging := AddMenu(MHelp, 'Logging (for troubleshooting)', @LoggingClick, 0);
+  miLogging.Checked := FS.LoggingOn;
+  AddMenu(MHelp, 'Save log file...', @SaveLogClick, 0);
   AddMenu(MHelp, '-', nil, 0);
   AddMenu(MHelp, 'About Photo Downloader', @AboutClick, 0);
 end;
@@ -340,6 +362,8 @@ begin
   miPopDownload := AddMenu(FPopup.Items, 'Download selected file(s)', @PopDownloadClick, 0);
   miPopDelete := AddMenu(FPopup.Items, 'Delete selected file(s) from source', @DeleteClick, 0);
   miPopProps := AddMenu(FPopup.Items, 'Properties', @PopPropsClick, 0);
+  AddMenu(FPopup.Items, '-', nil, 0);
+  AddMenu(FPopup.Items, 'File Types...', @FileTypesClick, 0);
   FView.PopupMenu := FPopup;
 end;
 
@@ -363,6 +387,70 @@ begin
   miList.Checked := M = 0;
   miSmall.Checked := M = 1;
   miLarge.Checked := M = 2;
+end;
+
+{ Window width (client area) needed for Cols thumbnail columns. The grid loses the width of its
+  vertical scroll bar and, on the left, the date list and its splitter. }
+function ThumbClientWidth(View: TPhotoView; PaneW: Integer; Cols: Integer): Integer;
+begin
+  Result := Cols * View.CellWidthNow + View.ScrollBarWidth + 2 + PaneW;
+end;
+
+{ Columns wanted at start-up: 4 small thumbnails or 3 large ones; the list view needs no sizing. }
+function WantedColumns(Mode: TViewMode): Integer;
+begin
+  case Mode of
+    vmSmall: Result := 4;
+    vmLarge: Result := 3;
+  else
+    Result := 0;
+  end;
+end;
+
+procedure TMainForm.SizeForThumbColumns(Cols: Integer);
+var
+  W, PaneW, Frame, Desk: Integer;
+begin
+  if Cols < 1 then Exit;
+  Desk := Screen.WorkAreaWidth;
+  PaneW := 0;
+  if pnlLeft.Visible then PaneW := pnlLeft.Width + splLeft.Width;
+  Frame := Width - ClientWidth;
+  W := ThumbClientWidth(FView, PaneW, Cols);
+  // wider than 66% of the desktop: use 2 columns
+  if (Cols > 2) and (W + Frame > Desk * 66 div 100) then
+  begin
+    Cols := 2;
+    W := ThumbClientWidth(FView, PaneW, Cols);
+  end;
+  FThumbCols := Cols;
+  if W > Desk - 24 then W := Desk - 24;
+  if W < 640 then W := 640;
+  ClientWidth := W;
+  Left := Screen.WorkAreaLeft + (Screen.WorkAreaWidth - Width) div 2;
+  if Left < Screen.WorkAreaLeft then Left := Screen.WorkAreaLeft;
+end;
+
+{ Called once the window really exists: measures the grid and corrects the width so the
+  columns are not squeezed by the scroll bar, frame or screen scaling. }
+procedure TMainForm.FixThumbWidth;
+var
+  Need, Have, Desk: Integer;
+begin
+  if (FThumbCols < 1) or (FView.Mode = vmList) or (WindowState <> wsNormal) then Exit;
+  Desk := Screen.WorkAreaWidth;
+  Have := FView.ClientWidth;
+  Need := FThumbCols * FView.CellWidthNow + FView.ScrollBarWidth + 2;
+  if Have <= 0 then Exit;
+  if (FThumbCols > 2) and (Width + (Need - Have) > Desk * 66 div 100) then
+  begin
+    FThumbCols := 2;
+    Need := FThumbCols * FView.CellWidthNow + FView.ScrollBarWidth + 2;
+  end;
+  if Need = Have then Exit;
+  ClientWidth := ClientWidth + (Need - Have);
+  Left := Screen.WorkAreaLeft + (Screen.WorkAreaWidth - Width) div 2;
+  if Left < Screen.WorkAreaLeft then Left := Screen.WorkAreaLeft;
 end;
 
 procedure TMainForm.ApplyState;
@@ -402,7 +490,12 @@ end;
 procedure TMainForm.ScanProgress(Count: Integer);
 begin
   SetStatus(Format('Scanning... %d files found', [Count]));
-  lblStatus.Repaint;      // no message pump here: the grid must not repaint mid-scan
+  if FProg <> nil then
+  begin
+    FProgLbl.Caption := Format('Reading the source folder... %d files found', [Count]);
+    Application.ProcessMessages;
+    if FCancel then ScanAbort := True;
+  end;
 end;
 
 procedure TMainForm.UpdateStatus;
@@ -459,6 +552,7 @@ end;
 procedure TMainForm.LoadSource(const Path: string);
 var
   I: Integer;
+  It: TImageItem;
 begin
   FSourcePath := Path;
   FS.LastSource := Path;
@@ -469,16 +563,45 @@ begin
     FView.SetItems(FVisible);
     FItems.Clear;
     RebuildDates;
-    ScanFolder(Path, FS, FItems, @ScanProgress);
-    FCamera := '';
-    for I := 0 to FItems.Count - 1 do
-      if ItemAt(FItems, I).Camera <> '' then
+    ShowProgress(0, 'Loading source folder...', True);
+    try
+      FProgLbl.Caption := 'Reading files...';
+      ScanFolder(Path, FS, FItems, @ScanProgress);
+      FProgBar.Style := pbstNormal;
+      FProgBar.Max := 1;
+      FProgBar.Position := 1;
+      FProgLbl.Caption := Format('Read %d files.', [FItems.Count]);
+      Application.ProcessMessages;
+      FCamera := '';
+      for I := 0 to FItems.Count - 1 do
+        if ItemAt(FItems, I).Camera <> '' then
+        begin
+          FCamera := ItemAt(FItems, I).Camera;
+          Break;
+        end;
+      EvaluateItems(FItems, FS);
+      RebuildDates;
+      // render the thumbnails here, with a progress bar, instead of while the grid paints
+      if FS.ViewMode <> 0 then
       begin
-        FCamera := ItemAt(FItems, I).Camera;
-        Break;
+        HeicPump := True;
+        FProgBar2.Max := Max(1, FItems.Count);
+        for I := 0 to FItems.Count - 1 do
+        begin
+          if FCancel then Break;
+          It := ItemAt(FItems, I);
+          if not ItemVisible(It) then Continue;
+          FProgBar2.Position := I;
+          FProgLbl2.Caption := Format('Rendering thumbnails: %d of %d  %s',
+            [I + 1, FItems.Count, It.FileName]);
+          Application.ProcessMessages;
+          EnsureThumb(It, 160);
+        end;
       end;
-    EvaluateItems(FItems, FS);
-    RebuildDates;
+    finally
+      HeicPump := False;
+      HideProgress;
+    end;
     ApplyFilter;
   finally
     Screen.Cursor := crDefault;
@@ -556,6 +679,13 @@ begin
   end;
 end;
 
+function TMainForm.ItemVisible(It: TImageItem): Boolean;
+begin
+  Result := not (((It.Status = isDownloaded) and (not FS.ShowDownloaded)) or
+                 ((It.Status = isDuplicate) and (not FS.ShowDuplicates)) or
+                 (not FS.TypeShown(It.FileName)));
+end;
+
 procedure TMainForm.ApplyFilter;
 var
   I: Integer;
@@ -565,9 +695,7 @@ begin
   for I := 0 to FItems.Count - 1 do
   begin
     It := ItemAt(FItems, I);
-    if (It.Status = isDownloaded) and (not FS.ShowDownloaded) then Continue;
-    if (It.Status = isDuplicate) and (not FS.ShowDuplicates) then Continue;
-    FVisible.Add(It);
+    if ItemVisible(It) then FVisible.Add(It);
   end;
   FView.SetItems(FVisible);
   UpdateStatus;
@@ -886,6 +1014,8 @@ var
   I: Integer;
 begin
   Result := True;
+  // lossless turn first, so the owner fields are written into the final file
+  if FS.AutoRotate and It.IsJpeg then AutoRotateJpegFile(Dest);
   if FS.WriteExifOwner and It.IsJpeg then
     Result := WriteExifOwnerFields(Dest, FS.ExifAuthor, FS.ExifCopyright);
 
@@ -943,19 +1073,23 @@ end;
 procedure TMainForm.ProgCancelClick(Sender: TObject);
 begin
   FCancel := True;
+  HeicCancel := True;
 end;
 
-procedure TMainForm.ShowProgress(AMax: Integer);
+procedure TMainForm.ShowProgress(AMax: Integer; const ACaption: string; TwoBars: Boolean);
 var
   B: TButton;
+  Y: Integer;
 begin
   FCancel := False;
+  HeicCancel := False;
+  FProgBar2 := nil;
+  FProgLbl2 := nil;
   FProg := TForm.CreateNew(Self);
-  FProg.Caption := 'Downloading...';
+  FProg.Caption := ACaption;
   FProg.BorderStyle := bsDialog;
   FProg.Position := poMainFormCenter;
   FProg.ClientWidth := 440;
-  FProg.ClientHeight := 110;
   FProgLbl := TLabel.Create(FProg);
   FProgLbl.Parent := FProg;
   FProgLbl.SetBounds(12, 12, 416, 18);
@@ -964,11 +1098,30 @@ begin
   FProgBar.Parent := FProg;
   FProgBar.SetBounds(12, 38, 416, 20);
   FProgBar.Min := 0;
-  FProgBar.Max := Max(1, AMax);
+  if AMax <= 0 then
+    FProgBar.Style := pbstMarquee          // length not known yet (reading a folder)
+  else
+    FProgBar.Max := AMax;
+  Y := 72;
+  if TwoBars then
+  begin
+    FProgLbl2 := TLabel.Create(FProg);
+    FProgLbl2.Parent := FProg;
+    FProgLbl2.SetBounds(12, 70, 416, 18);
+    FProgLbl2.AutoSize := False;
+    FProgLbl2.Caption := 'Rendering thumbnails: waiting';
+    FProgBar2 := TProgressBar.Create(FProg);
+    FProgBar2.Parent := FProg;
+    FProgBar2.SetBounds(12, 96, 416, 20);
+    FProgBar2.Min := 0;
+    FProgBar2.Max := 1;
+    Y := 130;
+  end;
+  FProg.ClientHeight := Y + 38;
   B := TButton.Create(FProg);
   B.Parent := FProg;
   B.Caption := 'Cancel';
-  B.SetBounds(348, 72, 80, 25);
+  B.SetBounds(348, Y, 80, 25);
   B.OnClick := @ProgCancelClick;
   FProg.Show;
   Self.Enabled := False;
@@ -985,6 +1138,7 @@ function TMainForm.DoDownload(Silent: Boolean): Boolean;
 var
   L: TList;
   I, Done, Skipped, Failed, Problems, ExifFail: Integer;
+  TotalKb, DoneKb: Int64;
   It: TImageItem;
   Dest, Msg: string;
   UniqueMode: Boolean;
@@ -1019,14 +1173,18 @@ begin
     if (not Silent) and FS.AddIptc and FS.PromptIptc then
       if not ExecuteIptc(FS.Iptc) then Exit;
 
-    ShowProgress(L.Count);
+    TotalKb := 0;
+    for I := 0 to L.Count - 1 do Inc(TotalKb, Max(1, TImageItem(L[I]).Size div 1024));
+    DoneKb := 0;
+    ShowProgress(Integer(Min(TotalKb, Int64(MaxInt div 2))), 'Downloading...');
     try
       for I := 0 to L.Count - 1 do
       begin
         if FCancel then Break;
         It := TImageItem(L[I]);
-        FProgBar.Position := I;
-        FProgLbl.Caption := Format('Downloading %d of %d: %s', [I + 1, L.Count, It.FileName]);
+        FProgBar.Position := Integer(Min(DoneKb, Int64(FProgBar.Max)));
+        FProgLbl.Caption := Format('Copying %d of %d: %s  (%s)',
+          [I + 1, L.Count, It.FileName, FormatSize(It.Size)]);
         Application.ProcessMessages;
         if FCancel then Break;
 
@@ -1066,6 +1224,8 @@ begin
         Inc(FS.SeqNext);
         Inc(FSession);
         Inc(Done);
+        Inc(DoneKb, Max(1, It.Size div 1024));
+        FProgBar.Position := Integer(Min(DoneKb, Int64(FProgBar.Max)));
       end;
     finally
       HideProgress;
@@ -1247,6 +1407,7 @@ var
   Choice: string;
 begin
   FTimer.Enabled := False;
+  FixThumbWidth;
   if FS.SingleInstance then RegisterMainWindow(Handle);   // lets a second copy find this window
   if FS.PromptProfile then
   begin
@@ -1408,12 +1569,33 @@ begin
 end;
 
 procedure TMainForm.PrefsClick(Sender: TObject);
+var
+  OldDir, OldMask: string;
 begin
+  OldDir := FS.DownloadDir;
+  OldMask := FS.FileNameMask;
   if ExecutePreferences(FS, FCamera) then
   begin
     SaveSettingsNow;
     ApplyState;
-    Reevaluate;
+    // a new destination folder (or file name pattern) means different files already exist there
+    Screen.Cursor := crHourGlass;
+    try
+      Reevaluate;
+    finally
+      Screen.Cursor := crDefault;
+    end;
+    if (OldDir <> FS.DownloadDir) or (OldMask <> FS.FileNameMask) then
+      SetStatus('Destination changed - rescanned for files already downloaded.');
+  end;
+end;
+
+procedure TMainForm.FileTypesClick(Sender: TObject);
+begin
+  if ExecuteFileTypes(FS) then
+  begin
+    SaveSettingsNow;
+    ApplyFilter;
   end;
 end;
 
@@ -1424,7 +1606,7 @@ begin
   D := TSaveDialog.Create(Self);
   try
     D.Title := 'Export Settings';
-    D.FileName := 'DownloaderProSettings.ini';
+    D.FileName := 'PhotoDownloaderSettings.ini';
     D.Filter := 'Settings (*.ini)|*.ini|All files|*.*';
     D.Options := D.Options + [ofOverwritePrompt];
     if D.Execute then
@@ -1539,7 +1721,7 @@ begin
     '1. Insert a memory card, or choose File > Open Source Directory.' + #13#10 +
     '2. Enter a job code when prompted (Edit > Job code... changes it later).' + #13#10 +
     '3. Click Download. Files are copied to the folder set in File > Preferences.' + #13#10#13#10 +
-    'Red images have a name clash: another file would be written to the same name.' + #13#10 +
+    'Grey images are already downloaded.' + #13#10 + 'Red images have a name clash: another file would be written to the same name.' + #13#10 +
     'Press F1 in the Preferences dialog for the list of file name tokens.',
     mtInformation, [mbOK], 0);
 end;
@@ -1559,9 +1741,79 @@ begin
       UpdatesURL, mtWarning, [mbOK], 0);
 end;
 
+procedure TMainForm.DonatePayPalClick(Sender: TObject);
+begin
+  // donations are optional; the program stays free
+  if not OpenURL(DonatePayPalURL) then
+    MessageDlg('Donate', 'The web browser could not be started. The address is:'#13#10 +
+      DonatePayPalURL, mtWarning, [mbOK], 0);
+end;
+
+procedure TMainForm.DonateVenmoClick(Sender: TObject);
+begin
+  if not OpenURL(DonateVenmoURL) then
+    MessageDlg('Donate', 'The web browser could not be started. The address is:'#13#10 +
+      DonateVenmoURL, mtWarning, [mbOK], 0);
+end;
+
 procedure TMainForm.RegisterClick(Sender: TObject);
 begin
   ShowRegister;
+end;
+
+procedure TMainForm.LoggingClick(Sender: TObject);
+begin
+  FS.LoggingOn := not FS.LoggingOn;
+  LogEnabled := FS.LoggingOn;
+  miLogging.Checked := FS.LoggingOn;
+  SaveSettingsNow;
+end;
+
+procedure TMainForm.SaveLogClick(Sender: TObject);
+var
+  D: TSaveDialog;
+  Src: TStringList;
+  Outp: TStringList;
+  FN: string;
+begin
+  FN := ConfigDir + 'thumbnail.log';
+  if not FileExistsUTF8(FN) then
+  begin
+    MessageDlg(AppTitle, 'There is no log file yet.' + #13#10 +
+      'Nothing has been logged, or logging is switched off (Help > Logging).',
+      mtInformation, [mbOK], 0);
+    Exit;
+  end;
+  D := TSaveDialog.Create(nil);
+  try
+    D.Title := 'Save log file';
+    D.FileName := 'PhotoDownloader-log.txt';
+    D.Filter := 'Text files (*.txt)|*.txt|All files|*.*';
+    D.Options := D.Options + [ofOverwritePrompt];
+    if not D.Execute then Exit;
+    Src := TStringList.Create;
+    Outp := TStringList.Create;
+    try
+      try
+        Src.LoadFromFile(FN);
+        Outp.Add(AppTitle + ' ' + AppVersionString);
+        Outp.Add('Saved ' + FormatDateTime('yyyy-mm-dd hh:nn:ss', Now));
+        Outp.Add('');
+        Outp.AddStrings(Src);
+        Outp.SaveToFile(D.FileName);
+        MessageDlg(AppTitle, 'Log saved. Please email this file to the developer:'#13#10 + D.FileName,
+          mtInformation, [mbOK], 0);
+      except
+        on E: Exception do
+          MessageDlg(AppTitle, 'Could not save the log:'#13#10 + E.Message, mtError, [mbOK], 0);
+      end;
+    finally
+      Outp.Free;
+      Src.Free;
+    end;
+  finally
+    D.Free;
+  end;
 end;
 
 procedure TMainForm.AboutClick(Sender: TObject);
