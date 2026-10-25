@@ -1,6 +1,6 @@
 # Photo Downloader (Lazarus 4.8 / FPC 3.2.2)
 
-Desktop photo downloader built from the screenshots in `Photo_Downloader_Specs.zip`.
+Desktop photo downloader built from scratch and documented in `Photo_Downloader_Specs.zip`.
 
 ## Build
 Open `PhotoDownloader.lpi` in Lazarus and press F9, or run:
