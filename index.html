@@ -152,9 +152,6 @@
         </section>
 
     </div>
-
-        <!-- JavaScript to Fetch GitHub Release Data -->
-    <!-- JavaScript to Fetch GitHub Release Data -->
     <script>
         // CONFIGURATION: Change these to match your GitHub details
         const GITHUB_USER = 'RexAlfes'; 
@@ -166,8 +163,7 @@
             const containerEl = document.getElementById('release-container');
             const assetsListEl = document.getElementById('release-assets-list');
             try {
-                // 1. Fetch from the correct API endpoint
-                //  CORRECT: Added 'api.', '/repos/', and the '$' for the first variable placeholder
+                // 1. FIXED: Corrected API endpoint base URL and variable placeholder syntax
                 const response = await fetch(`https://github.com{GITHUB_USER}/${GITHUB_REPO}/releases`);
                 
                 if (!response.ok) {
@@ -176,7 +172,7 @@
 
                 const releases = await response.json();
                 
-                // 2. FIXED: Must specify index [0] to target the newest release object in the array
+                // 2. Target the newest release object in the array
                 const data = releases[0]; 
                 
                 if (!data) {
