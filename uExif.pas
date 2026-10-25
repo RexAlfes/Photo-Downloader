@@ -28,8 +28,25 @@ function WriteExifOwnerFields(const FileName, Artist, Copyright: string): Boolea
 
 { Copies an embedded baseline/progressive JPEG (the preview RAW files carry) to Dest.
   Rank 0 is the largest one, 1 the next largest, and so on. W/H are its pixel size. }
-function ExtractEmbeddedJpeg(const FileName: string; Rank: Integer; Dest: TStream;
-  out W, H: Integer): Boolean;
+function ExtractEmbeddedJpeg(const FileName: string; Rank: Integer; Deep: Boolean;
+  Dest: TStream; out W, H: Integer): Boolean;
+
+{ Deep = False limits the search to the first 4 MB (used for TIFF and DNG, whose
+  files can be huge); Deep = True may scan up to 96 MB (RAW files). }
+
+type
+  TInt64Array = array of Int64;
+  { An uncompressed, chunky 8 or 16 bit grey or RGB image inside a TIFF/DNG file }
+  TTiffRgb = record
+    Big: Boolean;
+    W, H, Bits, Spp, Photo, RowsPerStrip: Integer;
+    Offsets: TInt64Array;
+  end;
+
+{ Finds the largest uncompressed grey/RGB image in a TIFF or DNG file (IFD chain and SubIFDs). }
+function FindTiffRgb(const FileName: string; out R: TTiffRgb): Boolean;
+{ Reads one row of that image into Buf. }
+function ReadTiffRgbRow(Strm: TStream; const R: TTiffRgb; Row: Integer; var Buf: TBytes): Boolean;
 
 { Pixel size of a JPEG file, read from its header only. }
 function ReadJpegDims(const FileName: string; out W, H: Integer): Boolean;
@@ -164,6 +181,373 @@ begin
   end;
 end;
 
+{ ---- stream helpers ---- }
+
+function StreamRead(Strm: TStream; Ofs: Int64; var Buf; Count: Integer): Boolean;
+begin
+  Result := False;
+  if (Ofs < 0) or (Count <= 0) or (Ofs + Count > Strm.Size) then Exit;
+  Strm.Position := Ofs;
+  Result := Strm.Read(Buf, Count) = Count;
+end;
+
+function StreamLE16(Strm: TStream; Ofs: Int64): Integer;
+var
+  B: array[0..1] of Byte;
+begin
+  Result := 0;
+  B[0] := 0;
+  B[1] := 0;
+  if StreamRead(Strm, Ofs, B, 2) then Result := B[0] or (B[1] shl 8);
+end;
+
+function StreamLE32(Strm: TStream; Ofs: Int64): Int64;
+var
+  B: array[0..3] of Byte;
+begin
+  Result := 0;
+  B[0] := 0;
+  B[1] := 0;
+  B[2] := 0;
+  B[3] := 0;
+  if StreamRead(Strm, Ofs, B, 4) then
+    Result := Int64(B[0]) or (Int64(B[1]) shl 8) or (Int64(B[2]) shl 16) or (Int64(B[3]) shl 24);
+end;
+
+function RdU16(Strm: TStream; Big: Boolean; Ofs: Int64): Integer;
+var
+  B: array[0..1] of Byte;
+begin
+  Result := 0;
+  B[0] := 0;
+  B[1] := 0;
+  if StreamRead(Strm, Ofs, B, 2) then
+    if Big then Result := (B[0] shl 8) or B[1] else Result := B[0] or (B[1] shl 8);
+end;
+
+function RdU32(Strm: TStream; Big: Boolean; Ofs: Int64): Int64;
+var
+  B: array[0..3] of Byte;
+begin
+  Result := 0;
+  B[0] := 0;
+  B[1] := 0;
+  B[2] := 0;
+  B[3] := 0;
+  if StreamRead(Strm, Ofs, B, 4) then
+  begin
+    if Big then
+      Result := (Int64(B[0]) shl 24) or (Int64(B[1]) shl 16) or (Int64(B[2]) shl 8) or Int64(B[3])
+    else
+      Result := Int64(B[0]) or (Int64(B[1]) shl 8) or (Int64(B[2]) shl 16) or (Int64(B[3]) shl 24);
+  end;
+end;
+
+{ ---- Canon CRW (CIFF container, not TIFF) ---- }
+
+procedure CiffWalk(Strm: TStream; Start, Stop: Int64; Depth: Integer; var Info: TExifInfo);
+var
+  Tbl, P, RecLen, RecOff, DataPos, T: Int64;
+  N, I, K, Cnt, Code, Typ, TagId: Integer;
+  Buf: array[0..95] of Byte;
+  S1, S2: string;
+  InlineRec: Boolean;
+begin
+  if (Depth > 6) or (Stop - Start < 10) then Exit;
+  Tbl := Start + StreamLE32(Strm, Stop - 4);       // record table offset sits in the last 4 bytes
+  if (Tbl < Start) or (Tbl + 2 > Stop) then Exit;
+  N := StreamLE16(Strm, Tbl);
+  if (N > 300) or (Tbl + 2 + N * 10 > Stop) then Exit;
+  for I := 0 to N - 1 do
+  begin
+    P := Tbl + 2 + I * 10;
+    Code := StreamLE16(Strm, P);
+    RecLen := StreamLE32(Strm, P + 2);
+    RecOff := StreamLE32(Strm, P + 6);
+    Typ := Code and $3800;
+    TagId := Code and $3FFF;
+    InlineRec := (Code and $C000) = $4000;
+    if (not InlineRec) and ((Typ = $2800) or (Typ = $3000)) then
+      CiffWalk(Strm, Start + RecOff, Start + RecOff + RecLen, Depth + 1, Info)   // sub directory
+    else
+    begin
+      if InlineRec then
+      begin
+        DataPos := P + 2;
+        RecLen := 8;
+      end
+      else
+        DataPos := Start + RecOff;
+      if TagId = $080A then
+      begin
+        // camera make and model: two NUL terminated strings
+        Cnt := Integer(RecLen);
+        if Cnt > SizeOf(Buf) then Cnt := SizeOf(Buf);
+        for K := 0 to High(Buf) do Buf[K] := 0;
+        if StreamRead(Strm, DataPos, Buf, Cnt) then
+        begin
+          S1 := '';
+          K := 0;
+          while (K < Cnt) and (Buf[K] <> 0) do
+          begin
+            S1 := S1 + Chr(Buf[K]);
+            Inc(K);
+          end;
+          Inc(K);
+          S2 := '';
+          while (K < Cnt) and (Buf[K] <> 0) do
+          begin
+            S2 := S2 + Chr(Buf[K]);
+            Inc(K);
+          end;
+          Info.Make := Trim(S1);
+          Info.Model := Trim(S2);
+        end;
+      end
+      else if (TagId = $180E) and (RecLen >= 4) then
+      begin
+        // capture time stored as seconds since 1970
+        T := StreamLE32(Strm, DataPos);
+        if T > 0 then
+        begin
+          Info.DateTaken := EncodeDate(1970, 1, 1) + T / 86400;
+          Info.HasDate := True;
+        end;
+      end;
+    end;
+  end;
+end;
+
+function IsCiff(const B: TBytes): Boolean;
+begin
+  Result := (Length(B) >= 14) and (B[6] = Ord('H')) and (B[7] = Ord('E')) and
+    (B[8] = Ord('A')) and (B[9] = Ord('P')) and (B[10] = Ord('C')) and
+    (B[11] = Ord('C')) and (B[12] = Ord('D')) and (B[13] = Ord('R'));
+end;
+
+function ReadCiffFromFile(const FileName: string; var Info: TExifInfo): Boolean;
+var
+  Strm: TFileStream;
+  HL: Int64;
+begin
+  Result := False;
+  try
+    Strm := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);
+  except
+    Exit;
+  end;
+  try
+    HL := StreamLE32(Strm, 2);                       // header length = start of the root heap
+    if (HL < 14) or (HL >= Strm.Size) then Exit;
+    CiffWalk(Strm, HL, Strm.Size, 0, Info);
+    Result := (Info.Model <> '') or Info.HasDate;
+  finally
+    Strm.Free;
+  end;
+end;
+
+{ ---- uncompressed TIFF / DNG image data (used for thumbnails) ---- }
+
+type
+  TTiffWalk = record
+    Strm: TStream;
+    Big: Boolean;
+    Size: Int64;
+    Seen: array of Int64;
+    Best: TTiffRgb;
+    Found: Boolean;
+  end;
+
+{ reads the integer values of one IFD entry (BYTE, SHORT, LONG, IFD types) }
+function ReadTagInts(Strm: TStream; Big: Boolean; E: Int64; MaxN: Integer;
+  out V: TInt64Array): Boolean;
+var
+  Typ, Sz, I: Integer;
+  Cnt, Total, Src: Int64;
+  Raw: TBytes;
+begin
+  Result := False;
+  V := nil;
+  Raw := nil;
+  Typ := RdU16(Strm, Big, E + 2);
+  Cnt := RdU32(Strm, Big, E + 4);
+  case Typ of
+    1, 6, 7: Sz := 1;
+    3, 8: Sz := 2;
+    4, 9, 13: Sz := 4;
+  else
+    Exit;
+  end;
+  if (Cnt < 1) or (Cnt > MaxN) then Exit;
+  Total := Cnt * Sz;
+  if Total <= 4 then Src := E + 8 else Src := RdU32(Strm, Big, E + 8);
+  SetLength(Raw, Integer(Total));
+  if not StreamRead(Strm, Src, Raw[0], Integer(Total)) then Exit;
+  SetLength(V, Integer(Cnt));
+  for I := 0 to Integer(Cnt) - 1 do
+    case Sz of
+      1: V[I] := Raw[I];
+      2: if Big then V[I] := (Raw[I * 2] shl 8) or Raw[I * 2 + 1]
+         else V[I] := Raw[I * 2] or (Raw[I * 2 + 1] shl 8);
+    else
+      if Big then
+        V[I] := (Int64(Raw[I * 4]) shl 24) or (Int64(Raw[I * 4 + 1]) shl 16) or
+                (Int64(Raw[I * 4 + 2]) shl 8) or Int64(Raw[I * 4 + 3])
+      else
+        V[I] := Int64(Raw[I * 4]) or (Int64(Raw[I * 4 + 1]) shl 8) or
+                (Int64(Raw[I * 4 + 2]) shl 16) or (Int64(Raw[I * 4 + 3]) shl 24);
+    end;
+  Result := True;
+end;
+
+procedure TiffWalkIfd(var Ctx: TTiffWalk; Off: Int64; Depth: Integer);
+var
+  N, I, K, Tag: Integer;
+  E, W, H, Comp, Photo, Spp, Rps, Planar, Next: Int64;
+  V, Offs, Subs, BitsA: TInt64Array;
+  HavePredictor, BitsOk: Boolean;
+begin
+  if (Off < 8) or (Off + 2 > Ctx.Size) or (Depth > 6) or (Length(Ctx.Seen) >= 24) then Exit;
+  for I := 0 to High(Ctx.Seen) do
+    if Ctx.Seen[I] = Off then Exit;
+  SetLength(Ctx.Seen, Length(Ctx.Seen) + 1);
+  Ctx.Seen[High(Ctx.Seen)] := Off;
+  N := RdU16(Ctx.Strm, Ctx.Big, Off);
+  if (N < 1) or (N > 400) then Exit;
+
+  W := 0; H := 0; Comp := 1; Photo := -1; Spp := 1; Rps := 0; Planar := 1;
+  HavePredictor := False;
+  V := nil; Offs := nil; Subs := nil; BitsA := nil;
+  for I := 0 to N - 1 do
+  begin
+    E := Off + 2 + I * 12;
+    Tag := RdU16(Ctx.Strm, Ctx.Big, E);
+    case Tag of
+      $0100: if ReadTagInts(Ctx.Strm, Ctx.Big, E, 1, V) then W := V[0];
+      $0101: if ReadTagInts(Ctx.Strm, Ctx.Big, E, 1, V) then H := V[0];
+      $0102: ReadTagInts(Ctx.Strm, Ctx.Big, E, 4, BitsA);
+      $0103: if ReadTagInts(Ctx.Strm, Ctx.Big, E, 1, V) then Comp := V[0];
+      $0106: if ReadTagInts(Ctx.Strm, Ctx.Big, E, 1, V) then Photo := V[0];
+      $0111: ReadTagInts(Ctx.Strm, Ctx.Big, E, 100000, Offs);
+      $0115: if ReadTagInts(Ctx.Strm, Ctx.Big, E, 1, V) then Spp := V[0];
+      $0116: if ReadTagInts(Ctx.Strm, Ctx.Big, E, 1, V) then Rps := V[0];
+      $011C: if ReadTagInts(Ctx.Strm, Ctx.Big, E, 1, V) then Planar := V[0];
+      $013D: HavePredictor := True;
+      $014A: ReadTagInts(Ctx.Strm, Ctx.Big, E, 16, Subs);
+    end;
+  end;
+
+  // is this an image we can read directly?
+  BitsOk := Length(BitsA) >= 1;
+  if BitsOk then
+  begin
+    for K := 1 to High(BitsA) do
+      if BitsA[K] <> BitsA[0] then BitsOk := False;
+    if (BitsA[0] <> 8) and (BitsA[0] <> 16) then BitsOk := False;
+    if (Length(BitsA) <> Spp) and (Length(BitsA) <> 1) then BitsOk := False;
+  end;
+  if (Rps <= 0) or (Rps > H) then Rps := H;
+  if (W > 0) and (H > 0) and (Comp = 1) and (Planar = 1) and (not HavePredictor) and BitsOk and
+     ((Spp = 1) or (Spp = 3)) and ((Photo = 0) or (Photo = 1) or (Photo = 2)) and
+     ((Photo = 2) = (Spp = 3)) and (Length(Offs) > 0) and
+     (Int64(Length(Offs)) >= (H + Rps - 1) div Rps) then
+  begin
+    if (not Ctx.Found) or (W * H > Int64(Ctx.Best.W) * Ctx.Best.H) then
+    begin
+      Ctx.Found := True;
+      Ctx.Best.Big := Ctx.Big;
+      Ctx.Best.W := Integer(W);
+      Ctx.Best.H := Integer(H);
+      Ctx.Best.Bits := Integer(BitsA[0]);
+      Ctx.Best.Spp := Integer(Spp);
+      Ctx.Best.Photo := Integer(Photo);
+      Ctx.Best.RowsPerStrip := Integer(Rps);
+      Ctx.Best.Offsets := Offs;
+    end;
+  end;
+
+  for K := 0 to High(Subs) do
+    TiffWalkIfd(Ctx, Subs[K], Depth + 1);
+  Next := RdU32(Ctx.Strm, Ctx.Big, Off + 2 + N * 12);
+  TiffWalkIfd(Ctx, Next, Depth);
+end;
+
+function FindTiffRgb(const FileName: string; out R: TTiffRgb): Boolean;
+var
+  Ctx: TTiffWalk;
+  Strm: TFileStream;
+  Hdr: array[0..7] of Byte;
+begin
+  Result := False;
+  R.Big := False;
+  R.W := 0;
+  R.H := 0;
+  R.Bits := 0;
+  R.Spp := 0;
+  R.Photo := 0;
+  R.RowsPerStrip := 1;
+  R.Offsets := nil;
+  Ctx.Strm := nil;
+  Ctx.Big := False;
+  Ctx.Size := 0;
+  Ctx.Seen := nil;
+  Ctx.Found := False;
+  Ctx.Best.Big := False;
+  Ctx.Best.W := 0;
+  Ctx.Best.H := 0;
+  Ctx.Best.Bits := 0;
+  Ctx.Best.Spp := 0;
+  Ctx.Best.Photo := 0;
+  Ctx.Best.RowsPerStrip := 1;
+  Ctx.Best.Offsets := nil;
+  Hdr[0] := 0;
+  Hdr[1] := 0;
+  Hdr[2] := 0;
+  Hdr[3] := 0;
+  Hdr[4] := 0;
+  Hdr[5] := 0;
+  Hdr[6] := 0;
+  Hdr[7] := 0;
+  try
+    Strm := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);
+  except
+    Exit;
+  end;
+  try
+    Ctx.Strm := Strm;
+    Ctx.Size := Strm.Size;
+    if not StreamRead(Strm, 0, Hdr, 8) then Exit;
+    if (Hdr[0] = $49) and (Hdr[1] = $49) then Ctx.Big := False
+    else if (Hdr[0] = $4D) and (Hdr[1] = $4D) then Ctx.Big := True
+    else Exit;
+    if RdU16(Strm, Ctx.Big, 2) <> 42 then Exit;
+    TiffWalkIfd(Ctx, RdU32(Strm, Ctx.Big, 4), 0);
+  finally
+    Strm.Free;
+  end;
+  if Ctx.Found then
+  begin
+    R := Ctx.Best;
+    Result := True;
+  end;
+end;
+
+function ReadTiffRgbRow(Strm: TStream; const R: TTiffRgb; Row: Integer; var Buf: TBytes): Boolean;
+var
+  RowBytes, Strip: Integer;
+  Ofs: Int64;
+begin
+  Result := False;
+  if (Row < 0) or (Row >= R.H) or (R.RowsPerStrip < 1) then Exit;
+  RowBytes := R.W * R.Spp * (R.Bits div 8);
+  Strip := Row div R.RowsPerStrip;
+  if Strip > High(R.Offsets) then Exit;
+  Ofs := R.Offsets[Strip] + Int64(Row mod R.RowsPerStrip) * RowBytes;
+  if Length(Buf) < RowBytes then SetLength(Buf, RowBytes);
+  Result := StreamRead(Strm, Ofs, Buf[0], RowBytes);
+end;
+
+
 function ReadExifFromFile(const FileName: string; out Info: TExifInfo): Boolean;
 var
   FS: TFileStream;
@@ -192,6 +576,14 @@ begin
     FS.Free;
   end;
   if Len < 12 then Exit;
+
+  if IsCiff(T.Buf) then
+  begin
+    // Canon CRW is not a TIFF file: read make, model and time from its CIFF directories
+    Info.Valid := ReadCiffFromFile(FileName, Info);
+    Result := Info.Valid;
+    Exit;
+  end;
 
   T.Base := -1;
   if (T.Buf[0] = $FF) and (T.Buf[1] = $D8) then
@@ -234,13 +626,14 @@ begin
   Result := (Mk = $C0) or (Mk = $C1) or (Mk = $C2);
 end;
 
-function JpegDims(const B: TBytes; Start, Limit: Integer; out W, H: Integer): Boolean;
+function JpegDims(const B: TBytes; Start, Limit: Integer; out W, H, Comps: Integer): Boolean;
 var
   P, Mk, L: Integer;
 begin
   Result := False;
   W := 0;
   H := 0;
+  Comps := 0;
   P := Start + 2;
   while P + 4 <= Limit do
   begin
@@ -253,9 +646,10 @@ begin
     if L < 2 then Exit;
     if IsUsableSof(Mk) then
     begin
-      if P + 9 > Limit then Exit;
+      if P + 10 > Limit then Exit;
       H := (B[P + 5] shl 8) or B[P + 6];
       W := (B[P + 7] shl 8) or B[P + 8];
+      Comps := B[P + 9];
       Result := (W > 0) and (H > 0);
       Exit;
     end;
@@ -309,7 +703,7 @@ function ReadJpegDims(const FileName: string; out W, H: Integer): Boolean;
 var
   Strm: TFileStream;
   Buf: TBytes;
-  Len: Integer;
+  Len, Comps: Integer;
 begin
   Result := False;
   W := 0;
@@ -329,12 +723,12 @@ begin
     Strm.Free;
   end;
   if (Len < 12) or (Buf[0] <> $FF) or (Buf[1] <> $D8) then Exit;
-  Result := JpegDims(Buf, 0, Len, W, H);
+  Result := JpegDims(Buf, 0, Len, W, H, Comps);
 end;
 
 type
   TJpegCand = record
-    Pos, Len, W, H: Integer;
+    Pos, Len, W, H, Comps: Integer;
   end;
   TJpegCands = array of TJpegCand;
 
@@ -364,7 +758,8 @@ end;
 
 procedure FindJpegs(const B: TBytes; Len: Integer; var C: TJpegCands);
 var
-  P, E, CW, CH, N: Integer;
+  P, E, CW, CH, CC, N, I, K: Integer;
+  HaveColor: Boolean;
 begin
   C := nil;
   N := 0;
@@ -376,15 +771,16 @@ begin
       E := JpegEnd(B, P, Len);
       if E > P then
       begin
-        if JpegDims(B, P, Len, CW, CH) then
+        if JpegDims(B, P, Len, CW, CH, CC) then
         begin
           SetLength(C, N + 1);
           C[N].Pos := P;
           C[N].Len := E - P;
           C[N].W := CW;
           C[N].H := CH;
+          C[N].Comps := CC;
           Inc(N);
-          if N >= 24 then Exit;
+          if N >= 24 then Break;
         end;
         P := E;            // skip this JPEG, including any thumbnail nested inside it
         Continue;
@@ -392,10 +788,26 @@ begin
     end;
     Inc(P);
   end;
+  // Some RAW formats (Canon CRW) store the sensor data as a single-component JPEG,
+  // which looks like a huge grey image. When colour previews exist, ignore those.
+  HaveColor := False;
+  for I := 0 to High(C) do
+    if C[I].Comps = 3 then HaveColor := True;
+  if HaveColor then
+  begin
+    K := 0;
+    for I := 0 to High(C) do
+      if C[I].Comps = 3 then
+      begin
+        C[K] := C[I];
+        Inc(K);
+      end;
+    SetLength(C, K);
+  end;
 end;
 
-function ExtractEmbeddedJpeg(const FileName: string; Rank: Integer; Dest: TStream;
-  out W, H: Integer): Boolean;
+function ExtractEmbeddedJpeg(const FileName: string; Rank: Integer; Deep: Boolean;
+  Dest: TStream; out W, H: Integer): Boolean;
 var
   Buf: TBytes;
   Got, I, J: Integer;
@@ -416,7 +828,7 @@ begin
   for I := 0 to High(C) do
     if C[I].Len > BestLen then BestLen := C[I].Len;
   // nothing sizeable in the first 4 MB: some cameras store the preview later in the file
-  if (BestLen < 20000) and (FLen > Got) then
+  if Deep and (BestLen < 20000) and (FLen > Got) then
   begin
     Got := ReadPrefix(FileName, 96 * 1024 * 1024, Buf, FLen);
     FindJpegs(Buf, Got, C);

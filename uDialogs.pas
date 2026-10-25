@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Math, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
-  ComCtrls, Spin, LCLType, LCLIntf, uSettings, uItems, uExif, uDrives, uVersion;
+  ComCtrls, Spin, Clipbrd, LCLType, LCLIntf, uSettings, uItems, uExif, uDrives, uVersion;
 
 function ExecuteJobCode(S: TAppSettings; var Job: string; const CurrentCamera: string): Boolean;
 function ExecutePreferences(S: TAppSettings; const CurrentCamera: string): Boolean;
@@ -15,6 +15,7 @@ function ChooseFromList(const ATitle, APrompt: string; Items: TStrings; out Choi
 procedure ShowTokenHelp;
 procedure ShowAbout;
 procedure ShowRegister;
+procedure ShowImageProperties(Item: TImageItem);
 
 implementation
 
@@ -130,6 +131,7 @@ begin
     'Downloads images from a card reader or folder, renames them using' + #13#10 +
     'tokens, and organises them into job-code folders.' + #13#10#13#10 +
     'Licensed under the GNU General Public License (see Help > Register).' + #13#10 +
+    WebsiteURL + #13#10 +
     'Built with Lazarus / Free Pascal.', mtInformation, [mbOK], 0);
 end;
 
@@ -149,6 +151,17 @@ const
     'along with this program. If not, see <https://www.gnu.org/licenses/>.';
 
 type
+  { TPropsForm - read-only list of everything known about one image }
+  TPropsForm = class(TForm)
+  private
+    LV: TListView;
+    FText: string;
+    procedure AddRow(const K, V: string);
+    procedure CopyClick(Sender: TObject);
+  public
+    constructor CreateProps(AOwner: TComponent; Item: TImageItem);
+  end;
+
   TRegisterForm = class(TForm)
   private
     procedure LicenseClick(Sender: TObject);
@@ -179,6 +192,86 @@ end;
 procedure TRegisterForm.LicenseClick(Sender: TObject);
 begin
   OpenURL('https://www.gnu.org/licenses/gpl-3.0.html');
+end;
+
+procedure TPropsForm.AddRow(const K, V: string);
+var
+  LI: TListItem;
+begin
+  LI := LV.Items.Add;
+  LI.Caption := K;
+  LI.SubItems.Add(V);
+  FText := FText + K + ': ' + V + LineEnding;
+end;
+
+procedure TPropsForm.CopyClick(Sender: TObject);
+begin
+  Clipboard.AsText := FText;
+end;
+
+constructor TPropsForm.CreateProps(AOwner: TComponent; Item: TImageItem);
+var
+  W, H: Integer;
+  Ext, Dims: string;
+begin
+  inherited CreateNew(AOwner);
+  InitDialog(Self, 'Properties - ' + Item.FileName, 620, 480);
+  LV := TListView.Create(Self);
+  LV.Parent := Self;
+  LV.SetBounds(10, 10, 600, 424);
+  LV.ViewStyle := vsReport;
+  LV.ReadOnly := True;
+  LV.RowSelect := True;
+  with LV.Columns.Add do
+  begin
+    Caption := 'Property';
+    Width := 140;
+  end;
+  with LV.Columns.Add do
+  begin
+    Caption := 'Value';
+    Width := 440;
+  end;
+
+  Ext := LowerCase(ExtractFileExt(Item.FileName));
+  Dims := 'not read';
+  W := 0;
+  H := 0;
+  if (Ext = '.jpg') or (Ext = '.jpeg') or (Ext = '.jpe') then
+    if ReadJpegDims(Item.FullPath, W, H) then
+      Dims := Format('%d x %d pixels', [W, H]);
+
+  AddRow('File name', Item.FileName);
+  AddRow('Folder', Item.SourceDir);
+  AddRow('Type', UpperCase(Copy(Ext, 2, 10)) + ' file');
+  AddRow('Size', FormatSize(Item.Size) + '  (' + FormatFloat('#,##0', Item.Size) + ' bytes)');
+  AddRow('Dimensions', Dims);
+  AddRow('Date modified', FormatDateTime('yyyy-mm-dd hh:nn:ss', Item.FileTime));
+  AddRow('Date taken', FormatDateTime('yyyy-mm-dd hh:nn:ss', Item.CaptureTime));
+  AddRow('Camera maker', Item.Make);
+  AddRow('Camera model', Item.Camera);
+  AddRow('Serial number', Item.Serial);
+  AddRow('Author / owner', Item.Owner);
+  if Item.ISO > 0 then AddRow('ISO', IntToStr(Item.ISO)) else AddRow('ISO', '');
+  AddRow('Image number', IntToStr(Item.Index));
+  AddRow('Status', Item.StatusText);
+  AddRow('New name', Item.DestPath);
+
+  MkButton(Self, 'Copy', 10, 444, 80).OnClick := @CopyClick;
+  MkButton(Self, 'Close', 530, 444, 80, mrOK).Default := True;
+end;
+
+procedure ShowImageProperties(Item: TImageItem);
+var
+  F: TPropsForm;
+begin
+  if Item = nil then Exit;
+  F := TPropsForm.CreateProps(Application, Item);
+  try
+    F.ShowModal;
+  finally
+    F.Free;
+  end;
 end;
 
 procedure ShowRegister;
@@ -396,7 +489,7 @@ type
     edLetters: TEdit;
     chkPTP, chkReadOnly, chkPreserveRO, chkProfile, chkIgnoreSize, chkRotate, chkJpe,
     chkLowerName, chkLowerExt, chkStamp, chkSaveJobs, chkExifTxt, chkEject, chkWholeDisk,
-    chkIptc, chkPromptIptc, chkIIM, chkNef, chkExifOwner, chkLoadLast: TCheckBox;
+    chkIptc, chkPromptIptc, chkIIM, chkNef, chkExifOwner, chkLoadLast, chkSingle: TCheckBox;
     edAuthor, edCopyright: TEdit;
     // Automation
     chkAutoStart, chkAutoMenu, chkAutoPrompt, chkADownload, chkADelete, chkAEject,
@@ -459,12 +552,12 @@ begin
   FMaps := TStringList.Create;
   FPlugins := TStringList.Create;
   FPluginOpts := TStringList.Create;
-  InitDialog(Self, 'Preferences', 520, 660);
+  InitDialog(Self, 'Preferences', 520, 692);
   KeyPreview := True;
   OnKeyDown := @FormKeyDown;
   PC := TPageControl.Create(Self);
   PC.Parent := Self;
-  PC.SetBounds(8, 8, 504, 604);
+  PC.SetBounds(8, 8, 504, 636);
   BuildPathTab(PC.AddTabSheet);
   PC.Pages[0].Caption := 'Download Path';
   BuildGeneralTab(PC.AddTabSheet);
@@ -477,9 +570,9 @@ begin
   PC.Pages[4].Caption := 'Mapping';
   BuildPluginTab(PC.AddTabSheet);
   PC.Pages[5].Caption := 'Plug-ins';
-  BtnOK := MkButton(Self, 'OK', 340, 622, 80, mrOK);
+  BtnOK := MkButton(Self, 'OK', 340, 654, 80, mrOK);
   BtnOK.Default := True;
-  BtnCancel := MkButton(Self, 'Cancel', 430, 622, 80, mrCancel);
+  BtnCancel := MkButton(Self, 'Cancel', 430, 654, 80, mrCancel);
   BtnCancel.Cancel := True;
   LoadValues;
 end;
@@ -650,6 +743,8 @@ begin
   Inc(Y, 28);
   MkLabel(TS, 'Copyright:', 28, Y + 3);
   edCopyright := MkEdit(TS, 100, Y, 380);
+  Inc(Y, 32);
+  chkSingle := MkCheck(TS, 'Run only one copy of Photo Downloader at a time (applies at next start)', 8, Y);
 
   chkIptc.OnClick := @GeneralChange;
   chkExifOwner.OnClick := @GeneralChange;
@@ -1062,6 +1157,7 @@ begin
     chkNef.Checked := FS.WriteIptcNef;
     chkExifOwner.Checked := FS.WriteExifOwner;
     chkLoadLast.Checked := FS.LoadLastAtStartup;
+    chkSingle.Checked := FS.SingleInstance;
     edAuthor.Text := FS.ExifAuthor;
     edCopyright.Text := FS.ExifCopyright;
 
@@ -1129,6 +1225,7 @@ begin
   FS.WriteIptcNef := chkNef.Checked;
   FS.WriteExifOwner := chkExifOwner.Checked;
   FS.LoadLastAtStartup := chkLoadLast.Checked;
+  FS.SingleInstance := chkSingle.Checked;
   FS.ExifAuthor := Trim(edAuthor.Text);
   FS.ExifCopyright := Trim(edCopyright.Text);
 

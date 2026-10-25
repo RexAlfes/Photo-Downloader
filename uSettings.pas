@@ -10,6 +10,8 @@ uses
 const
   AppTitle = 'Photo Downloader';
   AppVersion = '1.0';
+  WebsiteURL = 'https://rexalfes.github.io/Photo-Downloader/';
+  UpdatesURL = 'https://github.com/RexAlfes/Photo-Downloader/releases';
 
 type
   TSourceMode = (smAuto, smCamera, smCardReader);
@@ -33,6 +35,7 @@ type
     WriteExifOwner: Boolean;        // write author/copyright into EXIF on copy
     ExifAuthor, ExifCopyright: string;
     FirstRunDone: Boolean;          // False until the first start has completed
+    SingleInstance: Boolean;        // only one copy of the program may run
     LoadLastAtStartup: Boolean;     // reload the last used source folder when the program starts
     LastSource: string;             // last folder opened as image source
     // Automation tab
@@ -65,6 +68,8 @@ type
 function ConfigDir: string;
 function SettingsFileName: string;
 function ProfilesDir: string;
+{ Reads only the single/multi instance option; used before the main form exists. }
+function SingleInstanceWanted: Boolean;
 procedure MapSplit(const Line: string; out CamName, T8, T9: string);
 function MapJoin(const CamName, T8, T9: string): string;
 
@@ -89,6 +94,20 @@ function ProfilesDir: string;
 begin
   Result := ConfigDir + 'profiles' + PathDelim;
   ForceDirectoriesUTF8(Result);
+end;
+
+function SingleInstanceWanted: Boolean;
+var
+  Ini: TMemIniFile;
+begin
+  Result := True;                      // default: single instance
+  if not FileExistsUTF8(SettingsFileName) then Exit;
+  Ini := TMemIniFile.Create(SettingsFileName);
+  try
+    Result := Ini.ReadBool('General', 'SingleInstance', True);
+  finally
+    Ini.Free;
+  end;
 end;
 
 procedure MapSplit(const Line: string; out CamName, T8, T9: string);
@@ -205,6 +224,7 @@ begin
   ExifCopyright := '';
   FirstRunDone := False;
   LoadLastAtStartup := False;
+  SingleInstance := True;
   LastSource := '';
 
   AutoAtStartup := False;
@@ -278,6 +298,7 @@ begin
     ExifCopyright := ReadString('General', 'ExifCopyright', ExifCopyright);
     FirstRunDone := ReadBool('General', 'FirstRunDone', FirstRunDone);
     LoadLastAtStartup := ReadBool('General', 'LoadLastAtStartup', LoadLastAtStartup);
+    SingleInstance := ReadBool('General', 'SingleInstance', SingleInstance);
     LastSource := ReadString('General', 'LastSource', LastSource);
 
     AutoAtStartup := ReadBool('Automation', 'AutoAtStartup', AutoAtStartup);
@@ -354,6 +375,7 @@ begin
     WriteString('General', 'ExifCopyright', ExifCopyright);
     WriteBool('General', 'FirstRunDone', FirstRunDone);
     WriteBool('General', 'LoadLastAtStartup', LoadLastAtStartup);
+    WriteBool('General', 'SingleInstance', SingleInstance);
     WriteString('General', 'LastSource', LastSource);
 
     WriteBool('Automation', 'AutoAtStartup', AutoAtStartup);

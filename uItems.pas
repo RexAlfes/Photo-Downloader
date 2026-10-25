@@ -46,6 +46,11 @@ function ComputeDest(S: TAppSettings; Item: TImageItem; SeqDown, SeqSess: Intege
 function ExampleDest(S: TAppSettings; const DirMask, NameMask, Job: string): string;
 function UniqueName(const Dest: string): string;
 procedure EnsureThumb(Item: TImageItem; Box: Integer);
+{ Builds a bitmap (at most MaxSide pixels on the long side) from the uncompressed
+  image data of a TIFF/DNG file. False if the file has no such image. }
+function LoadTiffBitmap(const FileName: string; MaxSide: Integer; Bmp: TBitmap): Boolean;
+{ True if the plain TIFF/DNG image is larger than a JPEG preview of W x H pixels. }
+function TiffRgbIsLarger(const FileName: string; W, H: Integer): Boolean;
 procedure LogThumb(const Msg: string);
 function CopyFileStream(const Src, Dst: string): Boolean;
 function FormatSize(Size: Int64): string;
@@ -59,6 +64,7 @@ const
   ImageExts = ';.jpg;.jpeg;.jpe;.png;.tif;.tiff;.bmp;.nef;.nrw;.cr2;.cr3;.crw;' +
               '.arw;.srf;.sr2;.dng;.orf;.raf;.rw2;.pef;.srw;.raw;.heic;.heif;' +
               '.mp4;.mov;.lrv;.mp3;.thm;';
+  TiffExts = ';.tif;.tiff;.dng;';
   RawExts = ';.nef;.nrw;.cr2;.cr3;.crw;.arw;.srf;.sr2;.dng;.orf;.raf;.rw2;.pef;.srw;.raw;';
   ExifExts = ';.jpg;.jpeg;.jpe;.tif;.tiff;.nef;.nrw;.cr2;.crw;.arw;.sr2;.dng;.pef;.srw;';
 
@@ -538,6 +544,115 @@ begin
   end;
 end;
 
+type
+  TBmpFileHdr = packed record
+    bfType: Word;
+    bfSize, bfReserved, bfOffBits: LongWord;
+  end;
+  TBmpInfoHdr = packed record
+    biSize: LongWord;
+    biWidth, biHeight: LongInt;
+    biPlanes, biBitCount: Word;
+    biCompression, biSizeImage: LongWord;
+    biXPels, biYPels: LongInt;
+    biClrUsed, biClrImportant: LongWord;
+  end;
+
+function TiffRgbIsLarger(const FileName: string; W, H: Integer): Boolean;
+var
+  R: TTiffRgb;
+begin
+  Result := FindTiffRgb(FileName, R) and (Int64(R.W) * R.H > Int64(W) * H);
+end;
+
+function LoadTiffBitmap(const FileName: string; MaxSide: Integer; Bmp: TBitmap): Boolean;
+var
+  R: TTiffRgb;
+  Strm: TFileStream;
+  Ms: TMemoryStream;
+  FH: TBmpFileHdr;
+  IH: TBmpInfoHdr;
+  Sc: Double;
+  NW, NH, X, Y, SX, SY, Bps, Hi, P, LineLen: Integer;
+  Row, Line: TBytes;
+  G: Byte;
+begin
+  Result := False;
+  Row := nil;
+  Line := nil;
+  if not FindTiffRgb(FileName, R) then Exit;
+  Bps := R.Bits div 8;
+  if Max(R.W, R.H) > MaxSide then Sc := MaxSide / Max(R.W, R.H) else Sc := 1;
+  NW := Max(1, Round(R.W * Sc));
+  NH := Max(1, Round(R.H * Sc));
+  // index of the most significant byte of a sample
+  if R.Big then Hi := 0 else Hi := Bps - 1;
+  LineLen := ((NW * 3 + 3) div 4) * 4;
+  SetLength(Line, LineLen);
+
+  FH.bfType := $4D42;
+  FH.bfSize := SizeOf(FH) + SizeOf(IH) + LineLen * NH;
+  FH.bfReserved := 0;
+  FH.bfOffBits := SizeOf(FH) + SizeOf(IH);
+  IH.biSize := SizeOf(IH);
+  IH.biWidth := NW;
+  IH.biHeight := NH;                 // positive height: rows are stored bottom-up
+  IH.biPlanes := 1;
+  IH.biBitCount := 24;
+  IH.biCompression := 0;
+  IH.biSizeImage := LineLen * NH;
+  IH.biXPels := 2835;
+  IH.biYPels := 2835;
+  IH.biClrUsed := 0;
+  IH.biClrImportant := 0;
+
+  Ms := TMemoryStream.Create;
+  try
+    try
+      Strm := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);
+      try
+        Ms.WriteBuffer(FH, SizeOf(FH));
+        Ms.WriteBuffer(IH, SizeOf(IH));
+        for Y := NH - 1 downto 0 do
+        begin
+          SY := Y * R.H div NH;
+          if not ReadTiffRgbRow(Strm, R, SY, Row) then Exit;
+          FillChar(Line[0], LineLen, 0);
+          for X := 0 to NW - 1 do
+          begin
+            SX := X * R.W div NW;
+            P := SX * R.Spp * Bps + Hi;
+            if R.Spp = 3 then
+            begin
+              Line[X * 3 + 2] := Row[P];              // red
+              Line[X * 3 + 1] := Row[P + Bps];        // green
+              Line[X * 3] := Row[P + 2 * Bps];        // blue
+            end
+            else
+            begin
+              G := Row[P];
+              if R.Photo = 0 then G := 255 - G;       // WhiteIsZero
+              Line[X * 3] := G;
+              Line[X * 3 + 1] := G;
+              Line[X * 3 + 2] := G;
+            end;
+          end;
+          Ms.WriteBuffer(Line[0], LineLen);
+        end;
+      finally
+        Strm.Free;
+      end;
+      Ms.Position := 0;
+      Bmp.LoadFromStream(Ms);
+      Result := (Bmp.Width > 0) and (Bmp.Height > 0);
+    except
+      Result := False;
+    end;
+  finally
+    Ms.Free;
+  end;
+end;
+
 function PickScale(W, H, Box: Integer): TJPEGScale;
 var
   Ratio: Integer;
@@ -557,11 +672,13 @@ var
   Mem: TMemoryStream;
   G: TGraphic;
   W, H, NW, NH, Rank, Attempt: Integer;
+  Deep: Boolean;
   Sc: Double;
   Bmp: TBitmap;
 begin
   W := 0;
   H := 0;
+  Deep := True;
   if Item.ThumbTried then Exit;
   Item.ThumbTried := True;
   Ext := LowerCase(ExtractFileExt(Item.FileName));
@@ -583,15 +700,18 @@ begin
         Jpg.LoadFromFile(Item.FullPath);
         G := Jpg;
       end
-      else if Pos(';' + Ext + ';', RawExts) > 0 then
+      else if (Pos(';' + Ext + ';', RawExts) > 0) or (Pos(';' + Ext + ';', TiffExts) > 0) then
       begin
-        // RAW files carry a JPEG preview; use it as the thumbnail. If the largest
-        // one cannot be decoded, try the next ones.
+        // RAW, TIFF and DNG: use an embedded JPEG preview when there is one. TIFF and
+        // DNG files are not searched beyond the first 4 MB (they can be very large).
+        Deep := Pos(';' + Ext + ';', TiffExts) = 0;
         Mem := TMemoryStream.Create;
         for Rank := 0 to 2 do
         begin
           Mem.Clear;
-          if not ExtractEmbeddedJpeg(Item.FullPath, Rank, Mem, W, H) then Break;
+          if not ExtractEmbeddedJpeg(Item.FullPath, Rank, Deep, Mem, W, H) then Break;
+          // the plain image in the file is bigger than this preview: build the thumbnail from it
+          if (not Deep) and TiffRgbIsLarger(Item.FullPath, W, H) then Break;
           // attempt 0: reduced-size fast decode; attempt 1: decoder defaults
           for Attempt := 0 to 1 do
           begin
@@ -618,8 +738,20 @@ begin
           end;
           if G <> nil then Break;
         end;
+        if (G = nil) and (not Deep) then
+        begin
+          // TIFF / DNG without a usable JPEG: build the thumbnail from the image data itself
+          Bmp := TBitmap.Create;
+          if LoadTiffBitmap(Item.FullPath, Box, Bmp) then
+          begin
+            Item.Thumb := Bmp;
+            Bmp := nil;
+            Exit;
+          end;
+          FreeAndNil(Bmp);
+        end;
         if G = nil then
-          LogThumb(Item.FileName + ': no usable embedded JPEG preview found');
+          LogThumb(Item.FileName + ': no usable preview or thumbnail image found');
       end
       else if (Ext = '.png') or (Ext = '.bmp') then
       begin
