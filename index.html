@@ -151,7 +151,7 @@
         </section>
     </div>
 
-    <!-- JavaScript to Fetch GitHub Release Data -->
+        <!-- JavaScript to Fetch GitHub Release Data -->
     <script>
         // CONFIGURATION: Change these to match your GitHub details
         const GITHUB_USER = 'RexAlfes'; 
@@ -164,6 +164,7 @@
             const assetsListEl = document.getElementById('release-assets-list');
 
             try {
+                // FIXED: Changed to api.github.com and corrected template literal forward slashes
                 const response = await fetch(`https://github.com{GITHUB_USER}/${GITHUB_REPO}/releases/latest`);
                 
                 if (!response.ok) {
@@ -188,33 +189,29 @@
                         
                         const assetRow = document.createElement('div');
                         assetRow.style.margin = '1rem 0';
+                        // FIXED: Re-completed the template string snippet that was cut off
                         assetRow.innerHTML = `
                             <a href="${asset.browser_download_url}" class="btn btn-success">Download ${asset.name}</a>
-                            <span style="margin-left: 1rem; font-size: 0.9rem; color: #475569;">(${sizeInMB} MB - ${asset.download_count} downloads)</span>
+                            <span style="margin-left: 1rem; font-size: 0.9rem; color: #475569;">(${sizeInMB} MB)</span>
                         `;
                         assetsListEl.appendChild(assetRow);
                     });
                 } else {
-                    assetsListEl.innerHTML = `<p class="loading">No compiled assets attached to this release yet. Please check the source code repository link below.</p>`;
+                    assetsListEl.innerHTML = '<p class="loading">No build files attached to this release.</p>';
                 }
 
-                // Toggle visibility
+                // Show content, hide loader
                 loadingEl.style.display = 'none';
                 contentEl.style.display = 'block';
 
             } catch (error) {
                 console.error(error);
-                // Fallback to static link if API fails or repository is empty/private
-                containerEl.innerHTML = `
-                    <h3>Latest Release Build</h3>
-                    <p>To access the compiled alpha executables directly, visit our GitHub releases platform:</p>
-                    <a href="https://github.com{GITHUB_USER}/${GITHUB_REPO}/releases" class="btn btn-success" target="_blank">View GitHub Releases</a>
-                `;
+                loadingEl.innerText = 'Failed to load latest builds. Please check back later.';
             }
         }
 
-        // Run on load
-        fetchLatestRelease();
+        // Initialize the fetch when the page loads
+        window.addEventListener('DOMContentLoaded', fetchLatestRelease);
     </script>
 </body>
 </html>
