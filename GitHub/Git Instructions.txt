@@ -1,0 +1,60 @@
+GITHUB UPDATE INSTRUCTIONS - Photo Downloader
+=============================================
+
+Repository: https://github.com/RexAlfes/Photo-Downloader
+Website:    https://rexalfes.github.io/Photo-Downloader/   (served from the docs folder on main)
+
+WHAT GOES WHERE (unzip PhotoDownloader-Claude (N).zip first)
+------------------------------------------------------------
+Normal upload   : *.pas, *.lpr, *.lpi, *.ico, README.md, .gitignore, .github/FUNDING.yml
+Manual, as needed: the website page. Copy GitHub/docs/index.html into the repository's docs folder
+                  only when you want the public site to change.
+Never uploaded  : the PhotoDownloader\docs and PhotoDownloader\GitHub folders in the zip are your
+                  reference copies (specification, launch materials, About text, release notes,
+                  these instructions).
+
+OPTION 1 - WEBSITE UPLOAD
+-------------------------
+1. Open the repository, choose Add file > Upload files.
+2. Drag in the source files and the .github folder. Dragging a folder keeps its structure.
+   Do not drag in the zip's docs or GitHub folders.
+   Files with the same name replace the old ones. Up to 100 files per upload.
+3. Message example: "Build 37: generic default folders, grey rows for downloaded files". Commit directly to main.
+4. The website cannot delete files. To delete: open the file, click the three dots, Delete file.
+5. If a folder starts with a dot (.github) and will not drag in, use Add file > Create new file and type
+   ".github/FUNDING.yml" as the name, then paste the contents.
+
+OPTION 2 - GIT
+--------------
+   git clone https://github.com/RexAlfes/Photo-Downloader.git     (first time only)
+   copy the new files over the cloned folder, then in that folder:
+   git add -A
+   git commit -m "Build 26: AVIF files supported"
+   git push
+git add -A also records deleted and renamed files.
+
+GITHUB PAGES
+------------
+Settings > Pages > Source: Deploy from a branch > Branch: main > Folder: /docs > Save.
+Wait for the green "pages build and deployment" run in the Actions tab, then reload with Ctrl+F5.
+Whatever is in the repository's docs folder is public, so only copy files there that you want published.
+
+REPOSITORY ABOUT
+----------------
+Gear icon beside About: paste the description, website and topics from GitHub_About.txt.
+
+RELEASE
+-------
+Releases > Draft a new release. Tag example: v0.1.0-alpha.37. Paste the matching release notes file.
+Attach PhotoDownloader.exe (or a zip of it) and tick "Set as a pre-release". The website download button
+reads the newest release.
+
+DONATION LINKS
+--------------
+PayPal: https://paypal.me/PhotoDownLoader    Venmo: https://venmo.com/u/RexAlfes
+Edit them in uSettings.pas, index.html, README.md and .github/FUNDING.yml.
+
+DELETING
+--------
+File: open it > three dots > Delete file > Commit.
+Repository: Settings > Danger Zone > Delete this repository. Download a ZIP copy first. Archive is the safer option.
