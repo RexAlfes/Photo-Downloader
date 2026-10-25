@@ -10,7 +10,7 @@ Open `PhotoDownloader.lpi` in Lazarus and press F9, or run:
 Forms are created in code (no .lfm files). Only the LCL package is required.
 Settings are stored in the per-user config folder (`PhotoDownloader.ini`, `profiles\`).
 
-## Implemented (from the screenshots)
+## Implemented
 - Main window: Date - Job code list, thumbnail grid (small / large) and list view,
   status line, Download / Delete / Close (+ optional custom button).
 - Job Code dialog at startup with history, Delete, live example path, Preferences...
