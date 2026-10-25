@@ -7,7 +7,7 @@ interface
 uses
   Classes, SysUtils, Contnrs, Math, Forms, Controls, Graphics, Dialogs, Menus,
   ExtCtrls, StdCtrls, ComCtrls, LCLType, LCLIntf, LazFileUtils,
-  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uDrives, uViewer;
+  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uDrives, uViewer, uSingle;
 
 type
   TMainForm = class(TForm)
@@ -25,7 +25,7 @@ type
     FProgLbl: TLabel;
     FTimer: TTimer;
     FPopup: TPopupMenu;
-    miPopView, miPopLocation, miPopDownload, miPopDelete: TMenuItem;
+    miPopView, miPopLocation, miPopProps, miPopDownload, miPopDelete: TMenuItem;
     miAuto, miEject, miShowDown, miShowDup, miList, miSmall, miLarge, miDateSel: TMenuItem;
     pnlLeft, pnlStatus, pnlButtons: TPanel;
     lblDate, lblStatus: TLabel;
@@ -63,6 +63,7 @@ type
     procedure PopDownloadClick(Sender: TObject);
     procedure PopViewClick(Sender: TObject);
     procedure PopLocationClick(Sender: TObject);
+    procedure PopPropsClick(Sender: TObject);
     procedure OpenItem(Sender: TObject; Index: Integer);
     function CanDeleteSource(It: TImageItem): Boolean;
     procedure DateMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState;
@@ -338,6 +339,7 @@ begin
   miPopLocation := AddMenu(FPopup.Items, 'Open image location', @PopLocationClick, 0);
   miPopDownload := AddMenu(FPopup.Items, 'Download selected file(s)', @PopDownloadClick, 0);
   miPopDelete := AddMenu(FPopup.Items, 'Delete selected file(s) from source', @DeleteClick, 0);
+  miPopProps := AddMenu(FPopup.Items, 'Properties', @PopPropsClick, 0);
   FView.PopupMenu := FPopup;
 end;
 
@@ -657,7 +659,7 @@ procedure TMainForm.DateMouseDown(Sender: TObject; Button: TMouseButton; Shift: 
 var
   Idx: Integer;
 begin
-  if Button <> mbRight then Exit;
+  if (Button <> mbRight) or (ssLeft in Shift) then Exit;     // plain right click only
   Idx := lstDates.ItemAtPos(Point(X, Y), True);
   if Idx < 0 then Exit;
   if not lstDates.Selected[Idx] then
@@ -722,6 +724,7 @@ begin
     end;
   miPopView.Enabled := NSel > 0;
   miPopLocation.Enabled := NSel > 0;
+  miPopProps.Enabled := NSel > 0;
   L := TList.Create;
   try
     GetDownloadList(L);
@@ -762,6 +765,18 @@ begin
       // select the file in Explorer; elsewhere just open its folder
       if not RevealFile(P) then
         OpenDocument(ExtractFilePath(P));
+      Exit;
+    end;
+end;
+
+procedure TMainForm.PopPropsClick(Sender: TObject);
+var
+  I: Integer;
+begin
+  for I := 0 to FVisible.Count - 1 do
+    if TImageItem(FVisible[I]).Selected then
+    begin
+      ShowImageProperties(TImageItem(FVisible[I]));
       Exit;
     end;
 end;
@@ -1232,6 +1247,7 @@ var
   Choice: string;
 begin
   FTimer.Enabled := False;
+  if FS.SingleInstance then RegisterMainWindow(Handle);   // lets a second copy find this window
   if FS.PromptProfile then
   begin
     L := TStringList.Create;
@@ -1262,6 +1278,7 @@ end;
 
 procedure TMainForm.FormClose(Sender: TObject; var CloseAction: TCloseAction);
 begin
+  if CloseAction = caNone then Exit;     // closing was cancelled
   SaveSettingsNow;
 end;
 
@@ -1529,14 +1546,17 @@ end;
 
 procedure TMainForm.WebsiteClick(Sender: TObject);
 begin
-  MessageDlg('Visit website', 'No website address has been configured for this build.',
-    mtInformation, [mbOK], 0);
+  if not OpenURL(WebsiteURL) then
+    MessageDlg('Visit website', 'The web browser could not be started. The address is:'#13#10 +
+      WebsiteURL, mtWarning, [mbOK], 0);
 end;
 
 procedure TMainForm.UpdatesClick(Sender: TObject);
 begin
-  MessageDlg('Check for updates', 'Automatic update checking is not available in this build.',
-    mtInformation, [mbOK], 0);
+  // new versions are published as GitHub releases
+  if not OpenURL(UpdatesURL) then
+    MessageDlg('Check for updates', 'The web browser could not be started. The address is:'#13#10 +
+      UpdatesURL, mtWarning, [mbOK], 0);
 end;
 
 procedure TMainForm.RegisterClick(Sender: TObject);

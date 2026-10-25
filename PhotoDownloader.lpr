@@ -8,13 +8,15 @@ uses
   {$ENDIF}
   Interfaces, // this includes the LCL widgetset
   Forms,
-  uSettings, uVersion, uExif, uItems, uDrives, uPhotoView, uDialogs, uViewer, uMain;
+  uSettings, uSingle, uScale, uVersion, uExif, uItems, uDrives, uPhotoView, uDialogs, uViewer, uMain;
 
 {$R *.res}
 
 begin
   Application.Title := 'Photo Downloader';
   Application.Scaled := True;
+  // single instance (the default): hand over to the copy that is already running
+  if SingleInstanceWanted and ActivateRunningInstance then Halt(0);
   Application.Initialize;
   Application.CreateForm(TMainForm, MainForm);
   Application.Run;

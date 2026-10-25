@@ -1,52 +1,49 @@
-# Photo Downloader (Lazarus 4.8 / FPC 3.2.2)
+# Photo Downloader
 
-Desktop photo downloader built from scratch and documented in `Photo_Downloader_Specs.zip`.
+[![Licence: GPL v3](https://img.shields.io/badge/licence-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.html)
+![Status: alpha](https://img.shields.io/badge/status-alpha-yellow.svg)
+
+A free, open source Windows desktop tool that copies photos from memory cards and folders,
+renames them from templates and files them into job-code folders. Written in Lazarus 4.8 / Free Pascal 3.2.2.
+
+Website: <https://rexalfes.github.io/Photo-Downloader/> | Downloads: <https://github.com/RexAlfes/Photo-Downloader/releases> | Issues: <https://github.com/RexAlfes/Photo-Downloader/issues>
+
+> **Alpha software.** Keep your original files until you have checked the copies.
+
+## Features
+- Date / job-code list, thumbnail grid (small and large) and list view, image viewer, status line.
+- Job Code dialog at start-up with history and a live example of the destination path.
+- Token-based folder and file naming (`{T8}`, `{T9}`, `{r}`, sequence numbers, camera and EXIF values), per-camera mapping.
+- Thumbnails and viewer for JPEG, PNG, BMP, TIFF, DNG and the embedded previews of RAW files (NEF, NRW, CR2, CRW, ARW and others).
+- Status per image: new file, already downloaded, name clash, duplicate (same size, time and camera), with the reason shown.
+- XMP sidecar from IPTC/XMP details; author and copyright written only into JPEG fields that are empty.
+- Delete from the card only for files that were downloaded and exist in the destination.
+- User profiles, export of settings, Eject, right-click Open image location and Properties.
+- Single instance by default (switchable in Preferences > General). Nothing is scanned at start-up; the last folder is remembered.
 
 ## Build
-Open `PhotoDownloader.lpi` in Lazarus and press F9, or run:
+Open `PhotoDownloader.lpi` in Lazarus 4.8 and press F9, or run:
 
     lazbuild PhotoDownloader.lpi
 
-Forms are created in code (no .lfm files). Only the LCL package is required.
-Settings are stored in the per-user config folder (`PhotoDownloader.ini`, `profiles\`).
+Forms are created in code (no `.lfm` files). Required packages: LCL and LazUtils.
+Settings live in the per-user config folder (`PhotoDownloader.ini`, `profiles\`).
 
-## Implemented
-- Main window: Date - Job code list, thumbnail grid (small / large) and list view,
-  status line, Download / Delete / Close (+ optional custom button).
-- Job Code dialog at startup with history, Delete, live example path, Preferences...
-- File, Edit, View and Help menus with the shortcuts shown; User Profiles load/save/delete;
-  Export settings; Status; Refresh (F5); Eject (F6, Windows/`eject`); auto sequence (F4).
-- Preferences: Download Path (tokens, sequence number), General, Automation,
-  Custom button, Mapping ({T8}/{T9} per camera), Plug-ins.
-- EXIF date/camera/ISO/serial read from JPEG and TIFF-based raw files.
-- Status per image: New file, Already downloaded, Name clash (red), Duplicate file.
-
-## Not implemented / assumptions
-- `Specifications.odt` was used to track functionality and behaviour.
-- {r} (image number) rule is a guess: first run of 4+ digits in the original name, else last digit run.
-- Not implemented: direct camera (PTP) download, lossless JPEG auto-rotate, IIM/embedded IPTC
-  (XMP is written as a `.xmp` sidecar), GPS geotagging, Breeze link, plug-ins
-  "JPEG auto profile", "DNG Converter", "JPEG resolution" (Backup and Directory Maker work).
-- Raw files show a blank thumbnail (as in the NEF example in the screenshot).
-- Auto-detect of card readers is Windows-only; elsewhere use File > Open Source Directory.
-- The code has not been compiled by the author's tooling; expect to fix a few small compile errors.
+## Known limitations
+- Windows is the primary platform. Card-reader detection, eject and single-instance handling are Windows only.
+- Not implemented yet: direct USB camera (PTP/MTP) download, GPS geotagging, MD5-verified copy, watch mode,
+  lossless auto-rotate, embedded IIM/IPTC (XMP is written as a `.xmp` sidecar), download history.
+- Compressed (LZW/Deflate) TIFF files with no JPEG preview show a placeholder thumbnail.
+- {r} (image number) is the longest run of digits in the original name (last on a tie).
+- The code is compiled and tested by the project owner; report compiler messages or bugs as issues.
 
 ## Versioning
-Version info is enabled in the project (Project > Project Options > Version Info) with
-"Automatically increment build number" ON. The .lpi stores 0.1.0 build 4 so the next build made
-in the Lazarus IDE is 0.1.0 build 5. Only the IDE increments the number, not `lazbuild`.
-The version is shown in About, Status and Register (read from the compiled resource).
+Version info is enabled with "Automatically increment build number". The IDE increments the number on each build; `lazbuild` does not.
+The version is shown in About, Status and Register. See `docs/Specification_Current.md` for the version history.
 
-## License
+## Licence
 GNU General Public License v3 or later; the notice is shown in Help > Register.
-Add a copy of the full license text as `COPYING` before distributing.
-
-## Notes
-- {r} (image number) = longest run of digits in the original name (last on a tie); a name with no digits uses the whole name.
-- Name-clash cards state the reason, e.g. "same new name as #3".
-- RAW thumbnails come from the JPEG preview embedded in the file; portrait previews are not rotated yet.
-- EXIF author/copyright are only written into fields that are empty or missing in the downloaded JPEG.
+Add the full licence text as `COPYING` before distributing.
 
 ## Documentation
-`docs/Specification_Current.odt` (and `.md`) describe the current functions and their status (build 9).
-Each delivered update raises the stored build number by one; the IDE then increments it again when you build.
+`docs/Specification_Current.odt` (and `.md`) describe the current functions and their status.
