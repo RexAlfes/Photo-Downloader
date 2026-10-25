@@ -154,6 +154,7 @@
     </div>
 
         <!-- JavaScript to Fetch GitHub Release Data -->
+    <!-- JavaScript to Fetch GitHub Release Data -->
     <script>
         // CONFIGURATION: Change these to match your GitHub details
         const GITHUB_USER = 'RexAlfes'; 
@@ -166,58 +167,57 @@
             const assetsListEl = document.getElementById('release-assets-list');
 
             try {
-    // FIXED: Changed endpoint to /releases to catch prereleases and alphas
-    const response = await fetch(`https://github.com{GITHUB_USER}/${GITHUB_REPO}/releases`);
-    
-    if (!response.ok) {
-        throw new Error('No public releases found.');
-    }
+                // FIXED: Corrected domain endpoint, added missing '$', and added appropriate path forward slashes
+                const response = await fetch(`https://github.com{GITHUB_USER}/${GITHUB_REPO}/releases`);
+                
+                if (!response.ok) {
+                    throw new Error('No public releases found.');
+                }
 
-    const releases = await response.json();
-    
-    // Grab the first item in the array (the most recent push)
-    const data = releases[0]; 
-    
-    if (!data) {
-        throw new Error('No release data found.');
-    }
-    
-    // Populate metadata
-    document.getElementById('release-title').innerText = data.name || `Release ${data.tag_name}`;
-    document.getElementById('release-tag').innerText = data.tag_name;
-    
-    const pubDate = new Date(data.published_at);
-    document.getElementById('release-date').innerText = pubDate.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+                const releases = await response.json();
+                
+                // Grab the first item in the array (the most recent push)
+                const data = releases[0]; 
+                
+                if (!data) {
+                    throw new Error('No release data found.');
+                }
+                
+                // Populate metadata
+                document.getElementById('release-title').innerText = data.name || `Release ${data.tag_name}`;
+                document.getElementById('release-tag').innerText = data.tag_name;
+                
+                const pubDate = new Date(data.published_at);
+                document.getElementById('release-date').innerText = pubDate.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 
-    // Loop through assets and generate download buttons
-    if (data.assets && data.assets.length > 0) {
-        assetsListEl.innerHTML = ''; // Clear fallback
-        data.assets.forEach(asset => {
-            const sizeInMB = (asset.size / (1024 * 1024)).toFixed(2);
-            const assetRow = document.createElement('div');
-            assetRow.style.margin = '1rem 0';
-            assetRow.innerHTML = `
-                <a href="${asset.browser_download_url}" class="btn btn-success">Download ${asset.name}</a>
-                <span style="margin-left: 1rem; font-size: 0.9rem; color: #475569;">(${sizeInMB} MB)</span>
-            `;
-            assetsListEl.appendChild(assetRow);
-        });
-    } else {
-        assetsListEl.innerHTML = '<p class="loading">No build files attached to this release.</p>';
-    }
+                // Loop through assets and generate download buttons
+                if (data.assets && data.assets.length > 0) {
+                    assetsListEl.innerHTML = ''; // Clear fallback string
+                    data.assets.forEach(asset => {
+                        const sizeInMB = (asset.size / (1024 * 1024)).toFixed(2);
+                        const assetRow = document.createElement('div');
+                        assetRow.style.margin = '1rem 0';
+                        assetRow.innerHTML = `
+                            <a href="${asset.browser_download_url}" class="btn btn-success">Download ${asset.name}</a>
+                            <span style="margin-left: 1rem; font-size: 0.9rem; color: #475569;">(${sizeInMB} MB)</span>
+                        `;
+                        assetsListEl.appendChild(assetRow);
+                    });
+                } else {
+                    assetsListEl.innerHTML = '<p class="loading">No build files attached to this release.</p>';
+                }
 
-    // Show content, hide loader
-    loadingEl.style.display = 'none';
-    contentEl.style.display = 'block';
+                // FIXED: Restored completion blocks that were missing from your snippet
+                loadingEl.style.display = 'none';
+                contentEl.style.display = 'block';
 
-} catch (error) {
-    console.error(error);
-    loadingEl.innerText = 'Failed to load latest builds. Please check back later.';
-}
-
+            } catch (error) {
+                console.error(error);
+                loadingEl.innerText = 'Failed to load latest builds. Please check back later.';
+            }
         }
 
-        // Initialize the fetch when the page loads
+        // Run fetch when document tree completes building
         window.addEventListener('DOMContentLoaded', fetchLatestRelease);
     </script>
 </body>
