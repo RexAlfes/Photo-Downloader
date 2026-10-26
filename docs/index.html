@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Photo Downloader - Open Source Photo Ingest for Windows</title>
-    <meta name="description" content="Photo Downloader is a free, open source (GPL v3) Windows desktop tool that copies photos from memory cards and folders, renames them with tokens and sorts them into job-code folders. Built with Lazarus and Free Pascal.">
+    <title>Photo Downloader - Open Source Photo Ingest for Windows and Linux</title>
+    <meta name="description" content="Photo Downloader is a free, open source (GPL v3) desktop tool for Windows and Linux that copies photos from memory cards and folders, verifies the copies, renames them with tokens and sorts them into job-code folders. Built with Lazarus and Free Pascal.">
     <style>
         :root {
             --bg-color: #f8f9fa;
@@ -104,7 +104,7 @@
     <header>
         <span class="badge">Pre-Release</span>
         <h1>Photo Downloader</h1>
-        <p>A free, open source Windows desktop tool that copies photos from memory cards and folders, renames them from templates and files them into job-code folders. Built with Lazarus &amp; Free Pascal.</p>
+        <p>A free, open source desktop tool for Windows and Linux that copies photos from memory cards and folders, checks every copy, renames them from templates and files them into job-code folders. Built with Lazarus &amp; Free Pascal.</p>
         <a href="#download" class="btn">Get Latest Release</a>
     </header>
 
@@ -113,7 +113,8 @@
         <section id="download">
             <h2>Latest Download</h2>
             <p>Builds are compiled from the Lazarus project in the repository and attached to each
-               <a href="https://github.com/RexAlfes/Photo-Downloader/releases" target="_blank" rel="noopener">GitHub release</a>.
+               <a href="https://github.com/RexAlfes/Photo-Downloader/releases" target="_blank" rel="noopener">GitHub release</a>:
+               a <strong>Windows 64-bit</strong> build and a <strong>Linux 64-bit</strong> build. Pick the file for your system.
                This is pre-release software: keep your original files until you have checked the copies.</p>
 
             <div class="release-box" id="release-container">
@@ -144,8 +145,8 @@
             <div class="grid">
                 <div class="card">
                     <h3>&#9889; Native Desktop App</h3>
-                    <p>Compiled with Lazarus 4.8 / Free Pascal 3.2.2 into a single Windows executable. No runtime, no installer
-                       framework and no background services.</p>
+                    <p>Compiled with Lazarus 4.8 / Free Pascal 3.2.2 into a single executable for Windows 64-bit or Linux 64-bit.
+                       No runtime, no installer framework and no background services.</p>
                 </div>
                 <div class="card">
                     <h3>&#127991;&#65039; Token Renaming</h3>
@@ -159,8 +160,8 @@
                 </div>
                 <div class="card">
                     <h3>&#128247; JPEG, RAW, TIFF &amp; DNG</h3>
-                    <p>Thumbnails and a viewer for JPEG, PNG, BMP, TIFF and DNG, and for the embedded previews in NEF, NRW, CR2,
-                       CRW, ARW, SR2, SRF and other RAW files.</p>
+                    <p>Thumbnails and a viewer for JPEG, PNG, BMP, GIF, TIFF, DNG, HEIC and AVIF, and for the embedded previews in
+                       NEF, NRW, CR2, CRW, ARW, SR2, SRF and other RAW files. Sortable list view with column headings.</p>
                 </div>
                 <div class="card">
                     <h3>&#128230; Metadata Output</h3>
@@ -170,7 +171,18 @@
                 <div class="card">
                     <h3>&#128737;&#65039; Careful Deleting</h3>
                     <p>Files are only deleted from the card after they have been downloaded and the copy is confirmed to
-                       exist in the destination.</p>
+                       exist in the destination. Deleted files go to the Recycle Bin or system trash, or to a hidden trash
+                       folder on the card that you can view and empty from the File menu.</p>
+                </div>
+                <div class="card">
+                    <h3>&#9989; Verified Copy &amp; Backup</h3>
+                    <p>Every copy is read back and its checksum compared with the original; a bad copy is deleted and retried.
+                       An optional second copy can go to a backup folder. Cancel mid-file and resume later.</p>
+                </div>
+                <div class="card">
+                    <h3>&#128260; Lossless Auto-Rotate</h3>
+                    <p>Portrait JPEGs, including progressive ones, are turned upright from their EXIF orientation without
+                       recompressing, so there is no quality loss.</p>
                 </div>
             </div>
         </section>
@@ -178,18 +190,28 @@
         <section>
             <h2>Known Limitations</h2>
             <ul class="plain">
-                <li>Windows is the primary platform. Card-reader detection, eject and the single-instance option are Windows only.</li>
-                <li>Direct USB camera (PTP/MTP) download, GPS geotagging, MD5-verified copy and lossless auto-rotate are not implemented yet.</li>
-                <li>Compressed (LZW/Deflate) TIFF files without a JPEG preview show a placeholder instead of a thumbnail.</li>
+                <li>Windows is the primary platform. The Linux build has been tested on Linux Mint 22.3 (XFCE, GTK 3); other distributions and the Qt widgetset are untested.</li>
+                <li>The single-instance option is Windows only.</li>
+                <li>Direct USB camera (PTP/MTP) download, GPS geotagging, a download history and RAW+JPEG pairing are not implemented yet.</li>
+                <li>Video and audio files are still in development and are switched off by default.</li>
             </ul>
+        </section>
+
+        <section id="linux">
+            <h2>Running on Linux</h2>
+            <p>Download the Linux 64-bit file from the release, unpack it and run <code>PhotoDownloader</code>. You need the GTK
+               libraries that come with most desktops, plus <code>udisks2</code> and <code>gio</code> (package
+               <code>libglib2.0-bin</code>) for card eject and the system trash, and <code>xdg-open</code> for
+               &ldquo;show in folder&rdquo;. Settings are kept in <code>~/.config/PhotoDownloader/</code> and the thumbnail cache in
+               <code>~/.cache/PhotoDownloader/</code>. To build it yourself, see <code>docs/Linux_Build.md</code> in the repository.</p>
         </section>
 
         <section>
             <h2>How to Help Test</h2>
             <p>Feedback from real photography workflows is what this project needs most. If you find an EXIF, thumbnail or
                naming problem, open an issue and describe the camera and file type. For thumbnail problems, attach
-               <code>thumbnail.log</code> from the Photo Downloader folder inside your local application data folder
-               (<code>%LOCALAPPDATA%</code>).</p>
+               <code>thumbnail.log</code>: use Help &gt; Save log file&hellip; in the program, or find it in the Photo Downloader
+               folder inside <code>%LOCALAPPDATA%</code> on Windows or <code>~/.config/PhotoDownloader/</code> on Linux.</p>
             <a href="https://github.com/RexAlfes/Photo-Downloader/issues" target="_blank" rel="noopener">Open a GitHub Issue &rarr;</a>
         </section>
 
@@ -277,7 +299,10 @@
                         const link = document.createElement('a');
                         link.className = 'btn btn-success';
                         link.href = asset.browser_download_url;
-                        link.textContent = `Download ${asset.name}`;
+                        const lower = asset.name.toLowerCase();
+                        const platform = lower.includes('linux') ? 'Linux 64-bit'
+                            : (lower.includes('win') || lower.endsWith('.exe')) ? 'Windows 64-bit' : '';
+                        link.textContent = platform ? `Download for ${platform} (${asset.name})` : `Download ${asset.name}`;
 
                         const size = document.createElement('span');
                         size.className = 'asset-size';
