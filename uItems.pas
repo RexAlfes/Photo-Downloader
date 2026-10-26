@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Contnrs, Math, StrUtils, DateUtils, Graphics, FPReadJPEG,
-  LazFileUtils, md5, uSettings, uExif, uHeic, uRotate;
+  LazFileUtils, md5, uSettings, uExif, uHeic, uRotate, uTiffRead;
 
 type
   TItemStatus = (isNew, isDownloaded, isNameClash, isDuplicate);
@@ -27,6 +27,8 @@ type
     Status: TItemStatus;
     Selected: Boolean;
     DestPath: string;
+    NoDelete: Boolean;              // a backup copy failed: keep the original on the card
+    BackupPath: string;
     ClashInfo: string;              // why the item is flagged as a name clash
     DateKey: string;                // 'yyyy/mm/dd'
     Thumb: TBitmap;
@@ -46,11 +48,18 @@ var
 procedure ScanFolder(const Root: string; S: TAppSettings; Items: TObjectList;
   Progress: TScanProgress);
 procedure EvaluateItems(Items: TObjectList; S: TAppSettings);
+const
+  BlankJobMark = '{no job}';        // stored in DateJobCodes for a date whose job code is blank
+
 function JobCodeFor(S: TAppSettings; Item: TImageItem): string;
 function ComputeDest(S: TAppSettings; Item: TImageItem; SeqDown, SeqSess: Integer): string;
 function ExampleDest(S: TAppSettings; const DirMask, NameMask, Job: string): string;
 function UniqueName(const Dest: string): string;
 procedure EnsureThumb(Item: TImageItem; Box: Integer);
+{ Frees an item's thumbnail again (it is rendered anew, or read from the disk cache, when needed) }
+procedure ReleaseThumb(Item: TImageItem);
+{ True for file types that are slow to decode (HEIC, AVIF, TIFF, DNG) }
+function ThumbIsHeavy(const FileName: string): Boolean;
 { Turns the bitmap upright for an EXIF orientation of 2..8; Bmp may be replaced. }
 procedure OrientBitmap(var Bmp: TBitmap; Orient: Integer);
 { Builds a bitmap (at most MaxSide pixels on the long side) from the uncompressed
@@ -60,6 +69,23 @@ function LoadTiffBitmap(const FileName: string; MaxSide: Integer; Bmp: TBitmap):
 function TiffRgbIsLarger(const FileName: string; W, H: Integer): Boolean;
 procedure LogThumb(const Msg: string);
 function CopyFileStream(const Src, Dst: string): Boolean;
+type
+  TCopyResult = (crOk, crFailed, crVerifyFailed, crCanceled);
+var
+  { Called every few hundred KB while copying or verifying (keeps the window alive) }
+  CopyPump: TThreadMethod = nil;
+  { Set to True from CopyPump to stop the running copy }
+  CopyAbort: Boolean = False;
+{ Copies Src to Dst. The MD5 of the source is computed while it is read. With Verify the copy is
+  read back and compared. On any failure the incomplete or wrong copy is deleted. }
+function CopyFileChecked(const Src, Dst: string; Verify: Boolean; out Hash: string;
+  out Err: string): TCopyResult;
+{ MD5 of a file as 32 hex characters; '' if it cannot be read }
+function HashOfFile(const FileName: string): string;
+{ Folder for the backup copy of an item (own folder template, same patterns), with the file
+  name of the main copy }
+function BackupDestFor(S: TAppSettings; Item: TImageItem; SeqDown, SeqSess: Integer;
+  const MainDest: string): string;
 function FormatSize(Size: Int64): string;
 
 implementation
@@ -68,17 +94,26 @@ implementation
 const
   AttrHidden = $02;   // portable copies of faHidden / faSysFile
   AttrSystem = $04;
-  ImageExts = ';.jpg;.jpeg;.jpe;.png;.tif;.tiff;.bmp;.nef;.nrw;.cr2;.cr3;.crw;' +
+  ImageExts = ';.jpg;.jpeg;.jpe;.png;.gif;.tif;.tiff;.bmp;.nef;.nrw;.cr2;.cr3;.crw;' +
               '.arw;.srf;.sr2;.dng;.orf;.raf;.rw2;.pef;.srw;.raw;.heic;.heif;.avif;' +
               '.mp4;.mov;.lrv;.mp3;.thm;';
   TiffExts = ';.tif;.tiff;.dng;';
   RawExts = ';.nef;.nrw;.cr2;.cr3;.crw;.arw;.srf;.sr2;.dng;.orf;.raf;.rw2;.pef;.srw;.raw;';
   ExifExts = ';.jpg;.jpeg;.jpe;.tif;.tiff;.nef;.nrw;.cr2;.cr3;.heic;.heif;.avif;.crw;.arw;.sr2;.dng;.pef;.srw;';
 
+var
+  { Items that currently hold a thumbnail, oldest first. Every thumbnail is a Windows bitmap
+    handle and a process may only own about 10,000 of them, so only the newest ones are kept. }
+  ThumbLru: TList = nil;
+
+const
+  ThumbKeepMax = 1200;
+
 { TImageItem }
 
 destructor TImageItem.Destroy;
 begin
+  if Assigned(ThumbLru) then ThumbLru.Remove(Self);
   Thumb.Free;
   inherited Destroy;
 end;
@@ -237,7 +272,12 @@ var
 begin
   Result := V;
   for I := 1 to Length(Result) do
-    if Result[I] in ['\', '/', ':', '*', '?', '"', '<', '>', '|'] then
+    if WinSafeNamesOn then
+    begin
+      if Result[I] in ['\', '/', ':', '*', '?', '"', '<', '>', '|', #0..#31] then
+        Result[I] := '_';
+    end
+    else if Result[I] in ['/', #0] then      // Linux only forbids the path separator
       Result[I] := '_';
 end;
 
@@ -392,7 +432,33 @@ end;
 function JobCodeFor(S: TAppSettings; Item: TImageItem): string;
 begin
   Result := S.DateJobCodes.Values[Item.DateKey];
-  if Result = '' then Result := S.JobCode;
+  if Result = BlankJobMark then
+    Result := ''                    // this date was given a blank job code on purpose
+  else if Result = '' then
+    Result := S.JobCode;
+end;
+
+{ A blank job code leaves separators behind ("2026-10-25-"); remove them. }
+function TidyBlankJob(const S: string): string;
+var
+  I: Integer;
+begin
+  Result := S;
+  for I := 1 to 3 do
+  begin
+    Result := StringReplace(Result, '--', '-', [rfReplaceAll]);
+    Result := StringReplace(Result, '__', '_', [rfReplaceAll]);
+    Result := StringReplace(Result, ' -', '-', [rfReplaceAll]);
+    Result := StringReplace(Result, '- ', '-', [rfReplaceAll]);
+    Result := StringReplace(Result, '-' + PathDelim, PathDelim, [rfReplaceAll]);
+    Result := StringReplace(Result, '_' + PathDelim, PathDelim, [rfReplaceAll]);
+    Result := StringReplace(Result, PathDelim + '-', PathDelim, [rfReplaceAll]);
+    Result := StringReplace(Result, PathDelim + '_', PathDelim, [rfReplaceAll]);
+  end;
+  while (Result <> '') and (Result[Length(Result)] in ['-', '_', ' ']) do
+    Delete(Result, Length(Result), 1);
+  while (Result <> '') and (Result[1] in ['-', '_', ' ']) do
+    Delete(Result, 1, 1);
 end;
 
 function BuildDest(S: TAppSettings; Item: TImageItem; const DirMask, NameMask, Job: string;
@@ -402,6 +468,11 @@ var
 begin
   Dir := ExpandTokens(NormMask(DirMask), Item, Job, SeqDown, SeqSess, S);
   Nm := ExpandTokens(NormMask(NameMask), Item, Job, SeqDown, SeqSess, S);
+  if Job = '' then
+  begin
+    Dir := TidyBlankJob(Dir);
+    Nm := TidyBlankJob(Nm);
+  end;
   Ext := ExtractFileExt(Item.FileName);
   if S.RenameJpe and SameText(Ext, '.jpe') then Ext := '.jpg';
   if S.LowerExt then Ext := LowerCase(Ext);
@@ -718,7 +789,7 @@ const
 
 function ThumbCacheName(Item: TImageItem; Box: Integer): string;
 begin
-  Result := ConfigDir + 'thumbcache' + PathDelim + MD5Print(MD5String(
+  Result := CacheDir + 'thumbcache' + PathDelim + MD5Print(MD5String(
     ThumbCacheVersion + '|' + LowerCase(Item.FullPath) + '|' + IntToStr(Item.Size) + '|' +
     FloatToStr(Item.FileTime) + '|' + IntToStr(Box))) + '.jpg';
 end;
@@ -755,7 +826,7 @@ var
   J: TJPEGImage;
 begin
   try
-    ForceDirectoriesUTF8(ConfigDir + 'thumbcache');
+    ForceDirectoriesUTF8(CacheDir + 'thumbcache');
     J := TJPEGImage.Create;
     try
       J.Assign(Item.Thumb);
@@ -769,7 +840,32 @@ begin
   end;
 end;
 
-procedure EnsureThumb(Item: TImageItem; Box: Integer);
+{ 1 = TIFF, 2 = JPEG, 0 = anything else, judged by the first bytes of the file }
+function SniffFileKind(const FileName: string): Integer;
+var
+  F: TFileStream;
+  B: array[0..3] of Byte;
+begin
+  Result := 0;
+  {$PUSH}{$HINTS OFF}FillChar(B, SizeOf(B), 0);{$POP}
+  try
+    F := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);
+    try
+      if F.Read(B[0], 4) < 4 then Exit;
+    finally
+      F.Free;
+    end;
+    if ((B[0] = $49) and (B[1] = $49) and (B[2] = $2A) and (B[3] = 0)) or
+       ((B[0] = $4D) and (B[1] = $4D) and (B[2] = 0) and (B[3] = $2A)) then
+      Result := 1
+    else if (B[0] = $FF) and (B[1] = $D8) then
+      Result := 2;
+  except
+    Result := 0;
+  end;
+end;
+
+procedure EnsureThumbCore(Item: TImageItem; Box: Integer);
 var
   Heavy: Boolean;
   Ext: string;
@@ -781,10 +877,13 @@ var
   Deep: Boolean;
   Sc: Double;
   Bmp: TBitmap;
+  TiffErr: string;
+  Sniff: Integer;
 begin
   W := 0;
   H := 0;
   Deep := True;
+  TiffErr := '';
   if Item.ThumbTried then Exit;
   Item.ThumbTried := True;
   Ext := LowerCase(ExtractFileExt(Item.FileName));
@@ -860,15 +959,52 @@ begin
             Exit;
           end;
           FreeAndNil(Bmp);
+          // compressed or 1-bit TIFF (scans, LZW, fax ...): the general TIFF reader
+          Bmp := TBitmap.Create;
+          TiffErr := '';
+          if LoadTiffThumb(Item.FullPath, Box, Bmp, TiffErr) then
+          begin
+            if Pos(';' + Ext + ';', HeicExts) = 0 then OrientBitmap(Bmp, Item.Orientation);
+            Item.Thumb := Bmp;
+            Bmp := nil;
+            if Heavy then SaveCachedThumb(Item, Box);
+            Exit;
+          end;
+          FreeAndNil(Bmp);
         end;
         if G = nil then
-          LogThumb(Item.FileName + ': no usable preview or thumbnail image found');
+          LogThumb(Item.FileName + ': no usable preview or thumbnail image found' +
+            IfThen(TiffErr <> '', ' (' + TiffErr + ')', ''));
       end
-      else if (Ext = '.png') or (Ext = '.bmp') then
+      else if (Ext = '.png') or (Ext = '.bmp') or (Ext = '.gif') then
       begin
-        Pic := TPicture.Create;
-        Pic.LoadFromFile(Item.FullPath);
-        G := Pic.Graphic;
+        Sniff := SniffFileKind(Item.FullPath);
+        if Sniff = 1 then
+        begin
+          // a TIFF with a .png/.bmp name
+          Bmp := TBitmap.Create;
+          if LoadTiffThumb(Item.FullPath, Box, Bmp, TiffErr) then
+          begin
+            Item.Thumb := Bmp;
+            Bmp := nil;
+            Exit;
+          end;
+          FreeAndNil(Bmp);
+          LogThumb(Item.FileName + ': this is a TIFF file with a wrong extension (' + TiffErr + ')');
+        end
+        else if Sniff = 2 then
+        begin
+          // a JPEG with a .png/.bmp name
+          Jpg := TJPEGImage.Create;
+          Jpg.LoadFromFile(Item.FullPath);
+          G := Jpg;
+        end
+        else
+        begin
+          Pic := TPicture.Create;
+          Pic.LoadFromFile(Item.FullPath);
+          G := Pic.Graphic;
+        end;
       end
       else if Pos(';' + Ext + ';', HeicExts) > 0 then
       begin
@@ -914,6 +1050,37 @@ end;
 
 { ---- file copy ---- }
 
+function ThumbIsHeavy(const FileName: string): Boolean;
+var
+  Ext: string;
+begin
+  Ext := LowerCase(ExtractFileExt(FileName));
+  Result := (Pos(';' + Ext + ';', HeicExts) > 0) or (Pos(';' + Ext + ';', TiffExts) > 0);
+end;
+
+procedure ReleaseThumb(Item: TImageItem);
+begin
+  if ThumbLru <> nil then ThumbLru.Remove(Item);
+  FreeAndNil(Item.Thumb);
+  Item.ThumbTried := False;
+end;
+
+procedure EnsureThumb(Item: TImageItem; Box: Integer);
+var
+  Old: TImageItem;
+begin
+  if Item.ThumbTried then Exit;
+  EnsureThumbCore(Item, Box);
+  if Item.Thumb = nil then Exit;
+  if ThumbLru = nil then ThumbLru := TList.Create;
+  ThumbLru.Add(Item);
+  while ThumbLru.Count > ThumbKeepMax do
+  begin
+    Old := TImageItem(ThumbLru[0]);
+    ReleaseThumb(Old);
+  end;
+end;
+
 function CopyFileStream(const Src, Dst: string): Boolean;
 const
   BufSize = 262144;
@@ -950,5 +1117,136 @@ begin
   if not Result then
     DeleteFileUTF8(Dst);
 end;
+
+function HashOfFile(const FileName: string): string;
+const
+  BufSize = 262144;
+var
+  F: TFileStream;
+  Buf: Pointer;
+  N: LongInt;
+  Ctx: TMD5Context;
+  Dig: TMD5Digest;
+begin
+  Result := '';
+  GetMem(Buf, BufSize);
+  try
+    try
+      F := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);
+      try
+        MD5Init(Ctx);
+        repeat
+          N := F.Read(Buf^, BufSize);
+          if N > 0 then MD5Update(Ctx, Buf^, N);
+          if Assigned(CopyPump) then CopyPump;
+          if CopyAbort then Exit;
+        until N <= 0;
+        MD5Final(Ctx, Dig);
+        Result := MD5Print(Dig);
+      finally
+        F.Free;
+      end;
+    except
+      Result := '';
+    end;
+  finally
+    FreeMem(Buf);
+  end;
+end;
+
+function CopyFileChecked(const Src, Dst: string; Verify: Boolean; out Hash: string;
+  out Err: string): TCopyResult;
+const
+  BufSize = 262144;
+var
+  FI, FO: TFileStream;
+  Buf: Pointer;
+  N: LongInt;
+  Ctx: TMD5Context;
+  Dig: TMD5Digest;
+  Back: string;
+begin
+  Result := crFailed;
+  Hash := '';
+  Err := '';
+  GetMem(Buf, BufSize);
+  try
+    try
+      FI := TFileStream.Create(Src, fmOpenRead or fmShareDenyWrite);
+      try
+        FO := TFileStream.Create(Dst, fmCreate);
+        try
+          MD5Init(Ctx);
+          repeat
+            N := FI.Read(Buf^, BufSize);
+            if N > 0 then
+            begin
+              MD5Update(Ctx, Buf^, N);
+              FO.WriteBuffer(Buf^, N);
+            end;
+            if Assigned(CopyPump) then CopyPump;
+            if CopyAbort then
+            begin
+              Result := crCanceled;
+              Break;
+            end;
+          until N <= 0;
+          MD5Final(Ctx, Dig);
+          Hash := MD5Print(Dig);
+        finally
+          FO.Free;
+        end;
+      finally
+        FI.Free;
+      end;
+      if Result = crCanceled then
+        Err := 'canceled'
+      else if FileSizeUtf8(Dst) <> FileSizeUtf8(Src) then
+        Err := 'the copy has a different size than the original'
+      else if Verify then
+      begin
+        Back := HashOfFile(Dst);
+        if CopyAbort then
+          Result := crCanceled
+        else if Back = '' then
+        begin
+          Result := crVerifyFailed;
+          Err := 'the copy could not be read back';
+        end
+        else if Back <> Hash then
+        begin
+          Result := crVerifyFailed;
+          Err := 'checksum of the copy (' + Back + ') differs from the original (' + Hash + ')';
+        end
+        else
+          Result := crOk;
+      end
+      else
+        Result := crOk;
+    except
+      on E: Exception do
+      begin
+        Result := crFailed;
+        Err := E.Message;
+      end;
+    end;
+  finally
+    FreeMem(Buf);
+  end;
+  if Result <> crOk then
+    DeleteFileUTF8(Dst);
+end;
+
+function BackupDestFor(S: TAppSettings; Item: TImageItem; SeqDown, SeqSess: Integer;
+  const MainDest: string): string;
+var
+  P: string;
+begin
+  P := BuildDest(S, Item, S.BackupDir, S.FileNameMask, JobCodeFor(S, Item), SeqDown, SeqSess);
+  Result := ExtractFilePath(P) + ExtractFileName(MainDest);
+end;
+
+finalization
+  FreeAndNil(ThumbLru);
 
 end.

@@ -9,16 +9,19 @@
 | Windows | `%LOCALAPPDATA%\<application name>\PhotoDownloader.ini` (normally `C:\Users\<you>\AppData\Local\...`) |
 | Linux | `~/.config/<application name>/PhotoDownloader.ini` |
 
-The exact path in use is shown in the **Status** dialog (line "Settings file:"). Other files in the same folder: `profiles\` (one `.ini` per saved user profile, same format as the main file) and `thumbnail.log` (diagnostics for pictures that could not be previewed, only written when a problem occurs).
+The exact path in use is shown in the **Status** dialog (line "Settings file:"). Other files in the same folder: `profiles\` (one `.ini` per saved user profile, same format as the main file) and `thumbnail.log` (diagnostics for pictures that could not be previewed and for copy failures; written when Help > Logging is on) and `thumbcache\` (cached HEIC, AVIF, TIFF and DNG thumbnails).
 
 **Format.** Each key below is read with the shown default when it is missing, so a missing or deleted file simply restores the defaults. True/False values are written as `1` and `0`. Unknown keys are ignored. Delete the file (with the program closed) to reset all settings.
 
 | Section | Key | Type | Default | Meaning |
 |---|---|---|---|---|
 | `[Path]` | `DownloadDir` | text | `Pictures\Photo Downloader\{Y}\{Y}-{m}-{D}-{J}\` in the user's home folder | Destination folder template (tokens such as {Y} {m} {D} {J}) |
-| `[Path]` | `FileNameMask` | text | RA{Y}{m}{D}-{r} | File name template |
+| `[Path]` | `FileNameMask` | text | {o} | File name template ({o} = the original file name) |
 | `[Path]` | `JobCode` | text | {Job Name} | Current job code |
 | `[Path]` | `PromptJobCode` | True/False | 1 | Prompt for the job code every time the program is run |
+| `[Path]` | `VerifyCopy` | True/False | 1 | Read every copy back and compare checksums |
+| `[Path]` | `BackupEnabled` | True/False | 0 | Also save a second copy to the backup folder |
+| `[Path]` | `BackupDir` | text | (empty) | Backup folder template (same tokens as DownloadDir) |
 | `[Path]` | `SeqStart` | number | 1 | First sequence number |
 | `[Path]` | `SeqNext` | number | 1 | Next sequence number |
 | `[General]` | `SourceMode` | number | 0 | Source: 0 automatic, 1 camera, 2 card reader |
@@ -29,6 +32,7 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 | `[General]` | `PromptProfile` | True/False | 0 | Prompt for a user profile at startup |
 | `[General]` | `IgnoreSizeCheck` | True/False | 1 | Ignore file size check (for images modified after downloading) |
 | `[General]` | `AutoRotate` | True/False | 1 | Auto-rotate downloaded JPEGs losslessly |
+| `[General]` | `WinSafeNames` | True/False | 1 | Replace characters Windows cannot store in file names (used on Linux; always on in Windows) |
 | `[General]` | `RenameJpe` | True/False | 0 | Rename .jpe to .jpg |
 | `[General]` | `Logging` | True/False | 1 | Write diagnostics to `thumbnail.log` (Help > Logging) |
 | `[General]` | `LowerName` | True/False | 0 | Lower-case file names |
@@ -54,6 +58,8 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 | `[Automation]` | `AutoPrompt` | True/False | 1 | Prompt before starting the auto sequence |
 | `[Automation]` | `AutoDownload` | True/False | 0 | Download files when the application is started |
 | `[Automation]` | `AutoDelete` | True/False | 0 | Delete files from the card after downloading |
+| `[Automation]` | `SafeDelete` | True/False | 1 | Safe delete: deleting from the source moves files to the Recycle Bin (fixed disks) or a hidden trash folder on the same drive (cards, USB, network) instead of erasing them |
+| `[Automation]` | `SafeDeleteFolder` | text | $trash.bin | Name of the hidden trash folder created at the drive root on cards, USB and network drives |
 | `[Automation]` | `AutoSoftEject` | True/False | 0 | Soft eject the card reader media |
 | `[Automation]` | `AutoLaunch` | True/False | 0 | Launch the app associated with the custom button |
 | `[Automation]` | `AutoExit` | True/False | 0 | Exit the program |
@@ -66,7 +72,7 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 | `[View]` | `ShowDuplicates` | True/False | 1 | Show duplicate images |
 | `[View]` | `ShowDateSelector` | True/False | 1 | Show the date / job code list |
 | `[View]` | `ThumbView` | number | 2 | View: 0 list, 1 small thumbnails, 2 large thumbnails (default) |
-| `[FileTypes]` | `Jpeg`, `Png`, `Bmp`, `Tiff`, `CanonRaw`, `NikonRaw`, `NikonNrw`, `SonyRaw`, `Dng`, `OtherRaw`, `Heic`, `Avif`, `Video`, `Audio`, `Thm` | True/False | 1 (Video, Audio, Thm: 0) | Show this file type (View > File Types...). Groups: JPEG, PNG, BMP, TIFF, Canon RAW (cr2 cr3 crw), Nikon RAW (nef), Nikon Coolpix RAW (nrw), Sony RAW (arw srf sr2), DNG, other RAW (orf raf rw2 pef srw raw), HEIC/HEIF, AVIF, video (mp4 mov lrv), audio (mp3), THM. Hidden types are not listed and not downloaded |
+| `[FileTypes]` | `Jpeg`, `Png`, `Bmp`, `Gif`, `Tiff`, `CanonRaw`, `NikonRaw`, `NikonNrw`, `SonyRaw`, `Dng`, `OtherRaw`, `Heic`, `Avif`, `Video`, `Audio`, `Thm` | True/False | 1 (Video, Audio, Thm: 0) | Show this file type (View > File Types...). Groups: JPEG, PNG, BMP, TIFF, Canon RAW (cr2 cr3 crw), Nikon RAW (nef), Nikon Coolpix RAW (nrw), Sony RAW (arw srf sr2), DNG, other RAW (orf raf rw2 pef srw raw), HEIC/HEIF, AVIF, video (mp4 mov lrv), audio (mp3), THM. Hidden types are not listed and not downloaded |
 
 **List sections.** These hold lists, stored as `Count=N` followed by `Item0`, `Item1` ... `Item(N-1)`:
 

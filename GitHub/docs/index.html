@@ -158,14 +158,19 @@
                        name clashes, and tells you why a file is flagged.</p>
                 </div>
                 <div class="card">
-                    <h3>&#128247; JPEG, RAW, TIFF &amp; DNG</h3>
-                    <p>Thumbnails and a viewer for JPEG, PNG, BMP, TIFF and DNG, and for the embedded previews in NEF, NRW, CR2,
+                    <h3>&#128247; JPEG, RAW, TIFF, HEIC &amp; DNG</h3>
+                    <p>Thumbnails and a viewer for JPEG, PNG, BMP, TIFF (compressed, palette and fax scans too), HEIC, AVIF and DNG, and for the embedded previews in NEF, NRW, CR2,
                        CR3, CRW, ARW, SR2, SRF and other RAW files.</p>
                 </div>
                 <div class="card">
                     <h3>&#128230; Metadata Output</h3>
                     <p>Writes XMP sidecars from your IPTC/XMP details and can add author and copyright to JPEG EXIF fields
                        that are empty. Existing values are never overwritten.</p>
+                </div>
+                <div class="card">
+                    <h3>&#9989; Verified Copy &amp; Backup</h3>
+                    <p>Each copy is read back and checked against the original, and an optional second copy can go to a
+                       backup folder. A file whose backup failed is never offered for deletion.</p>
                 </div>
                 <div class="card">
                     <h3>&#128737;&#65039; Careful Deleting</h3>
@@ -181,8 +186,8 @@
                 <li>Photo Downloader is a 64-bit Windows program. A 32-bit build is not provided at this time; request one through the <a href="https://github.com/RexAlfes/Photo-Downloader/issues" target="_blank" rel="noopener">GitHub testing process</a> or the online testing form.</li>
                 <li>Windows is the primary platform. Card-reader detection, eject and the single-instance option are Windows only.</li>
                 <li>In development: video and audio files. HEIC pictures are supported out of the box.</li>
-                <li>Direct USB camera (PTP/MTP) download, GPS geotagging, MD5-verified copy and auto-rotate of progressive JPEGs are not implemented yet.</li>
-                <li>Compressed (LZW/Deflate) TIFF files without a JPEG preview show a placeholder instead of a thumbnail.</li>
+                <li>Direct USB camera (PTP/MTP) download, GPS geotagging and auto-rotate of progressive JPEGs are not implemented yet.</li>
+                <li>JPEG-compressed, planar, floating point and BigTIFF files show a placeholder instead of a thumbnail.</li>
             </ul>
         </section>
 

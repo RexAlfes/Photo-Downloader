@@ -18,7 +18,7 @@
       <UseVersionInfo Value="True"/>
       <AutoIncrementBuild Value="True"/>
       <MinorVersionNr Value="1"/>
-      <BuildNr Value="38"/>
+      <BuildNr Value="52"/>
       <StringTable FileDescription="Photo Downloader" ProductName="Photo Downloader"/>
     </VersionInfo>
     <BuildModes>
@@ -92,6 +92,14 @@
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
+        <Filename Value="uSafeDel.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="uTiffRead.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
         <Filename Value="uMain.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>
@@ -121,20 +129,7 @@
       </Options>
     </Linking>
     <Other>
-      <CustomOptions Value="-g -gl"/>
+      <CustomOptions Value="-g -gl -vm5023 03 -Xs -XX"/>
     </Other>
   </CompilerOptions>
-  <Debugging>
-    <Exceptions>
-      <Item>
-        <Name Value="EAbort"/>
-      </Item>
-      <Item>
-        <Name Value="ECodetoolError"/>
-      </Item>
-      <Item>
-        <Name Value="EFOpenError"/>
-      </Item>
-    </Exceptions>
-  </Debugging>
 </CONFIG>

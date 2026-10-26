@@ -7,7 +7,7 @@ interface
 uses
   Classes, SysUtils, Contnrs, Math, Forms, Controls, Graphics, Dialogs, Menus,
   ExtCtrls, StdCtrls, ComCtrls, LCLType, LCLIntf, LazFileUtils,
-  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uSingle, uRotate;
+  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uSingle, uRotate, uSafeDel;
 
 type
   TMainForm = class(TForm)
@@ -26,6 +26,7 @@ type
     FProgLbl, FProgLbl2: TLabel;
     FProgBar2: TProgressBar;
     FTimer: TTimer;
+    FLastTick: QWord;
     FPopup: TPopupMenu;
     miPopView, miPopLocation, miPopProps, miPopDownload, miPopDelete: TMenuItem;
     miAuto, miEject, miShowDown, miShowDup, miList, miSmall, miLarge, miDateSel, miLogging: TMenuItem;
@@ -69,6 +70,9 @@ type
     procedure PopLocationClick(Sender: TObject);
     procedure PopPropsClick(Sender: TObject);
     procedure OpenItem(Sender: TObject; Index: Integer);
+    procedure HeaderClick(Sender: TObject; Col: Integer);
+    procedure ViewTrashClick(Sender: TObject);
+    procedure EmptyTrashClick(Sender: TObject);
     function CanDeleteSource(It: TImageItem): Boolean;
     procedure DateMouseDown(Sender: TObject; Button: TMouseButton; Shift: TShiftState;
       X, Y: Integer);
@@ -90,6 +94,7 @@ type
     procedure DateSelChange(Sender: TObject; User: Boolean);
     procedure ViewSelChange(Sender: TObject);
     procedure ProgCancelClick(Sender: TObject);
+    procedure CopyTick;
     procedure OpenSourceClick(Sender: TObject);
     procedure ProfileLoadClick(Sender: TObject);
     procedure ProfileSaveClick(Sender: TObject);
@@ -153,6 +158,14 @@ begin
   Position := poScreenCenter;
   ClientWidth := 1100;
   ClientHeight := 700;
+  // small screens (for example 1366x768): keep the window inside the work area
+  {$IFDEF WINDOWS}
+  if ClientHeight > Screen.WorkAreaHeight - 80 then ClientHeight := Screen.WorkAreaHeight - 80;
+  {$ELSE}
+  // some Linux desktops report the whole screen as work area although a panel covers part of it
+  if ClientHeight > Screen.WorkAreaHeight - 150 then ClientHeight := Screen.WorkAreaHeight - 150;
+  {$ENDIF}
+  if ClientWidth > Screen.WorkAreaWidth - 20 then ClientWidth := Screen.WorkAreaWidth - 20;
   FS := TAppSettings.Create;
   FS.LoadFromFile(SettingsFileName);
   LogEnabled := FS.LoggingOn;
@@ -209,6 +222,8 @@ begin
   AddMenu(MFile, 'Status', @StatusClick, 0);
   AddMenu(MFile, 'Preferences', @PrefsClick, ShortCut(VK_P, [ssCtrl]));
   AddMenu(MFile, 'Export Settings', @ExportClick, 0);
+  AddMenu(MFile, 'View Trash', @ViewTrashClick, 0);
+  AddMenu(MFile, 'Empty Trash...', @EmptyTrashClick, 0);
   AddMenu(MFile, '-', nil, 0);
   miAuto := AddMenu(MFile, 'Start Auto Sequence', @AutoClick, ShortCut(VK_F4, []));
   AddMenu(MFile, 'Refresh', @RefreshClick, ShortCut(VK_F5, []));
@@ -353,6 +368,7 @@ begin
   FView.BorderSpacing.Around := 4;
   FView.OnSelectionChange := @ViewSelChange;
   FView.OnOpenItem := @OpenItem;
+  FView.OnHeaderClick := @HeaderClick;
 
   // right click on an image: act on the selected image(s)
   FPopup := TPopupMenu.Create(Self);
@@ -481,7 +497,7 @@ procedure TMainForm.UpdateCaption;
 begin
   if FSourcePath = '' then
     Caption := AppTitle + ' - no image source'
-  else if ExcludeTrailingPathDelimiter(FSourcePath) = ExtractFileDrive(FSourcePath) then
+  else if ExcludeTrailingPathDelimiter(FSourcePath) = ExcludeTrailingPathDelimiter(MountPointOf(FSourcePath)) then
     Caption := AppTitle + ' - Cardreader ' + FSourcePath
   else
     Caption := AppTitle + ' - Folder ' + FSourcePath;
@@ -550,8 +566,11 @@ end;
 { ====================================================================== }
 
 procedure TMainForm.LoadSource(const Path: string);
+const
+  PrerenderKeep = 300;
 var
-  I: Integer;
+  I, Kept: Integer;
+  Heavy: Boolean;
   It: TImageItem;
 begin
   FSourcePath := Path;
@@ -586,16 +605,24 @@ begin
       begin
         HeicPump := True;
         FProgBar2.Max := Max(1, FItems.Count);
+        Kept := 0;
         for I := 0 to FItems.Count - 1 do
         begin
           if FCancel then Break;
           It := ItemAt(FItems, I);
           if not ItemVisible(It) then Continue;
+          Heavy := ThumbIsHeavy(It.FileName);
+          // ordinary pictures beyond the first screens are rendered when they scroll into view
+          if (not Heavy) and (Kept >= PrerenderKeep) then Continue;
           FProgBar2.Position := I;
           FProgLbl2.Caption := Format('Rendering thumbnails: %d of %d  %s',
             [I + 1, FItems.Count, It.FileName]);
           Application.ProcessMessages;
+          if FCancel then Break;
           EnsureThumb(It, 160);
+          // slow HEIC/AVIF/TIFF thumbnails are now in the disk cache; keep the picture only
+          // for the first screens so that thousands of files do not use up Windows handles
+          if Heavy and (Kept >= PrerenderKeep) then ReleaseThumb(It) else Inc(Kept);
         end;
       end;
     finally
@@ -614,7 +641,7 @@ procedure TMainForm.AutoDetectSource;
 var
   L: TStringList;
   I: Integer;
-  Root: string;
+  {$IFDEF WINDOWS}Root: string;{$ENDIF}
 begin
   case FS.SourceMode of
     smCamera:
@@ -623,6 +650,7 @@ begin
           'Use a card reader or File > Open Source Directory.');
       end;
     smCardReader:
+      {$IFDEF WINDOWS}
       for I := 1 to Length(FS.DriveLetters) do
         if FS.DriveLetters[I] in ['A'..'Z', 'a'..'z'] then
         begin
@@ -633,6 +661,23 @@ begin
             Exit;
           end;
         end;
+      {$ELSE}
+      begin
+        // Linux has no drive letters: use the mounted removable drive that holds a DCIM folder
+        L := TStringList.Create;
+        try
+          ListRemovableDrives(L);
+          for I := 0 to L.Count - 1 do
+            if DirectoryExistsUTF8(L[I] + 'DCIM') then
+            begin
+              LoadSource(L[I]);
+              Break;
+            end;
+        finally
+          L.Free;
+        end;
+      end;
+      {$ENDIF}
   else
     L := TStringList.Create;
     try
@@ -686,6 +731,86 @@ begin
                  (not FS.TypeShown(It.FileName)));
 end;
 
+var
+  GSortCol: Integer = -1;       // list view heading the pictures are sorted by (-1 = card order)
+  GSortDesc: Boolean = False;
+
+function CompareVisible(A, B: Pointer): Integer;
+var
+  X, Y: TImageItem;
+  D: Double;
+begin
+  X := TImageItem(A);
+  Y := TImageItem(B);
+  case GSortCol of
+    0: Result := CompareText(X.FileName, Y.FileName);
+    1:
+      begin
+        D := X.CaptureTime - Y.CaptureTime;
+        if D < 0 then Result := -1 else if D > 0 then Result := 1 else Result := 0;
+      end;
+    2: Result := CompareText(X.StatusText, Y.StatusText);
+    3: Result := CompareText(X.Camera, Y.Camera);
+    4: Result := CompareText(X.DestPath, Y.DestPath);
+  else
+    Result := 0;
+  end;
+  if GSortDesc then Result := -Result;
+  if Result = 0 then Result := X.Index - Y.Index;      // keep card order for equal values
+end;
+
+procedure TMainForm.ViewTrashClick(Sender: TObject);
+var
+  Dir: string;
+begin
+  Dir := FindTrashFolder(FSourcePath, FS.SafeDeleteFolder);
+  if Dir = '' then
+    MessageDlg(AppTitle, 'There is no trash folder (' + FS.SafeDeleteFolder + ') on the source drive.' +
+      #13#10'Files deleted from a fixed disk go to the Recycle Bin instead.', mtInformation, [mbOK], 0)
+  else
+    OpenDocument(Dir);
+end;
+
+procedure TMainForm.EmptyTrashClick(Sender: TObject);
+var
+  Dir: string;
+  N, Failed: Integer;
+  Bytes: Int64;
+begin
+  Dir := FindTrashFolder(FSourcePath, FS.SafeDeleteFolder);
+  if Dir = '' then
+  begin
+    MessageDlg(AppTitle, 'There is no trash folder (' + FS.SafeDeleteFolder + ') on the source drive.',
+      mtInformation, [mbOK], 0);
+    Exit;
+  end;
+  TrashStats(Dir, N, Bytes);
+  if MessageDlg(AppTitle, Format('Permanently erase %d file(s) (%.1f MB) from' + #13#10 + '%s ?' +
+    #13#10#13#10'This cannot be undone.', [N, Bytes / (1024 * 1024), Dir]), mtWarning, [mbYes, mbNo], 0) <> mrYes then Exit;
+  Screen.Cursor := crHourGlass;
+  try
+    EmptyTrashFolder(Dir, Failed);
+  finally
+    Screen.Cursor := crDefault;
+  end;
+  if Failed > 0 then
+    MessageDlg(AppTitle, Format('%d file(s) could not be erased.', [Failed]), mtError, [mbOK], 0)
+  else
+    SetStatus('Trash emptied.');
+end;
+
+procedure TMainForm.HeaderClick(Sender: TObject; Col: Integer);
+begin
+  if Col = GSortCol then
+    GSortDesc := not GSortDesc
+  else
+  begin
+    GSortCol := Col;
+    GSortDesc := False;
+  end;
+  ApplyFilter;
+end;
+
 procedure TMainForm.ApplyFilter;
 var
   I: Integer;
@@ -697,9 +822,17 @@ begin
     It := ItemAt(FItems, I);
     if ItemVisible(It) then FVisible.Add(It);
   end;
+  if GSortCol >= 0 then FVisible.Sort(@CompareVisible);
+  FView.SortCol := GSortCol;
+  FView.SortDesc := GSortDesc;
   FView.SetItems(FVisible);
   UpdateStatus;
   SyncDateHighlight;
+end;
+
+function CompareByIndex(A, B: Pointer): Integer;
+begin
+  Result := TImageItem(A).Index - TImageItem(B).Index;
 end;
 
 procedure TMainForm.GetDownloadList(L: TList);
@@ -721,6 +854,7 @@ begin
     if AnySel and (not It.Selected) then Continue;
     if It.Status in [isNew, isNameClash] then L.Add(It);
   end;
+  if GSortCol >= 0 then L.Sort(@CompareByIndex);   // downloads and sequence numbers follow card order
 end;
 
 procedure TMainForm.DateSelChange(Sender: TObject; User: Boolean);
@@ -817,12 +951,18 @@ begin
         Keys.Add(FDateKeys[J]);
     Job := '';
     if Keys.Count > 0 then Job := FS.DateJobCodes.Values[Keys[0]];
-    if Job = '' then Job := FS.JobCode;
+    if Job = BlankJobMark then
+      Job := ''
+    else if Job = '' then
+      Job := FS.JobCode;
     if ExecuteJobCode(FS, Job, FCamera) then
     begin
       if Keys.Count > 0 then
         for J := 0 to Keys.Count - 1 do
-          FS.DateJobCodes.Values[Keys[J]] := Job     // only the chosen dates
+          if Job = '' then
+            FS.DateJobCodes.Values[Keys[J]] := BlankJobMark   // blank on purpose
+          else
+            FS.DateJobCodes.Values[Keys[J]] := Job     // only the chosen dates
       else
       begin
         FS.JobCode := Job;
@@ -1010,12 +1150,14 @@ function TMainForm.PostProcess(It: TImageItem; const Dest: string): Boolean;
 var
   SL: TStringList;
   Names: TStringList;
-  BDir, ParentDir: string;
+  ParentDir: string;
   I: Integer;
 begin
   Result := True;
   // lossless turn first, so the owner fields are written into the final file
-  if FS.AutoRotate and It.IsJpeg then AutoRotateJpegFile(Dest);
+  if FS.AutoRotate and It.IsJpeg then
+    if AutoRotateJpegFile(Dest) < 0 then
+      LogThumb(It.FileName + ': could not be turned upright (' + RotateLastError + ')');
   if FS.WriteExifOwner and It.IsJpeg then
     Result := WriteExifOwnerFields(Dest, FS.ExifAuthor, FS.ExifCopyright);
 
@@ -1041,14 +1183,6 @@ begin
   if FS.AddIptc and (FS.Iptc.Count > 0) then
     WriteXmp(Dest);
 
-  if FS.PluginEnabled('Backup') then
-  begin
-    BDir := FS.PluginOpts.Values['Backup'];
-    if BDir <> '' then
-      if ForceDirectoriesUTF8(BDir) then
-        CopyFileStream(Dest, IncludeTrailingPathDelimiter(BDir) + ExtractFileName(Dest));
-  end;
-
   if FS.PluginEnabled('Directory Maker') and (FS.PluginOpts.Values['Directory Maker'] <> '') then
   begin
     Names := TStringList.Create;
@@ -1070,6 +1204,18 @@ begin
     FileSetAttrUTF8(Dest, FileGetAttrUTF8(Dest) or faReadOnly);
 end;
 
+procedure TMainForm.CopyTick;
+var
+  T: QWord;
+begin
+  // keeps the progress window responsive during long copies; Cancel stops the copy
+  T := GetTickCount64;
+  if T - FLastTick < 80 then Exit;
+  FLastTick := T;
+  Application.ProcessMessages;
+  if FCancel then CopyAbort := True;
+end;
+
 procedure TMainForm.ProgCancelClick(Sender: TObject);
 begin
   FCancel := True;
@@ -1088,6 +1234,8 @@ begin
   FProg := TForm.CreateNew(Self);
   FProg.Caption := ACaption;
   FProg.BorderStyle := bsDialog;
+  FProg.PopupParent := Self;           // stays above the main window (needed on Linux)
+  FProg.PopupMode := pmExplicit;
   FProg.Position := poMainFormCenter;
   FProg.ClientWidth := 440;
   FProgLbl := TLabel.Create(FProg);
@@ -1140,12 +1288,15 @@ var
   I, Done, Skipped, Failed, Problems, ExifFail: Integer;
   TotalKb, DoneKb: Int64;
   It: TImageItem;
-  Dest, Msg: string;
+  Dest, Msg, Hash, Err, BDest, BHash, BErr: string;
   UniqueMode: Boolean;
   R: TModalResult;
+  CR: TCopyResult;
+  Attempt, BackupFail, Verified: Integer;
 begin
   Result := False;
   Done := 0; Skipped := 0; Failed := 0; Problems := 0; ExifFail := 0;
+  BackupFail := 0; Verified := 0;
   UniqueMode := False;
   Msg := '';
   L := TList.Create;
@@ -1210,11 +1361,74 @@ begin
           Inc(Failed);
           Break;
         end;
-        if not CopyFileStream(It.FullPath, Dest) then
+        // copy (and read back to compare checksums); one retry before giving up
+        CopyAbort := False;
+        CopyPump := @CopyTick;
+        Attempt := 0;
+        repeat
+          Inc(Attempt);
+          if FS.VerifyCopy then
+            FProgLbl.Caption := Format('Copying and verifying %d of %d: %s  (%s)',
+              [I + 1, L.Count, It.FileName, FormatSize(It.Size)]);
+          CR := CopyFileChecked(It.FullPath, Dest, FS.VerifyCopy, Hash, Err);
+          if CR = crOk then Break;
+          LogThumb('copy failed (' + IntToStr(Attempt) + '): ' + It.FullPath + ' -> ' + Dest + ': ' + Err);
+        until (CR = crCanceled) or (Attempt >= 2);
+        if CR = crCanceled then Break;
+        if CR <> crOk then
         begin
           Msg := 'Could not copy:'#13#10 + It.FullPath + #13#10'to'#13#10 + Dest;
+          if Err <> '' then Msg := Msg + #13#10#13#10 + Err;
+          if CR = crVerifyFailed then
+            Msg := Msg + #13#10#13#10'The bad copy was deleted. The original is untouched.';
           Inc(Failed);
           Break;
+        end;
+        if FS.VerifyCopy then Inc(Verified);
+        It.NoDelete := False;
+        It.BackupPath := '';
+        // second copy, made from the verified download before it is changed by rotation or metadata
+        if FS.BackupOn and (Trim(FS.BackupDir) <> '') then
+        begin
+          BDest := BackupDestFor(FS, It, FS.SeqNext, FSession + 1, Dest);
+          CR := crFailed;
+          BErr := 'could not create the backup folder';
+          if ForceDirectoriesUTF8(ExtractFilePath(BDest)) then
+          begin
+            if FileExistsUTF8(BDest) then
+            begin
+              // an identical file is already there (e.g. an earlier run); otherwise keep both
+              if HashOfFile(BDest) = Hash then
+                CR := crOk
+              else
+                BDest := UniqueName(BDest);
+            end;
+            if CR <> crOk then
+            begin
+              Attempt := 0;
+              repeat
+                Inc(Attempt);
+                FProgLbl.Caption := Format('Backup copy %d of %d: %s', [I + 1, L.Count, It.FileName]);
+                CR := CopyFileChecked(Dest, BDest, FS.VerifyCopy, BHash, BErr);
+                if CR = crOk then Break;
+                LogThumb('backup copy failed (' + IntToStr(Attempt) + '): ' + BDest + ': ' + BErr);
+              until (CR = crCanceled) or (Attempt >= 2);
+            end;
+          end;
+          if CR = crCanceled then
+          begin
+            It.NoDelete := True;
+            Break;
+          end;
+          if CR = crOk then
+            It.BackupPath := BDest
+          else
+          begin
+            Inc(BackupFail);
+            It.NoDelete := True;       // never offer to delete an original that is not backed up
+            if BackupFail = 1 then
+              Msg := 'The backup copy of this file failed:'#13#10 + It.FullPath + #13#10 + BErr;
+          end;
         end;
         if not PostProcess(It, Dest) then Inc(ExifFail);
         It.Status := isDownloaded;
@@ -1228,6 +1442,8 @@ begin
         FProgBar.Position := Integer(Min(DoneKb, Int64(FProgBar.Max)));
       end;
     finally
+      CopyPump := nil;
+      CopyAbort := False;
       HideProgress;
     end;
   finally
@@ -1246,8 +1462,17 @@ begin
       SetStatus(Format('%d file(s) downloaded, %d skipped.', [Done, Skipped]))
     else
       SetStatus(Format('%d file(s) downloaded.', [Done]));
+    if Verified > 0 then
+      SetStatus(lblStatus.Caption + Format(' %d verified.', [Verified]));
     if ExifFail > 0 then
       SetStatus(lblStatus.Caption + Format(' Author/copyright could not be written to %d file(s).', [ExifFail]));
+    if BackupFail > 0 then
+    begin
+      SetStatus(lblStatus.Caption + Format(' %d backup copy(ies) FAILED.', [BackupFail]));
+      MessageDlg(AppTitle, Format('%d file(s) could not be copied to the backup folder.'#13#10 +
+        'They stay in the download folder, but will not be offered for deletion from the image source.'#13#10#13#10, [BackupFail]) + Msg,
+        mtWarning, [mbOK], 0);
+    end;
   end;
   Result := (Failed = 0) and (not FCancel);
 end;
@@ -1256,7 +1481,8 @@ function TMainForm.CanDeleteSource(It: TImageItem): Boolean;
 begin
   // a source file may only be removed once it has been downloaded
   // and the copy really exists in the destination
-  Result := (It.Status = isDownloaded) and (It.DestPath <> '') and FileExistsUTF8(It.DestPath);
+  Result := (It.Status = isDownloaded) and (not It.NoDelete) and (It.DestPath <> '') and
+    FileExistsUTF8(It.DestPath);
 end;
 
 procedure TMainForm.DeleteFiles(OnlyDownloaded, Silent: Boolean);
@@ -1265,8 +1491,10 @@ var
   I, Fail, Kept: Integer;
   It: TImageItem;
   AnySel: Boolean;
-  Msg: string;
+  Msg, Where, LastWhere: string;
+  Ok: Boolean;
 begin
+  LastWhere := '';
   L := TList.Create;
   E := TList.Create;
   try
@@ -1303,7 +1531,12 @@ begin
         'Each one has been checked to exist in the destination.', [E.Count]);
       if Kept > 0 then
         Msg := Msg + #13#10 + Format('%d selected file(s) have not been downloaded and will be kept.', [Kept]);
-      Msg := Msg + #13#10#13#10'This cannot be undone.';
+      if FS.SafeDelete then
+        Msg := Msg + #13#10#13#10'Safe delete is on. The files are moved to the Recycle Bin,' +
+          #13#10'or, on a card or other removable drive, to a hidden' +
+          #13#10'trash folder (' + FS.SafeDeleteFolder + ') on the same drive.'
+      else
+        Msg := Msg + #13#10#13#10'This cannot be undone.';
       if MessageDlg(AppTitle, Msg, mtWarning, [mbYes, mbNo], 0) <> mrYes then Exit;
     end;
     Fail := 0;
@@ -1311,8 +1544,18 @@ begin
     begin
       It := TImageItem(E[I]);
       if It.IsReadOnly then FileSetAttrUTF8(It.FullPath, 0);
-      if DeleteFileUTF8(It.FullPath) then
+      if FS.SafeDelete then
+        Ok := SafeDeleteFile(It.FullPath, FS.SafeDeleteFolder, Where)
+      else
+      begin
+        Ok := DeleteFileUTF8(It.FullPath);
+        Where := '';
+      end;
+      if Ok then
+      begin
+        if Where <> '' then LastWhere := Where;
         FItems.Remove(It)          // the list owns and frees the item
+      end
       else
         Inc(Fail);
     end;
@@ -1320,6 +1563,8 @@ begin
       ItemAt(FItems, I).Index := I + 1;
     RebuildDates;
     ApplyFilter;
+    if (LastWhere <> '') and (Fail = 0) then
+      SetStatus(Format('%d file(s) moved to %s.', [E.Count, LastWhere]));
     if Fail > 0 then
       MessageDlg(AppTitle, Format('%d file(s) could not be deleted.', [Fail]), mtError, [mbOK], 0);
   finally
@@ -1334,14 +1579,17 @@ var
 begin
   Result := False;
   if FSourcePath = '' then Exit;
-  Root := ExtractFileDrive(FSourcePath);
-  if Root = '' then
+  Root := MountPointOf(FSourcePath);
+  {$IFDEF WINDOWS}
+  if Root = '' then       // Windows: any drive letter may be ejected, as before
+  {$ELSE}
+  if (Root = '') or (not IsRemovableMount(Root)) then
+  {$ENDIF}
   begin
     if not Silent then
       MessageDlg(AppTitle, 'The current source is not a removable drive.', mtInformation, [mbOK], 0);
     Exit;
   end;
-  Root := Root + PathDelim;
   if EjectDrive(Root) then
   begin
     FItems.Clear;
@@ -1404,7 +1652,8 @@ end;
 procedure TMainForm.StartupTimer(Sender: TObject);
 var
   L: TStringList;
-  Choice: string;
+  Choice, Job, Src: string;
+  Picked, Asked: Boolean;
 begin
   FTimer.Enabled := False;
   FixThumbWidth;
@@ -1414,18 +1663,38 @@ begin
     L := TStringList.Create;
     try
       ListProfiles(L);
-      if (L.Count > 0) and ChooseFromList('User Profiles', 'Select a profile to load:', L, Choice) then
-      begin
-        FS.LoadFromFile(ProfilesDir + Choice + '.ini');
-        ApplyState;
-      end;
+      // "Default" always exists: it keeps the settings as they are (no profile file needed)
+      if L.IndexOf('Default') < 0 then L.Insert(0, 'Default');
+      if ChooseFromList('User Profiles', 'Select a profile to load:', L, Choice) then
+        if FileExistsUTF8(ProfilesDir + Choice + '.ini') then
+        begin
+          FS.LoadFromFile(ProfilesDir + Choice + '.ini');
+          FS.PromptProfile := True;       // a profile must not switch the prompt off
+          ApplyState;
+        end;
     finally
       L.Free;
     end;
   end;
-  if FS.PromptJobCode then AskJobCode;
+  Src := '';
+  if FS.LoadLastAtStartup then Src := FS.LastSource;
+  Picked := False;
+  Asked := False;
+  if FS.PromptJobCode then
+  begin
+    Job := FS.JobCode;
+    // the start-up job code window also asks for the source folder
+    if ExecuteJobCodeSource(FS, Job, Src, FCamera) then
+    begin
+      FS.JobCode := Job;
+      Asked := True;
+      Picked := Trim(Src) <> '';
+    end;
+  end;
   // nothing is scanned at start-up unless the user asked for it
-  if FS.LoadLastAtStartup and (FS.LastSource <> '') and DirectoryExistsUTF8(FS.LastSource) then
+  if Picked and DirectoryExistsUTF8(Src) then
+    LoadSource(Src)
+  else if (not Asked) and FS.LoadLastAtStartup and (FS.LastSource <> '') and DirectoryExistsUTF8(FS.LastSource) then
     LoadSource(FS.LastSource)
   else if FS.AutoAtStartup then
     AutoDetectSource
@@ -1482,7 +1751,9 @@ procedure TMainForm.ProfileLoadClick(Sender: TObject);
 var
   L: TStringList;
   Choice: string;
+  PromptWas: Boolean;
 begin
+  PromptWas := FS.PromptProfile;
   L := TStringList.Create;
   try
     ListProfiles(L);
@@ -1494,6 +1765,7 @@ begin
     if ChooseFromList('Load User Profile', 'Select a profile to load:', L, Choice) then
     begin
       FS.LoadFromFile(ProfilesDir + Choice + '.ini');
+      FS.PromptProfile := PromptWas;      // a profile must not change the start-up prompt setting
       SaveSettingsNow;
       ApplyState;
       Reevaluate;

@@ -10,8 +10,9 @@ unit uRotate;
   As jpegtran -trim does, up to 15 pixel rows/columns that do not fill a complete
   block are dropped on the edge that ends up mirrored.
 
-  Supported: baseline/extended sequential JPEG, 8 bit, 1 or 3 components, one scan,
-  restart markers. Anything else (progressive, CMYK, ...) is left untouched. }
+  Supported: baseline/extended sequential and progressive JPEG, 8 bit, 1 or 3 components,
+  restart markers. A progressive file is written back as a sequential file (same picture,
+  slightly different file size). Anything else (CMYK, arithmetic coding, 12 bit, ...) is left untouched. }
 
 interface
 
@@ -23,6 +24,10 @@ function AutoRotateJpegFile(const FileName: string): Integer;
   the pixel (X, Y) of a W x H picture ends up. }
 procedure OrientDims(Orient, W, H: Integer; out NW, NH: Integer);
 procedure OrientPoint(Orient, W, H, X, Y: Integer; out NX, NY: Integer);
+
+var
+  { Why the last AutoRotateJpegFile call returned -1 (empty when it did not) }
+  RotateLastError: string = '';
 
 implementation
 
@@ -305,10 +310,11 @@ type
     Dri, W, H, NComp, DataPos, NScan: Integer;
     Comp: array[0..2] of TComp;
     ScanId, ScanTd, ScanTa: array[0..2] of Integer;
-    HaveSof: Boolean;
+    HaveSof, Progressive: Boolean;
     function Orientation: Integer;
     procedure Parse;
     procedure DecodeScan;
+    procedure DecodeProgressive;
     procedure Transform(Orient: Integer; out Transposed: Boolean);
     procedure Encode(Dest: TStream; Transposed: Boolean);
   private
@@ -442,6 +448,7 @@ begin
   Dri := 0;
   NComp := 0;
   HaveSof := False;
+  Progressive := False;
   for I := 0 to 3 do HaveDqt[I] := False;
   for Tc := 0 to 1 do
     for Th := 0 to 3 do Dht[Tc, Th].Ok := False;
@@ -480,8 +487,9 @@ begin
         Inc(Q, 64);
       end;
     end
-    else if (M = $C0) or (M = $C1) then
+    else if (M = $C0) or (M = $C1) or (M = $C2) then
     begin
+      Progressive := (M = $C2);
       if D[Body] <> 8 then raise EJpegRot.Create('not 8 bit');
       H := U16At(D, Body + 1);
       W := U16At(D, Body + 3);
@@ -498,7 +506,7 @@ begin
       end;
       HaveSof := True;
     end
-    else if (M = $C2) or (M = $C3) or ((M >= $C5) and (M <= $CF) and (M <> $C8) and (M <> $CC) and (M <> $C4)) then
+    else if (M = $C3) or ((M >= $C5) and (M <= $CF) and (M <> $C8) and (M <> $CC) and (M <> $C4)) then
       raise EJpegRot.Create('unsupported JPEG type')
     else if M = $C4 then
     begin
@@ -520,6 +528,11 @@ begin
     begin
       if not HaveSof then raise EJpegRot.Create('no frame header');
       Ns := D[Body];
+      if Progressive then
+      begin
+        DataPos := P;                // DecodeProgressive starts at this scan header
+        Exit;
+      end;
       if Ns <> NComp then raise EJpegRot.Create('several scans');
       NScan := Ns;
       for I := 0 to Ns - 1 do
@@ -544,6 +557,11 @@ var
   Diff, V: Integer;
   Found: Boolean;
 begin
+  if Progressive then
+  begin
+    DecodeProgressive;
+    Exit;
+  end;
   Mw := 8 * HMax;
   Mh := 8 * VMax;
   McuX := (W + Mw - 1) div Mw;
@@ -624,6 +642,300 @@ begin
               end;
             end;
       end;
+  finally
+    BR.Free;
+  end;
+end;
+
+{ Progressive JPEG: all scans (spectral selection and successive approximation) are decoded
+  into the same coefficient arrays that a sequential file fills; the picture is then turned and
+  written as an ordinary sequential file. Method of the Independent JPEG Group decoder. }
+procedure TRotator.DecodeProgressive;
+var
+  Mw, Mh, McuX, McuY, CI, Cur, I, P, M, L, Body, Q, N, Tc, Th, Ns, Ss, Se, Ah, Al: Integer;
+  MX, MY, VI, HI, McuCount, BlkW, BlkH, Base, T, EobRun, P1, M1, Z, Si: Integer;
+  ScanCi: array[0..3] of Integer;
+  Pred: array[0..3] of Integer;
+  BR: TBitReader;
+  Dc, Interleaved: Boolean;
+
+  function DecodeValue(Size: Integer): Integer;
+  begin
+    Result := BR.GetBits(Size);
+    if Result < (1 shl (Size - 1)) then Result := Result - (1 shl Size) + 1;
+  end;
+
+  procedure RefineCoef(Idx: Integer);
+  var
+    C: Integer;
+  begin
+    C := Comp[Cur].Coef[Idx];
+    if C <> 0 then
+      if BR.GetBit = 1 then
+        if (C and P1) = 0 then
+        begin
+          if C >= 0 then C := C + P1 else C := C + M1;
+          Comp[Cur].Coef[Idx] := SmallInt(C);
+        end;
+  end;
+
+  procedure DoBlock(BB: Integer; Ci2: Integer);
+  var
+    KK, RR, SSym, VV: Integer;
+  begin
+    Cur := Ci2;
+    if Dc then
+    begin
+      if Ah = 0 then
+      begin
+        T := BR.Decode(Dht[0, Comp[Cur].Td]);
+        if T > 11 then raise EJpegRot.Create('bad DC');
+        VV := 0;
+        if T > 0 then VV := DecodeValue(T);
+        Inc(Pred[Cur], VV);
+        Comp[Cur].Coef[BB] := SmallInt(Pred[Cur] * (1 shl Al));
+      end
+      else if BR.GetBit = 1 then
+        Comp[Cur].Coef[BB] := SmallInt(Comp[Cur].Coef[BB] or (1 shl Al));
+      Exit;
+    end;
+    if Ah = 0 then
+    begin
+      // first AC pass for a band of coefficients
+      if EobRun > 0 then
+      begin
+        Dec(EobRun);
+        Exit;
+      end;
+      KK := Ss;
+      while KK <= Se do
+      begin
+        VV := BR.Decode(Dht[1, Comp[Cur].Ta]);
+        RR := VV shr 4;
+        SSym := VV and 15;
+        if SSym <> 0 then
+        begin
+          Inc(KK, RR);
+          if KK > 63 then raise EJpegRot.Create('coefficient overflow');
+          Comp[Cur].Coef[BB + ZZ[KK]] := SmallInt(DecodeValue(SSym) * (1 shl Al));
+          Inc(KK);
+        end
+        else if RR = 15 then
+          Inc(KK, 16)
+        else
+        begin
+          EobRun := 1 shl RR;
+          if RR > 0 then Inc(EobRun, BR.GetBits(RR));
+          Dec(EobRun);
+          Break;
+        end;
+      end;
+      Exit;
+    end;
+    // refinement pass for a band of coefficients
+    KK := Ss;
+    if EobRun = 0 then
+    begin
+      while KK <= Se do
+      begin
+        VV := BR.Decode(Dht[1, Comp[Cur].Ta]);
+        RR := VV shr 4;
+        SSym := VV and 15;
+        if SSym <> 0 then
+        begin
+          if SSym <> 1 then raise EJpegRot.Create('bad refinement');
+          if BR.GetBit = 1 then SSym := P1 else SSym := M1;
+        end
+        else if RR <> 15 then
+        begin
+          EobRun := 1 shl RR;
+          if RR > 0 then Inc(EobRun, BR.GetBits(RR));
+          Break;
+        end;
+        repeat
+          Z := BB + ZZ[KK];
+          if Comp[Cur].Coef[Z] <> 0 then
+            RefineCoef(Z)
+          else
+          begin
+            Dec(RR);
+            if RR < 0 then Break;
+          end;
+          Inc(KK);
+        until KK > Se;
+        if (SSym <> 0) and (KK <= 63) then Comp[Cur].Coef[BB + ZZ[KK]] := SmallInt(SSym);
+        Inc(KK);
+      end;
+    end;
+    if EobRun > 0 then
+    begin
+      while KK <= Se do
+      begin
+        RefineCoef(BB + ZZ[KK]);
+        Inc(KK);
+      end;
+      Dec(EobRun);
+    end;
+  end;
+
+begin
+  Mw := 8 * HMax;
+  Mh := 8 * VMax;
+  McuX := (W + Mw - 1) div Mw;
+  McuY := (H + Mh - 1) div Mh;
+  for CI := 0 to NComp - 1 do
+  begin
+    Comp[CI].Bw := McuX * Comp[CI].H;
+    Comp[CI].Bh := McuY * Comp[CI].V;
+    N := Comp[CI].Bw * Comp[CI].Bh * 64;
+    SetLength(Comp[CI].Coef, N);
+    if N > 0 then FillChar(Comp[CI].Coef[0], N * SizeOf(SmallInt), 0);
+  end;
+  P := DataPos;
+  BR := TBitReader.Create;
+  try
+    BR.D := D;
+    while P + 2 <= Length(D) do
+    begin
+      if D[P] <> $FF then raise EJpegRot.Create('bad marker');
+      M := D[P + 1];
+      if M = $FF then
+      begin
+        Inc(P);
+        Continue;
+      end;
+      if M = $D9 then Break;                       // end of image
+      if (M = $D8) or ((M >= $D0) and (M <= $D7)) or (M = 1) then
+      begin
+        Inc(P, 2);
+        Continue;
+      end;
+      if P + 4 > Length(D) then raise EJpegRot.Create('truncated');
+      L := U16At(D, P + 2);
+      Body := P + 4;
+      if (L < 2) or (P + 2 + L > Length(D)) then raise EJpegRot.Create('bad segment');
+      if M = $C4 then
+      begin
+        Q := Body;
+        while Q + 17 <= P + 2 + L do
+        begin
+          Tc := D[Q] shr 4;
+          Th := D[Q] and 15;
+          N := 0;
+          for I := 0 to 15 do Inc(N, D[Q + 1 + I]);
+          if (Tc > 1) or (Th > 3) then raise EJpegRot.Create('unsupported DHT');
+          BuildDec(Dht[Tc, Th], D, Q + 1, Q + 17, N);
+          Inc(Q, 17 + N);
+        end;
+      end
+      else if M = $DD then
+        Dri := U16At(D, Body)
+      else if M = $DB then
+      begin
+        Q := Body;
+        while Q < P + 2 + L do
+        begin
+          if ((D[Q] shr 4) <> 0) or ((D[Q] and 15) > 3) or (Q + 65 > P + 2 + L) then
+            raise EJpegRot.Create('unsupported DQT');
+          Move(D[Q + 1], Dqt[D[Q] and 15, 0], 64);
+          HaveDqt[D[Q] and 15] := True;
+          Inc(Q, 65);
+        end;
+      end
+      else if M = $DA then
+      begin
+        Ns := D[Body];
+        if (Ns < 1) or (Ns > NComp) or (Body + 1 + Ns * 2 + 3 > Length(D)) then
+          raise EJpegRot.Create('bad scan');
+        for I := 0 to Ns - 1 do
+        begin
+          ScanCi[I] := -1;
+          for CI := 0 to NComp - 1 do
+            if Comp[CI].Id = D[Body + 1 + I * 2] then
+            begin
+              ScanCi[I] := CI;
+              Comp[CI].Td := D[Body + 2 + I * 2] shr 4;
+              Comp[CI].Ta := D[Body + 2 + I * 2] and 15;
+              if (Comp[CI].Td > 3) or (Comp[CI].Ta > 3) then raise EJpegRot.Create('bad scan');
+            end;
+          if ScanCi[I] < 0 then raise EJpegRot.Create('scan component missing');
+        end;
+        Ss := D[Body + 1 + Ns * 2];
+        Se := D[Body + 2 + Ns * 2];
+        Ah := D[Body + 3 + Ns * 2] shr 4;
+        Al := D[Body + 3 + Ns * 2] and 15;
+        Dc := (Ss = 0);
+        if (Se > 63) or (Se < Ss) or (Al > 13) or (Dc and (Se <> 0)) or ((not Dc) and (Ns <> 1)) then
+          raise EJpegRot.Create('bad scan parameters');
+        for I := 0 to Ns - 1 do
+        begin
+          if Dc and (Ah = 0) and (not Dht[0, Comp[ScanCi[I]].Td].Ok) then raise EJpegRot.Create('missing Huffman table');
+          if (not Dc) and (not Dht[1, Comp[ScanCi[I]].Ta].Ok) then raise EJpegRot.Create('missing Huffman table');
+        end;
+        P1 := 1 shl Al;
+        M1 := -P1;
+        for I := 0 to 3 do Pred[I] := 0;
+        EobRun := 0;
+        BR.Pos := P + 2 + L;
+        BR.Acc := 0;
+        BR.Cnt := 0;
+        Interleaved := (Ns > 1);
+        McuCount := 0;
+        if Interleaved then
+        begin
+          for MY := 0 to McuY - 1 do
+            for MX := 0 to McuX - 1 do
+            begin
+              if (Dri > 0) and (McuCount > 0) and ((McuCount mod Dri) = 0) then
+              begin
+                BR.Restart;
+                for I := 0 to 3 do Pred[I] := 0;
+                EobRun := 0;
+              end;
+              Inc(McuCount);
+              for Si := 0 to Ns - 1 do
+              begin
+                CI := ScanCi[Si];
+                for VI := 0 to Comp[CI].V - 1 do
+                  for HI := 0 to Comp[CI].H - 1 do
+                  begin
+                    Base := (((MY * Comp[CI].V + VI) * Comp[CI].Bw) + (MX * Comp[CI].H + HI)) * 64;
+                    DoBlock(Base, CI);
+                  end;
+              end;
+            end;
+        end
+        else
+        begin
+          CI := ScanCi[0];
+          // a single component covers only the blocks that hold real picture area
+          BlkW := (((W * Comp[CI].H + HMax - 1) div HMax) + 7) div 8;
+          BlkH := (((H * Comp[CI].V + VMax - 1) div VMax) + 7) div 8;
+          for MY := 0 to BlkH - 1 do
+            for MX := 0 to BlkW - 1 do
+            begin
+              if (Dri > 0) and (McuCount > 0) and ((McuCount mod Dri) = 0) then
+              begin
+                BR.Restart;
+                for I := 0 to 3 do Pred[I] := 0;
+                EobRun := 0;
+              end;
+              Inc(McuCount);
+              DoBlock((MY * Comp[CI].Bw + MX) * 64, CI);
+            end;
+        end;
+        // continue after the entropy-coded data: the next marker that is not a restart
+        P := BR.Pos;
+        while P + 1 < Length(D) do
+        begin
+          if (D[P] = $FF) and (D[P + 1] <> 0) and (D[P + 1] <> $FF) and
+             ((D[P + 1] < $D0) or (D[P + 1] > $D7)) then Break;
+          Inc(P);
+        end;
+        Continue;
+      end;
+      Inc(P, 2 + L);
+    end;
   finally
     BR.Free;
   end;
@@ -811,8 +1123,10 @@ var
   end;
 
 begin
+  {$PUSH}{$HINTS OFF}
   FillChar(Dc, SizeOf(Dc), 0);
   FillChar(Ac, SizeOf(Ac), 0);
+  {$POP}
   Mem := TMemoryStream.Create;
   BW := TBitWriter.Create;
   try
@@ -948,6 +1262,7 @@ var
   Age: LongInt;
 begin
   Result := -1;
+  RotateLastError := '';
   Rot := TRotator.Create;
   try
     try
@@ -997,6 +1312,7 @@ begin
       on E: Exception do
       begin
         DeleteFileUTF8(FileName + '.rot.tmp');
+        RotateLastError := E.ClassName + ': ' + E.Message;
         Result := -1;
       end;
     end;
