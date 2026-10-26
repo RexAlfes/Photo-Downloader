@@ -1,14 +1,14 @@
 # Photo Downloader
 
 [![License: GPL v3](https://img.shields.io/badge/license-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.html)
-![Status: alpha](https://img.shields.io/badge/status-alpha-yellow.svg)
+![Status: pre-release](https://img.shields.io/badge/status-pre-release-yellow.svg)
 
 A free, open source Windows desktop tool that copies photos from memory cards and folders,
 renames them from templates and files them into job-code folders. Written in Lazarus 4.8 / Free Pascal 3.2.2.
 
 Website: <https://rexalfes.github.io/Photo-Downloader/> | Downloads: <https://github.com/RexAlfes/Photo-Downloader/releases> | Issues: <https://github.com/RexAlfes/Photo-Downloader/issues>
 
-> **Alpha software.** Keep your original files until you have checked the copies.
+> **pre-release software.** Keep your original files until you have checked the copies.
 
 ## Features
 - Date / job-code list, thumbnail grid (small and large) and list view, image viewer, status line.
