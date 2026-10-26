@@ -6,9 +6,12 @@ interface
 
 uses
   Classes, SysUtils, Math, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
-  ComCtrls, CheckLst, Spin, Clipbrd, LCLType, LCLIntf, uSettings, uItems, uExif, uDrives, uVersion;
+  ComCtrls, CheckLst, Spin, Clipbrd, LCLType, LCLIntf, uSettings, uItems, uExif, uDrives, uVersion, uSafeDel;
 
 function ExecuteJobCode(S: TAppSettings; var Job: string; const CurrentCamera: string): Boolean;
+{ As ExecuteJobCode, with an extra 'Source folder' line (used at start-up). Source is the
+  folder to load; empty means load nothing. }
+function ExecuteJobCodeSource(S: TAppSettings; var Job, Source: string; const CurrentCamera: string): Boolean;
 function ExecutePreferences(S: TAppSettings; const CurrentCamera: string): Boolean;
 function ExecuteIptc(L: TStringList): Boolean;
 function ExecuteFileTypes(S: TAppSettings): Boolean;
@@ -297,20 +300,27 @@ type
     FS: TAppSettings;
     FCamera: string;
     cbJob: TComboBox;
-    edExample: TEdit;
+    edExample, edSource: TEdit;
     procedure UpdateExample(Sender: TObject);
     procedure DeleteClick(Sender: TObject);
     procedure PrefsClick(Sender: TObject);
+    procedure SourceBrowseClick(Sender: TObject);
   public
-    constructor CreateJob(AOwner: TComponent; AS_: TAppSettings; const AJob, ACamera: string);
+    constructor CreateJob(AOwner: TComponent; AS_: TAppSettings; const AJob, ACamera: string;
+      AskSource: Boolean = False; const ASource: string = '');
   end;
 
-constructor TJobForm.CreateJob(AOwner: TComponent; AS_: TAppSettings; const AJob, ACamera: string);
+constructor TJobForm.CreateJob(AOwner: TComponent; AS_: TAppSettings; const AJob, ACamera: string;
+  AskSource: Boolean; const ASource: string);
+var
+  BY: Integer;
 begin
   inherited CreateNew(AOwner);
   FS := AS_;
   FCamera := ACamera;
-  InitDialog(Self, 'Job Code', 388, 190);
+  BY := 148;
+  if AskSource then BY := 214;
+  InitDialog(Self, 'Job Code', 388, BY + 42);
   MkLabel(Self, 'Please enter the job code:', 10, 14);
   cbJob := MkCombo(Self, 10, 34, 296);
   cbJob.Items.Assign(FS.JobHistory);
@@ -320,9 +330,16 @@ begin
   MkLabel(Self, 'Example image name:', 10, 72);
   edExample := MkEdit(Self, 10, 92, 366);
   edExample.ReadOnly := True;
-  MkButton(Self, 'Preferences...', 10, 148, 90).OnClick := @PrefsClick;
-  MkButton(Self, 'OK', 206, 148, 80, mrOK).Default := True;
-  MkButton(Self, 'Cancel', 296, 148, 80, mrCancel).Cancel := True;
+  if AskSource then
+  begin
+    MkLabel(Self, 'Source folder (leave empty to choose later):', 10, 130);
+    edSource := MkEdit(Self, 10, 150, 330);
+    edSource.Text := ASource;
+    MkButton(Self, '...', 348, 149, 28).OnClick := @SourceBrowseClick;
+  end;
+  MkButton(Self, 'Preferences...', 10, BY, 90).OnClick := @PrefsClick;
+  MkButton(Self, 'OK', 206, BY, 80, mrOK).Default := True;
+  MkButton(Self, 'Cancel', 296, BY, 80, mrCancel).Cancel := True;
   ActiveControl := cbJob;
   UpdateExample(nil);
 end;
@@ -350,23 +367,54 @@ begin
   UpdateExample(nil);
 end;
 
+procedure TJobForm.SourceBrowseClick(Sender: TObject);
+var
+  D: TSelectDirectoryDialog;
+begin
+  D := TSelectDirectoryDialog.Create(Self);
+  try
+    D.Title := 'Select source folder';
+    if (edSource.Text <> '') and DirectoryExists(edSource.Text) then D.InitialDir := edSource.Text;
+    if D.Execute then edSource.Text := D.FileName;
+  finally
+    D.Free;
+  end;
+end;
+
+function RunJobDialog(S: TAppSettings; var Job, Source: string; const CurrentCamera: string;
+  Ask: Boolean): Boolean; forward;
+
 function ExecuteJobCode(S: TAppSettings; var Job: string; const CurrentCamera: string): Boolean;
+var
+  Dummy: string;
+begin
+  Dummy := '';
+  Result := RunJobDialog(S, Job, Dummy, CurrentCamera, False);
+end;
+
+function ExecuteJobCodeSource(S: TAppSettings; var Job, Source: string; const CurrentCamera: string): Boolean;
+begin
+  Result := RunJobDialog(S, Job, Source, CurrentCamera, True);
+end;
+
+function RunJobDialog(S: TAppSettings; var Job, Source: string; const CurrentCamera: string;
+  Ask: Boolean): Boolean;
 var
   F: TJobForm;
   V: string;
   I: Integer;
 begin
-  F := TJobForm.CreateJob(Application, S, Job, CurrentCamera);
+  F := TJobForm.CreateJob(Application, S, Job, CurrentCamera, Ask, Source);
   try
     Result := F.ShowModal = mrOK;
     if Result then
     begin
-      V := Trim(F.cbJob.Text);
-      if V = '' then V := '{Job Name}';
+      V := Trim(F.cbJob.Text);      // may be blank: the job code is then left out of names
       Job := V;
+      if Ask then Source := Trim(F.edSource.Text);
       I := S.JobHistory.IndexOf(V);
       if I >= 0 then S.JobHistory.Delete(I);
-      if V <> '{Job Name}' then S.JobHistory.Insert(0, V);
+      if (V <> '') and (V <> '{Job Name}') then S.JobHistory.Insert(0, V);
       while S.JobHistory.Count > 30 do S.JobHistory.Delete(S.JobHistory.Count - 1);
     end;
   finally
@@ -543,6 +591,11 @@ type
     // Download Path
     cbDir, cbFile, cbJob: TComboBox;
     chkPromptJob: TCheckBox;
+    chkVerify, chkBackup, chkSafeDel: TCheckBox;
+    edTrash: TEdit;
+    lblTrash: TLabel;
+    edBackup: TEdit;
+    btnBackupBrowse: TButton;
     seqStart: TSpinEdit;
     edExample: TEdit;
     // General
@@ -550,7 +603,8 @@ type
     edLetters: TEdit;
     chkPTP, chkReadOnly, chkPreserveRO, chkProfile, chkIgnoreSize, chkRotate, chkJpe,
     chkLowerName, chkLowerExt, chkStamp, chkSaveJobs, chkExifTxt, chkEject, chkWholeDisk,
-    chkIptc, chkPromptIptc, chkIIM, chkNef, chkExifOwner, chkLoadLast, chkSingle: TCheckBox;
+    chkIptc, chkPromptIptc, chkIIM, chkNef, chkExifOwner, chkLoadLast, chkSingle, chkWinSafe: TCheckBox;
+    lblLetters: TLabel;
     edAuthor, edCopyright: TEdit;
     // Automation
     chkAutoStart, chkAutoMenu, chkAutoPrompt, chkADownload, chkADelete, chkAEject,
@@ -578,11 +632,14 @@ type
     procedure FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure ExampleChange(Sender: TObject);
     procedure BrowseClick(Sender: TObject);
+    procedure BackupBrowseClick(Sender: TObject);
+    procedure BackupChange(Sender: TObject);
     procedure ResetClick(Sender: TObject);
     procedure TokensClick(Sender: TObject);
     procedure LocateClick(Sender: TObject);
     procedure GeneralChange(Sender: TObject);
     procedure AutoChange(Sender: TObject);
+    procedure SafeDelChange(Sender: TObject);
     procedure CustomChange(Sender: TObject);
     procedure CmdBrowseClick(Sender: TObject);
     procedure RefreshMaps(Sel: Integer);
@@ -678,9 +735,9 @@ begin
 
   MkLabel(TS, 'Filename:', 8, 62);
   cbFile := MkCombo(TS, 66, 58, 414);
-  cbFile.Items.Add('RA{Y}{m}{D}-{r}');
-  cbFile.Items.Add('{Y}{m}{D}-{t}-{o}');
   cbFile.Items.Add('{o}');
+  cbFile.Items.Add('{Y}{m}{D}-{t}-{o}');
+  cbFile.Items.Add('RA{Y}{m}{D}-{r}');
   cbFile.OnChange := @ExampleChange;
 
   MkLabel(TS, 'Job code {J}:', 8, 94);
@@ -708,6 +765,36 @@ begin
   MkLabel(TS, 'Example image', 8, 386);
   edExample := MkEdit(TS, 8, 406, 472);
   edExample.ReadOnly := True;
+
+  chkVerify := MkCheck(TS, 'Verify every copy (read it back and compare checksums)', 8, 446);
+  chkBackup := MkCheck(TS, 'Also save a second copy to a backup folder', 8, 474);
+  chkBackup.OnClick := @BackupChange;
+  MkLabel(TS, 'Backup directory (same patterns as above):', 26, 502);
+  edBackup := MkEdit(TS, 26, 522, 418);
+  btnBackupBrowse := MkButton(TS, '...', 452, 521, 28);
+  btnBackupBrowse.OnClick := @BackupBrowseClick;
+  MkLabel(TS, 'The backup is made from the verified download, before rotation or metadata changes.', 26, 550);
+end;
+
+procedure TPrefsForm.BackupChange(Sender: TObject);
+begin
+  edBackup.Enabled := chkBackup.Checked;
+  btnBackupBrowse.Enabled := chkBackup.Checked;
+end;
+
+procedure TPrefsForm.BackupBrowseClick(Sender: TObject);
+var
+  D: TSelectDirectoryDialog;
+begin
+  D := TSelectDirectoryDialog.Create(Self);
+  try
+    D.Title := 'Select backup directory';
+    if D.Execute then
+      edBackup.Text := IncludeTrailingPathDelimiter(D.FileName) +
+        '{Y}' + PathDelim + '{Y}-{m}-{D}-{J}' + PathDelim;
+  finally
+    D.Free;
+  end;
 end;
 
 procedure TPrefsForm.ExampleChange(Sender: TObject);
@@ -753,16 +840,20 @@ begin
   G := TGroupBox.Create(TS);
   G.Parent := TS;
   G.Caption := 'Image source';
-  G.SetBounds(6, 2, 482, 140);
+  G.SetBounds(6, 2, 482, 150);
   rbAuto := MkRadio(G, 'Auto-detect camera or card reader (used by Refresh and automation)', 10, 2);
   rbCamera := MkRadio(G, 'Camera (connected by USB)', 10, 26);
   rbCard := MkRadio(G, 'Card reader or external storage device', 10, 50);
-  MkLabel(G, 'Drive letter or letters:', 34, 84);
+  lblLetters := MkLabel(G, 'Drive letter or letters:', 34, 84);
   edLetters := MkEdit(G, 170, 80, 110);
+  {$IFNDEF WINDOWS}
+  lblLetters.Visible := False;       // Linux has no drive letters: removable drives are found from the mount list
+  edLetters.Visible := False;
+  {$ENDIF}
   MkButton(G, 'Locate card reader', 300, 78, 150).OnClick := @LocateClick;
   chkPTP := MkCheck(G, 'Disable PTP downloads', 10, 108);
 
-  Y := 148;
+  Y := 156;
   chkLoadLast := MkCheck(TS, 'Load the last used source folder at startup (otherwise nothing is scanned)', 8, Y);
   Inc(Y, 21);
   chkReadOnly := MkCheck(TS, 'Save files as read-only', 8, Y);
@@ -808,6 +899,12 @@ begin
   edCopyright := MkEdit(TS, 100, Y, 380);
   Inc(Y, 32);
   chkSingle := MkCheck(TS, 'Run only one copy of Photo Downloader at a time (applies at next start)', 8, Y);
+  chkWinSafe := MkCheck(TS, 'Windows-safe file names (replace characters such as : ? * " < > |)', 8, Y);
+  {$IFDEF WINDOWS}
+  chkWinSafe.Visible := False;       // Windows always applies these rules
+  {$ELSE}
+  chkSingle.Visible := False;        // single instance is not available on Linux yet
+  {$ENDIF}
 
   chkIptc.OnClick := @GeneralChange;
   chkExifOwner.OnClick := @GeneralChange;
@@ -839,10 +936,18 @@ begin
       ShowMessage('No card reader or removable drive was found.')
     else
     begin
+      {$IFDEF WINDOWS}
       Letters := '';
       for I := 0 to L.Count - 1 do
         Letters := Letters + Copy(L[I], 1, 1);
       edLetters.Text := Letters;
+      {$ELSE}
+      // Linux has no drive letters: list the mounted removable drives that were found
+      Letters := '';
+      for I := 0 to L.Count - 1 do
+        Letters := Letters + #13#10 + L[I];
+      ShowMessage('Removable drives found:' + Letters);
+      {$ENDIF}
       rbCard.Checked := True;
     end;
   finally
@@ -871,8 +976,19 @@ begin
   chkAEject := MkCheck(grpActions, '''Soft eject'' card reader media', 28, 58);
   chkALaunch := MkCheck(grpActions, 'Launch app associated with custom button', 28, 84);
   chkAExit := MkCheck(grpActions, 'Exit Downloader', 28, 110);
+  chkSafeDel := MkCheck(TS, 'Safe delete (Recycle Bin, or a hidden trash folder on cards)', 44, 376);
+  chkSafeDel.Width := 420;
+  chkSafeDel.OnClick := @SafeDelChange;
+  lblTrash := MkLabel(TS, 'Trash folder name on cards:', 64, 404);
+  edTrash := MkEdit(TS, 220, 400, 180);
   chkAutoStart.OnClick := @AutoChange;
   chkAutoMenu.OnClick := @AutoChange;
+end;
+
+procedure TPrefsForm.SafeDelChange(Sender: TObject);
+begin
+  edTrash.Enabled := chkSafeDel.Checked;
+  lblTrash.Enabled := chkSafeDel.Checked;
 end;
 
 procedure TPrefsForm.AutoChange(Sender: TObject);
@@ -1101,7 +1217,7 @@ begin
               'Different color profiles can be defined for each camera model.'#13#10 +
               '(Not yet implemented in this build.)'
     else if Nm = 'Backup' then
-      Info := 'Saves a second copy of every downloaded image to a backup folder.'
+      Info := 'Replaced by "Also save a second copy to a backup folder" on the Download Path tab.'
     else if Nm = 'Directory Maker' then
       Info := 'Creates extra sub-folders (for example Edit and Web) next to the download folder.'
     else if Nm = 'DNG Converter' then
@@ -1157,20 +1273,14 @@ procedure TPrefsForm.PluginSetupClick(Sender: TObject);
 var
   I: Integer;
   Nm, V: string;
-  D: TSelectDirectoryDialog;
 begin
   I := lbPlugins.ItemIndex;
   if I < 0 then Exit;
   Nm := FPlugins.Names[I];
   if Nm = 'Backup' then
   begin
-    D := TSelectDirectoryDialog.Create(Self);
-    try
-      D.Title := 'Select backup folder';
-      if D.Execute then FPluginOpts.Values['Backup'] := D.FileName;
-    finally
-      D.Free;
-    end;
+    ShowMessage('Backups are now set on the Download Path tab:'#13#10 +
+      '"Also save a second copy to a backup folder".');
   end
   else if Nm = 'Directory Maker' then
   begin
@@ -1192,6 +1302,10 @@ begin
     cbFile.Text := FS.FileNameMask;
     cbJob.Text := FS.JobCode;
     chkPromptJob.Checked := FS.PromptJobCode;
+    chkVerify.Checked := FS.VerifyCopy;
+    chkBackup.Checked := FS.BackupOn;
+    edBackup.Text := FS.BackupDir;
+    BackupChange(nil);
     seqStart.Value := FS.SeqStart;
 
     rbAuto.Checked := FS.SourceMode = smAuto;
@@ -1219,6 +1333,7 @@ begin
     chkExifOwner.Checked := FS.WriteExifOwner;
     chkLoadLast.Checked := FS.LoadLastAtStartup;
     chkSingle.Checked := FS.SingleInstance;
+    chkWinSafe.Checked := FS.WinSafeNames;
     edAuthor.Text := FS.ExifAuthor;
     edCopyright.Text := FS.ExifCopyright;
 
@@ -1227,6 +1342,8 @@ begin
     chkAutoPrompt.Checked := FS.AutoPrompt;
     chkADownload.Checked := FS.AutoDownload;
     chkADelete.Checked := FS.AutoDelete;
+    chkSafeDel.Checked := FS.SafeDelete;
+    edTrash.Text := FS.SafeDeleteFolder;
     chkAEject.Checked := FS.AutoSoftEject;
     chkALaunch.Checked := FS.AutoLaunch;
     chkAExit.Checked := FS.AutoExit;
@@ -1246,6 +1363,7 @@ begin
   end;
   GeneralChange(nil);
   AutoChange(nil);
+  SafeDelChange(nil);
   CustomChange(nil);
   RefreshMaps(0);
   RefreshPlugins(0);
@@ -1256,8 +1374,11 @@ procedure TPrefsForm.Store;
 begin
   FS.DownloadDir := Trim(cbDir.Text);
   FS.FileNameMask := Trim(cbFile.Text);
-  if Trim(cbJob.Text) <> '' then FS.JobCode := Trim(cbJob.Text);
+  FS.JobCode := Trim(cbJob.Text);        // may be blank
   FS.PromptJobCode := chkPromptJob.Checked;
+  FS.VerifyCopy := chkVerify.Checked;
+  FS.BackupOn := chkBackup.Checked and (Trim(edBackup.Text) <> '');
+  FS.BackupDir := Trim(edBackup.Text);
   FS.SeqStart := seqStart.Value;
   if FResetSeq then FS.SeqNext := FS.SeqStart;
 
@@ -1286,6 +1407,8 @@ begin
   FS.WriteExifOwner := chkExifOwner.Checked;
   FS.LoadLastAtStartup := chkLoadLast.Checked;
   FS.SingleInstance := chkSingle.Checked;
+  FS.WinSafeNames := chkWinSafe.Checked;
+  {$IFDEF WINDOWS}WinSafeNamesOn := True;{$ELSE}WinSafeNamesOn := FS.WinSafeNames;{$ENDIF}
   FS.ExifAuthor := Trim(edAuthor.Text);
   FS.ExifCopyright := Trim(edCopyright.Text);
 
@@ -1294,6 +1417,8 @@ begin
   FS.AutoPrompt := chkAutoPrompt.Checked;
   FS.AutoDownload := chkADownload.Checked;
   FS.AutoDelete := chkADelete.Checked;
+  FS.SafeDelete := chkSafeDel.Checked;
+  FS.SafeDeleteFolder := CleanTrashName(edTrash.Text);
   FS.AutoSoftEject := chkAEject.Checked;
   FS.AutoLaunch := chkALaunch.Checked;
   FS.AutoExit := chkAExit.Checked;

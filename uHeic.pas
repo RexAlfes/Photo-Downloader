@@ -43,7 +43,7 @@ function LoadHeicMemImage(const FileName: string; Target: Integer): TFPMemoryIma
 implementation
 
 uses
-  Types, Math, IntfGraphics, Forms, uExif, uScale, HeicImageX, XelHeic, Heif.Decode, Av1.Decoder, LineInfo;
+  Types, Math, IntfGraphics, Forms, uExif, uScale, HeicImageX, XelHeic, Heif.Decode, Av1.Decoder;
 
 const
   HeicSoftLimitMs = 30000;     // after this a Cancel gives up the decode
@@ -76,6 +76,7 @@ begin
   NW := W div F;
   NH := H div F;
   if (NW < 1) or (NH < 1) then Exit;
+  Q := nil;
   SetLength(Q, NativeInt(NW) * NH * 4);
   for Y := 0 to NH - 1 do
     for X := 0 to NW - 1 do
@@ -160,6 +161,7 @@ begin
   try
     Fs := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);
     try
+      Data := nil;
       SetLength(Data, Fs.Size);
       if Length(Data) > 0 then Fs.ReadBuffer(Data[0], Length(Data));
     finally

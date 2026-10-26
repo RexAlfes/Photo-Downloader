@@ -180,12 +180,14 @@ begin
           FS.Free;
         end;
       end
-      else if (Ext = '.png') or (Ext = '.bmp') then
+      else if (Ext = '.png') or (Ext = '.bmp') or (Ext = '.gif') then
       begin
         FS := TFileStream.Create(It.FullPath, fmOpenRead or fmShareDenyNone);
         try
           if Ext = '.png' then
             FSrc := LoadMemImage(FS, pkPng, 0, 0, Target)
+          else if Ext = '.gif' then
+            FSrc := LoadMemImage(FS, pkGif, 0, 0, Target)       // first frame
           else
             FSrc := LoadMemImage(FS, pkBmp, 0, 0, Target);
         finally

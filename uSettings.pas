@@ -16,25 +16,27 @@ const
   DonateVenmoURL = 'https://venmo.com/u/RexAlfes';
 
 const
-  FileTypeCount = 15;
+  FileTypeCount = 16;
   { File type groups of the filter (View > File Types). Key = name in the ini file. }
   FileTypeKeys: array[0..FileTypeCount - 1] of string =
-    ('Jpeg', 'Png', 'Bmp', 'Tiff', 'CanonRaw', 'NikonRaw', 'NikonNrw', 'SonyRaw', 'Dng', 'OtherRaw',
+    ('Jpeg', 'Png', 'Bmp', 'Gif', 'Tiff', 'CanonRaw', 'NikonRaw', 'NikonNrw', 'SonyRaw', 'Dng', 'OtherRaw',
      'Heic', 'Avif', 'Video', 'Audio', 'Thm');
   FileTypeNames: array[0..FileTypeCount - 1] of string =
-    ('JPEG (.jpg .jpeg .jpe)', 'PNG (.png)', 'BMP (.bmp)', 'TIFF (.tif .tiff)',
+    ('JPEG (.jpg .jpeg .jpe)', 'PNG (.png)', 'BMP (.bmp)', 'GIF (.gif)', 'TIFF (.tif .tiff)',
      'Canon RAW (.cr2 .cr3 .crw)', 'Nikon RAW (.nef)', 'Nikon Coolpix RAW (.nrw)', 'Sony RAW (.arw .srf .sr2)',
      'Adobe DNG (.dng)', 'Other RAW (.orf .raf .rw2 .pef .srw .raw)',
      'HEIC / HEIF (.heic .heif)', 'AVIF (.avif)', 'Video (.mp4 .mov .lrv)', 'Audio (.mp3)',
      'Camera thumbnail files (.thm)');
   FileTypeExts: array[0..FileTypeCount - 1] of string =
-    (';.jpg;.jpeg;.jpe;', ';.png;', ';.bmp;', ';.tif;.tiff;', ';.cr2;.cr3;.crw;', ';.nef;', ';.nrw;',
+    (';.jpg;.jpeg;.jpe;', ';.png;', ';.bmp;', ';.gif;', ';.tif;.tiff;', ';.cr2;.cr3;.crw;', ';.nef;', ';.nrw;',
      ';.arw;.srf;.sr2;', ';.dng;', ';.orf;.raf;.rw2;.pef;.srw;.raw;', ';.heic;.heif;', ';.avif;',
      ';.mp4;.mov;.lrv;', ';.mp3;', ';.thm;');
 
 var
   { False while logging is switched off (Help > Logging) }
   LogEnabled: Boolean = True;
+  { True: characters Windows does not allow in file names are replaced by _ (Linux option "Windows-safe names") }
+  WinSafeNamesOn: Boolean = True;
 
 { Index of the file type group an extension (with dot, any case) belongs to, or -1 }
 function FileTypeIndex(const Ext: string): Integer;
@@ -48,6 +50,11 @@ type
     // Download Path tab
     DownloadDir, FileNameMask, JobCode: string;
     PromptJobCode: Boolean;
+    SafeDeleteFolder: string;       // name of the hidden trash folder used on cards
+    SafeDelete: Boolean;            // deleting from the source moves files to the Recycle Bin / holding folder
+    VerifyCopy: Boolean;            // read every copy back and compare checksums
+    BackupOn: Boolean;              // also save a second copy to BackupDir
+    BackupDir: string;              // backup folder template (same tokens as DownloadDir)
     SeqStart, SeqNext: Integer;
     JobHistory: TStringList;
     DateJobCodes: TStringList;      // 'yyyy/mm/dd=job code'
@@ -62,6 +69,7 @@ type
     ExifAuthor, ExifCopyright: string;
     FirstRunDone: Boolean;          // False until the first start has completed
     SingleInstance: Boolean;        // only one copy of the program may run
+    WinSafeNames: Boolean;          // replace characters that Windows file names cannot hold (matters on Linux)
     LoadLastAtStartup: Boolean;     // reload the last used source folder when the program starts
     LastSource: string;             // last folder opened as image source
     // Automation tab
@@ -95,6 +103,8 @@ type
   end;
 
 function ConfigDir: string;
+{ Folder for data that can be rebuilt (thumbnail cache): ~/.cache/PhotoDownloader/ on Linux, the settings folder on Windows }
+function CacheDir: string;
 function SettingsFileName: string;
 function ProfilesDir: string;
 { Reads only the single/multi instance option; used before the main form exists. }
@@ -112,6 +122,18 @@ function ConfigDir: string;
 begin
   Result := IncludeTrailingPathDelimiter(GetAppConfigDir(False));
   ForceDirectoriesUTF8(Result);
+end;
+
+function CacheDir: string;
+begin
+  {$IFDEF UNIX}
+  Result := GetEnvironmentVariable('XDG_CACHE_HOME');
+  if Result = '' then Result := IncludeTrailingPathDelimiter(GetUserDir) + '.cache';
+  Result := IncludeTrailingPathDelimiter(Result) + 'PhotoDownloader' + PathDelim;
+  ForceDirectoriesUTF8(Result);
+  {$ELSE}
+  Result := ConfigDir;
+  {$ENDIF}
 end;
 
 function SettingsFileName: string;
@@ -218,7 +240,12 @@ begin
   // generic default: the Pictures folder of whoever runs the program
   DownloadDir := IncludeTrailingPathDelimiter(GetUserDir) + 'Pictures' + PathDelim +
     'Photo Downloader' + PathDelim + '{Y}' + PathDelim + '{Y}-{m}-{D}-{J}' + PathDelim;
-  FileNameMask := 'RA{Y}{m}{D}-{r}';
+  VerifyCopy := True;
+  SafeDelete := True;
+  SafeDeleteFolder := '$trash.bin';
+  BackupOn := False;
+  BackupDir := '';
+  FileNameMask := '{o}';
   JobCode := '{Job Name}';
   PromptJobCode := True;
   SeqStart := 1;
@@ -252,6 +279,7 @@ begin
   FirstRunDone := False;
   LoadLastAtStartup := False;
   SingleInstance := True;
+  WinSafeNames := True;
   LastSource := '';
 
   AutoAtStartup := False;
@@ -316,6 +344,11 @@ begin
   with Ini do
   begin
     DownloadDir := ReadString('Path', 'DownloadDir', DownloadDir);
+    VerifyCopy := ReadBool('Path', 'VerifyCopy', VerifyCopy);
+    SafeDelete := ReadBool('Automation', 'SafeDelete', SafeDelete);
+    SafeDeleteFolder := ReadString('Automation', 'SafeDeleteFolder', SafeDeleteFolder);
+    BackupOn := ReadBool('Path', 'BackupEnabled', BackupOn);
+    BackupDir := ReadString('Path', 'BackupDir', BackupDir);
     FileNameMask := ReadString('Path', 'FileNameMask', FileNameMask);
     JobCode := ReadString('Path', 'JobCode', JobCode);
     PromptJobCode := ReadBool('Path', 'PromptJobCode', PromptJobCode);
@@ -350,6 +383,8 @@ begin
     FirstRunDone := ReadBool('General', 'FirstRunDone', FirstRunDone);
     LoadLastAtStartup := ReadBool('General', 'LoadLastAtStartup', LoadLastAtStartup);
     SingleInstance := ReadBool('General', 'SingleInstance', SingleInstance);
+    WinSafeNames := ReadBool('General', 'WinSafeNames', WinSafeNames);
+    {$IFDEF WINDOWS}WinSafeNamesOn := True;{$ELSE}WinSafeNamesOn := WinSafeNames;{$ENDIF}
     LastSource := ReadString('General', 'LastSource', LastSource);
 
     AutoAtStartup := ReadBool('Automation', 'AutoAtStartup', AutoAtStartup);
@@ -399,6 +434,11 @@ begin
   with Ini do
   begin
     WriteString('Path', 'DownloadDir', DownloadDir);
+    WriteBool('Path', 'VerifyCopy', VerifyCopy);
+    WriteBool('Automation', 'SafeDelete', SafeDelete);
+    WriteString('Automation', 'SafeDeleteFolder', SafeDeleteFolder);
+    WriteBool('Path', 'BackupEnabled', BackupOn);
+    WriteString('Path', 'BackupDir', BackupDir);
     WriteString('Path', 'FileNameMask', FileNameMask);
     WriteString('Path', 'JobCode', JobCode);
     WriteBool('Path', 'PromptJobCode', PromptJobCode);
@@ -431,6 +471,7 @@ begin
     WriteBool('General', 'FirstRunDone', FirstRunDone);
     WriteBool('General', 'LoadLastAtStartup', LoadLastAtStartup);
     WriteBool('General', 'SingleInstance', SingleInstance);
+    WriteBool('General', 'WinSafeNames', WinSafeNames);
     WriteString('General', 'LastSource', LastSource);
 
     WriteBool('Automation', 'AutoAtStartup', AutoAtStartup);

@@ -19,7 +19,7 @@ OPTION 1 - WEBSITE UPLOAD
 2. Drag in the source files and the .github folder. Dragging a folder keeps its structure.
    Do not drag in the zip's docs or GitHub folders.
    Files with the same name replace the old ones. Up to 100 files per upload.
-3. Message example: "Build 37: generic default folders, grey rows for downloaded files". Commit directly to main.
+3. Message example: "Build 51: Linux build tested, small-screen fixes". Commit directly to main.
 4. The website cannot delete files. To delete: open the file, click the three dots, Delete file.
 5. If a folder starts with a dot (.github) and will not drag in, use Add file > Create new file and type
    ".github/FUNDING.yml" as the name, then paste the contents.
@@ -43,9 +43,14 @@ REPOSITORY ABOUT
 ----------------
 Gear icon beside About: paste the description, website and topics from GitHub_About.txt.
 
+BASELINE TAG
+------------
+Build 42 is the baseline. After uploading: git tag baseline-build-42 && git push origin baseline-build-42
+(or Releases > Draft a new release with the tag baseline-build-42, and tick pre-release).
+
 RELEASE
 -------
-Releases > Draft a new release. Tag example: v0.1.0-alpha.37. Paste the matching release notes file.
+Releases > Draft a new release. Tag example: v0.1.0-alpha.51. Paste the matching release notes file.
 Attach PhotoDownloader.exe (or a zip of it) and tick "Set as a pre-release". The website download button
 reads the newest release.
 

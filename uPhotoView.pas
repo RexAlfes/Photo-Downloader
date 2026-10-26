@@ -13,6 +13,7 @@ const
 type
   TViewMode = (vmList, vmSmall, vmLarge);
   TOpenItemEvent = procedure(Sender: TObject; Index: Integer) of object;
+  THeaderClickEvent = procedure(Sender: TObject; Col: Integer) of object;
 
   { TPhotoView - scrolling grid of image cards (or a one-line-per-image list) }
   TPhotoView = class(TCustomControl)
@@ -30,10 +31,17 @@ type
     FOnOpenItem: TOpenItemEvent;
     FLastX, FLastY: Integer;
     FLastButton: TMouseButton;
+    FHdrH, FSortCol: Integer;       // list view header height; sorted column (-1 none)
+    FSortDesc: Boolean;
+    FOnHeaderClick: THeaderClickEvent;
     procedure ScrollChange(Sender: TObject);
     procedure LoadTimerTick(Sender: TObject);
     procedure DoLayout;
     function OffsetY: Integer;
+    function TopPad: Integer;
+    function ViewH: Integer;
+    function HeaderCol(X: Integer): Integer;
+    procedure DrawHeader;
     function MaxOffset: Integer;
     function HitTest(X, Y: Integer): Integer;
     procedure DrawItem(Item: TImageItem; const R: TRect);
@@ -64,6 +72,9 @@ type
     property Mode: TViewMode read FMode write SetMode;
     property OnSelectionChange: TNotifyEvent read FOnSelChange write FOnSelChange;
     property OnOpenItem: TOpenItemEvent read FOnOpenItem write FOnOpenItem;
+    property OnHeaderClick: THeaderClickEvent read FOnHeaderClick write FOnHeaderClick;
+    property SortCol: Integer read FSortCol write FSortCol;
+    property SortDesc: Boolean read FSortDesc write FSortDesc;
   end;
 
 implementation
@@ -84,6 +95,7 @@ begin
   FFocusIdx := -1;
   FAnchor := -1;
   FLineH := 15;
+  FSortCol := -1;
   TabStop := True;
   Color := clWindow;
   ControlStyle := ControlStyle + [csOpaque];   // paint covers everything; avoids flicker
@@ -184,6 +196,7 @@ begin
   begin
     Canvas.Font := Font;
     FLineH := Canvas.TextHeight('Ag') + 1;
+    FHdrH := FLineH + 6;
     FLaidOut := True;
   end;
   W := ClientWidth - FScroll.Width;
@@ -213,12 +226,12 @@ begin
 
   FScroll.OnChange := nil;
   try
-    if FTotalH > ClientHeight then
+    if FTotalH > ViewH then
     begin
       FScroll.Min := 0;
       FScroll.Max := FTotalH;
-      FScroll.PageSize := Max(1, ClientHeight);
-      FScroll.LargeChange := Max(1, ClientHeight);
+      FScroll.PageSize := Max(1, ViewH);
+      FScroll.LargeChange := Max(1, ViewH);
       FScroll.SmallChange := Max(1, FCellH div 2);
       FScroll.Enabled := True;
       if FScroll.Position > MaxOffset then FScroll.Position := MaxOffset;
@@ -235,7 +248,17 @@ end;
 
 function TPhotoView.MaxOffset: Integer;
 begin
-  Result := Max(0, FTotalH - ClientHeight);
+  Result := Max(0, FTotalH - ViewH);
+end;
+
+function TPhotoView.TopPad: Integer;
+begin
+  if FMode = vmList then Result := FHdrH else Result := 0;
+end;
+
+function TPhotoView.ViewH: Integer;
+begin
+  Result := ClientHeight - TopPad;
 end;
 
 function TPhotoView.OffsetY: Integer;
@@ -272,6 +295,7 @@ var
   Row, Col: Integer;
 begin
   Result := -1;
+  Y := Y - TopPad;
   if (X < 0) or (Y < 0) or (FCellH <= 0) or (FCellW <= 0) then Exit;
   Col := X div FCellW;
   Row := (Y + OffsetY) div FCellH;
@@ -291,8 +315,8 @@ begin
   RowBottom := RowTop + FCellH;
   if RowTop < OffsetY then
     FScroll.Position := RowTop
-  else if RowBottom > OffsetY + ClientHeight then
-    FScroll.Position := Min(MaxOffset, RowBottom - ClientHeight);
+  else if RowBottom > OffsetY + ViewH then
+    FScroll.Position := Min(MaxOffset, RowBottom - ViewH);
 end;
 
 function TPhotoView.FitLeft(const S: string; MaxW: Integer): string;
@@ -429,6 +453,63 @@ begin
   end;
 end;
 
+const
+  HdrLeft: array[0..4] of Integer = (4, 336, 462, 586, 726);
+  HdrText: array[0..4] of string = ('File', 'Captured', 'Status', 'Camera', 'Destination');
+
+function TPhotoView.HeaderCol(X: Integer): Integer;
+var
+  I: Integer;
+begin
+  Result := -1;
+  for I := 0 to 4 do
+    if X >= HdrLeft[I] - 4 then Result := I;
+end;
+
+procedure TPhotoView.DrawHeader;
+var
+  I, Right, TW, AX, AY: Integer;
+begin
+  Canvas.Brush.Style := bsSolid;
+  Canvas.Brush.Color := clBtnFace;
+  Canvas.Pen.Color := clBtnFace;
+  Canvas.FillRect(Rect(0, 0, ClientWidth - FScroll.Width, FHdrH));
+  Canvas.Pen.Color := clBtnShadow;
+  Canvas.MoveTo(0, FHdrH - 1);
+  Canvas.LineTo(ClientWidth - FScroll.Width, FHdrH - 1);
+  Canvas.Font.Color := clBtnText;
+  for I := 0 to 4 do
+  begin
+    if I < 4 then Right := HdrLeft[I + 1] - 4 else Right := ClientWidth - FScroll.Width;
+    if HdrLeft[I] > ClientWidth - FScroll.Width then Break;
+    if I > 0 then
+    begin
+      Canvas.Pen.Color := clBtnShadow;
+      Canvas.MoveTo(HdrLeft[I] - 4, 2);
+      Canvas.LineTo(HdrLeft[I] - 4, FHdrH - 3);
+    end;
+    Canvas.Brush.Style := bsClear;
+    Canvas.TextRect(Rect(HdrLeft[I], 0, Right - 2, FHdrH - 1), HdrLeft[I], 3, HdrText[I]);
+    if I = FSortCol then
+    begin
+      TW := Canvas.TextWidth(HdrText[I]);
+      AX := HdrLeft[I] + TW + 10;
+      AY := FHdrH div 2;
+      if AX + 6 < Right then
+      begin
+        Canvas.Brush.Style := bsSolid;
+        Canvas.Brush.Color := clBtnShadow;
+        Canvas.Pen.Color := clBtnShadow;
+        if FSortDesc then
+          Canvas.Polygon([Point(AX - 4, AY - 2), Point(AX + 4, AY - 2), Point(AX, AY + 3)])
+        else
+          Canvas.Polygon([Point(AX - 4, AY + 2), Point(AX + 4, AY + 2), Point(AX, AY - 3)]);
+      end;
+    end;
+  end;
+  Canvas.Brush.Style := bsSolid;
+end;
+
 procedure TPhotoView.Paint;
 var
   Y0, FirstRow, LastRow, Row, Col, I: Integer;
@@ -439,16 +520,20 @@ begin
   FNeedMore := False;
   Canvas.Brush.Color := clWindow;
   Canvas.FillRect(ClientRect);
-  if (FItems.Count = 0) or (FCellH <= 0) then Exit;
+  if (FItems.Count = 0) or (FCellH <= 0) then
+  begin
+    if FMode = vmList then DrawHeader;
+    Exit;
+  end;
   Y0 := OffsetY;
   FirstRow := Y0 div FCellH;
-  LastRow := (Y0 + ClientHeight) div FCellH;
+  LastRow := (Y0 + ViewH) div FCellH;
   for Row := FirstRow to LastRow do
     for Col := 0 to FCols - 1 do
     begin
       I := Row * FCols + Col;
       if I >= FItems.Count then Break;
-      R := Rect(Col * FCellW, Row * FCellH - Y0, (Col + 1) * FCellW, (Row + 1) * FCellH - Y0);
+      R := Rect(Col * FCellW, Row * FCellH - Y0 + TopPad, (Col + 1) * FCellW, (Row + 1) * FCellH - Y0 + TopPad);
       if FItems[I] <> nil then
         DrawItem(TImageItem(FItems[I]), R);
       if Focused and (I = FFocusIdx) then
@@ -458,6 +543,7 @@ begin
         Canvas.Rectangle(R.Left, R.Top, R.Right - 1, R.Bottom - 1);
       end;
     end;
+  if FMode = vmList then DrawHeader;      // drawn last so scrolled rows slide under it
   if FNeedMore then
   begin
     FLoadTimer.Enabled := False;
@@ -507,6 +593,16 @@ begin
   FLastY := Y;
   FLastButton := Button;
   if CanFocus then SetFocus;
+  if (FMode = vmList) and (Y < FHdrH) then
+  begin
+    // click on the column headings: sort by that column
+    if (Button = mbLeft) and Assigned(FOnHeaderClick) then
+    begin
+      Idx := HeaderCol(X);
+      if Idx >= 0 then FOnHeaderClick(Self, Idx);
+    end;
+    Exit;
+  end;
   if Button = mbRight then
   begin
     // select the clicked image (unless it is already part of the selection);
@@ -546,7 +642,7 @@ begin
   if FItems.Count = 0 then Exit;
   N := FFocusIdx;
   if N < 0 then N := 0;
-  PageRows := Max(1, ClientHeight div Max(1, FCellH));
+  PageRows := Max(1, ViewH div Max(1, FCellH));
   case Key of
     VK_LEFT: Dec(N);
     VK_RIGHT: Inc(N);

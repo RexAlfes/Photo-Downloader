@@ -9,10 +9,10 @@ unit uScale;
 interface
 
 uses
-  Classes, SysUtils, Math, FPImage, FPReadJPEG, FPReadPNG, FPReadBMP, uExif, uRotate;
+  Classes, SysUtils, Math, FPImage, FPReadJPEG, FPReadPNG, FPReadBMP, FPReadGif, uExif, uRotate, uTiffRead;
 
 type
-  TPicKind = (pkJpeg, pkPng, pkBmp);
+  TPicKind = (pkJpeg, pkPng, pkBmp, pkGif);
 
 { Decodes the picture in S (positioned at its start). For JPEG with known SrcW/SrcH the
   decoder shrinks the picture by 2, 4 or 8 while it is still at least Target pixels on
@@ -47,6 +47,7 @@ var
   JR: TFPReaderJPEG;
   PR: TFPReaderPNG;
   BR: TFPReaderBMP;
+  GR: TFPReaderGif;
   Ratio: Integer;
 begin
   Result := nil;
@@ -75,6 +76,15 @@ begin
               Img.LoadFromStream(S, PR);
             finally
               PR.Free;
+            end;
+          end;
+        pkGif:
+          begin
+            GR := TFPReaderGif.Create;
+            try
+              Img.LoadFromStream(S, GR);
+            finally
+              GR.Free;
             end;
           end;
       else
@@ -108,12 +118,18 @@ var
   Sum: array of Int64;
   C: TFPColor;
   G: Byte;
+  ErrText: string;
 begin
   Result := nil;
   Row := nil;
   Sum := nil;
   Img := nil;
-  if not FindTiffRgb(FileName, R) then Exit;
+  if not FindTiffRgb(FileName, R) then
+  begin
+    // compressed, 1-bit, palette ...: the general TIFF reader
+    Result := LoadTiffMemImageAny(FileName, Target, ErrText);
+    Exit;
+  end;
   Bps := R.Bits div 8;
   if R.Big then Hi := 0 else Hi := Bps - 1;
   K := Max(1, Max(R.W, R.H) div Max(1, Target));

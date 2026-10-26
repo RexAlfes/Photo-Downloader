@@ -993,7 +993,8 @@ begin
   if U16(T, T.Base + 2) <> 42 then Exit;
   ReadIFD(T, U32(T, T.Base + 4), 0, Info);
   Info.Valid := (Info.Make <> '') or (Info.Model <> '') or Info.HasDate;
-  Result := Info.Valid;
+  // a file with only an orientation (no camera or date) still needs to be turned upright
+  Result := Info.Valid or (Info.Orientation <> 0);
 end;
 
 { ---- JPEG helpers (previews and thumbnails) ---- }
