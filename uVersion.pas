@@ -17,23 +17,24 @@ uses
   {$IFDEF LINUX}, elfreader{$ENDIF}
   {$IFDEF DARWIN}, machoreader{$ENDIF};
 
+{ Returns "major.minor.release build N" from the version resource, or 'unknown' if it cannot be read. }
 function AppVersionString: string;
 var
-  VI: TVersionInfo;
+  VI: TVersionInfo;  // reader for the executable's version resource
 begin
-  Result := 'unknown';
-  VI := TVersionInfo.Create;
+  Result := 'unknown';  // default result if anything fails
+  VI := TVersionInfo.Create;  // create the version reader
   try
     try
-      VI.Load(HINSTANCE);
-      Result := Format('%d.%d.%d build %d',
+      VI.Load(HINSTANCE);  // load the resource of the running program
+      Result := Format('%d.%d.%d build %d',  // format the four version numbers as text
         [VI.FixedInfo.FileVersion[0], VI.FixedInfo.FileVersion[1],
          VI.FixedInfo.FileVersion[2], VI.FixedInfo.FileVersion[3]]);
     except
-      Result := 'unknown';
+      Result := 'unknown';  // keep 'unknown' on any error
     end;
   finally
-    VI.Free;
+    VI.Free;  // always release the reader
   end;
 end;
 

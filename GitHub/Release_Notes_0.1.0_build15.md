@@ -9,8 +9,8 @@
 
 ### Fixed
 - Extra copies of Photo Downloader staying in memory after the window was closed (build 14 fix, rewritten in 15). If you still have old copies running from earlier builds, end them in Task Manager before testing.
-- Canon CRW files showing a banded grey box instead of a thumbnail.
-- Compiler hints in the EXIF code (uninitialised variables).
+- Canon CRW files showing a banded gray box instead of a thumbnail.
+- Compiler hints in the EXIF code (uninitialized variables).
 
 ### Since the first alpha
 - Single/multi instance option in Preferences > General (default single).

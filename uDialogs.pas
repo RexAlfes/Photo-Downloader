@@ -5,7 +5,7 @@ unit uDialogs;
 interface
 
 uses
-  Classes, SysUtils, Math, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
+  Classes, SysUtils, Math, Types, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
   ComCtrls, CheckLst, Spin, Clipbrd, LCLType, LCLIntf, uSettings, uItems, uExif, uDrives, uVersion, uSafeDel;
 
 function ExecuteJobCode(S: TAppSettings; var Job: string; const CurrentCamera: string): Boolean;
@@ -19,12 +19,13 @@ function ChooseFromList(const ATitle, APrompt: string; Items: TStrings; out Choi
 procedure ShowTokenHelp;
 procedure ShowAbout;
 procedure ShowRegister;
+procedure ShowStatus(const AText, SettingsFile: string);
 procedure ShowImageProperties(Item: TImageItem);
 
 implementation
 
 const
-  TokenHelpText =
+  TokenHelpText =  // help text shown for the file name tokens
     '{d} - date (yyyymmdd)'#13#10 +
     '{y} - 2-digit year'#13#10 +
     '{Y} - 4-digit year'#13#10 +
@@ -55,92 +56,162 @@ const
 
 { ---- small control factories ---- }
 
+{ Creates a label on parent P at position (L, T). }
 function MkLabel(P: TWinControl; const Cap: string; L, T: Integer): TLabel;
 begin
-  Result := TLabel.Create(P);
-  Result.Parent := P;
-  Result.Caption := Cap;
-  Result.SetBounds(L, T, Result.Width, Result.Height);
+  Result := TLabel.Create(P);  // create the label
+  Result.Parent := P;  // place it on the parent
+  Result.Caption := Cap;  // set the text
+  Result.SetBounds(L, T, Result.Width, Result.Height);  // position it, keeping its natural size
 end;
 
+{ Creates a word-wrapped label of a fixed size. }
 function MkWrap(P: TWinControl; const Cap: string; L, T, W, H: Integer): TLabel;
 begin
-  Result := TLabel.Create(P);
-  Result.Parent := P;
-  Result.AutoSize := False;
-  Result.WordWrap := True;
-  Result.Caption := Cap;
-  Result.SetBounds(L, T, W, H);
+  Result := TLabel.Create(P);  // create the label
+  Result.Parent := P;  // place it on the parent
+  Result.AutoSize := False;  // keep the size given below
+  Result.WordWrap := True;  // wrap long text
+  Result.Caption := Cap;  // set the text
+  Result.SetBounds(L, T, W, H);  // position and size it
 end;
 
+{ Creates a push button; MR is the modal result it closes the dialog with. }
 function MkButton(P: TWinControl; const Cap: string; L, T, W: Integer;
   MR: TModalResult = mrNone): TButton;
-begin
-  Result := TButton.Create(P);
-  Result.Parent := P;
-  Result.Caption := Cap;
-  Result.SetBounds(L, T, W, 25);
-  Result.ModalResult := MR;
+begin  // create the button
+  Result := TButton.Create(P);  // place it on the parent
+  Result.Parent := P;  // set the text
+  Result.Caption := Cap;  // position and size it
+  Result.SetBounds(L, T, W, 25);  // position and size it (25 pixels high)
+  Result.ModalResult := MR;  // result returned when the button is clicked
 end;
 
+{ Creates a check box with the given caption. }
 function MkCheck(P: TWinControl; const Cap: string; L, T: Integer): TCheckBox;
 begin
-  Result := TCheckBox.Create(P);
-  Result.Parent := P;
-  Result.Caption := Cap;
-  Result.SetBounds(L, T, 460, 22);
+  Result := TCheckBox.Create(P);  // create the check box
+  Result.Parent := P;  // place it on the parent
+  Result.Caption := Cap;  // set the text
+  Result.SetBounds(L, T, 460, 22);  // position and size it
 end;
 
+{ Creates a single-line edit box. }
 function MkEdit(P: TWinControl; L, T, W: Integer): TEdit;
 begin
-  Result := TEdit.Create(P);
-  Result.Parent := P;
-  Result.SetBounds(L, T, W, 23);
+  Result := TEdit.Create(P);  // create the edit box
+  Result.Parent := P;  // place it on the parent
+  Result.SetBounds(L, T, W, 23);  // position and size it
 end;
 
+{ Creates an editable combo box. }
 function MkCombo(P: TWinControl; L, T, W: Integer): TComboBox;
 begin
-  Result := TComboBox.Create(P);
-  Result.Parent := P;
-  Result.SetBounds(L, T, W, 23);
-  Result.Style := csDropDown;
+  Result := TComboBox.Create(P);  // create the combo box
+  Result.Parent := P;  // place it on the parent
+  Result.SetBounds(L, T, W, 23);  // position and size it
+  Result.Style := csDropDown;  // user may type any text
 end;
 
+{ Creates a radio button with the given caption. }
 function MkRadio(P: TWinControl; const Cap: string; L, T: Integer): TRadioButton;
 begin
-  Result := TRadioButton.Create(P);
-  Result.Parent := P;
-  Result.Caption := Cap;
-  Result.SetBounds(L, T, 440, 22);
+  Result := TRadioButton.Create(P);  // create the radio button
+  Result.Parent := P;  // place it on the parent
+  Result.Caption := Cap;  // set the text
+  Result.SetBounds(L, T, 440, 22);  // position and size it
 end;
 
+{ Sets up the common properties of a dialog form. }
 procedure InitDialog(F: TForm; const ACaption: string; W, H: Integer);
 begin
-  F.Caption := ACaption;
-  F.BorderStyle := bsDialog;
-  F.Position := poMainFormCenter;
-  F.ClientWidth := W;
-  F.ClientHeight := H;
+  F.Caption := ACaption;  // window title
+  F.BorderStyle := bsDialog;  // fixed-size dialog border
+  F.Position := poMainFormCenter;  // center over the main window
+  F.ClientWidth := W;  // inner width
+  F.ClientHeight := H;  // inner height
 end;
 
+{ Shows the list of file name tokens. }
 procedure ShowTokenHelp;
 begin
-  MessageDlg('Directory and filename tokens', TokenHelpText, mtInformation, [mbOK], 0);
+  MessageDlg('Directory and filename tokens', TokenHelpText, mtInformation, [mbOK], 0);  // show the help text
 end;
 
-procedure ShowAbout;
+type
+  TAboutForm = class(TForm)  // About dialog with the program icon
+  private
+    FIcon: TIcon;  // FIcon: copy of the program icon, set to the 96-pixel image
+    FBox: TPaintBox;  // FBox: draws the icon
+    procedure BoxPaint(Sender: TObject);  // draws the icon without scaling
+  public
+    constructor CreateAbout(AOwner: TComponent);  // builds the dialog
+    destructor Destroy; override;  // frees the icon copy
+  end;
+
+{ Builds the About dialog: program icon on the left, name, description and license note on the right. }
+constructor TAboutForm.CreateAbout(AOwner: TComponent);
+var
+  Lb: TLabel;  // Lb: description text
+  Sz: TSize;  // Sz: wanted icon size
 begin
-  MessageDlg('About ' + AppTitle,
-    AppTitle + ' ' + AppVersionString + #13#10#13#10 +
-    'Downloads images from a card reader or folder, renames them using' + #13#10 +
-    'tokens, and organises them into job-code folders.' + #13#10#13#10 +
-    'Licensed under the GNU General Public License (see Help > Register).' + #13#10 +
-    WebsiteURL + #13#10 +
-    'Built with Lazarus / Free Pascal.', mtInformation, [mbOK], 0);
+  inherited CreateNew(AOwner);  // create the form without a resource file
+  InitDialog(Self, 'About ' + AppTitle, 470, 210);  // set the common dialog properties
+  FIcon := TIcon.Create;  // create the icon copy
+  try
+    if not Application.Icon.Empty then  // the application icon is loaded
+      FIcon.Assign(Application.Icon)  // copy it (all of its sizes)
+    else
+      FIcon.LoadFromResourceName(HInstance, 'MAINICON');  // otherwise read it from the program resource
+    Sz.cx := 96;  // wanted width
+    Sz.cy := 96;  // wanted height
+    FIcon.Current := FIcon.GetBestIndexForSize(Sz);  // use the 96-pixel image so nothing is scaled
+  except
+    FreeAndNil(FIcon);  // no icon available: the dialog is shown without it
+  end;
+  FBox := TPaintBox.Create(Self);  // create the drawing area
+  FBox.Parent := Self;  // place it on the form
+  FBox.SetBounds(16, 16, 96, 96);  // position and size it
+  FBox.OnPaint := @BoxPaint;  // draw the icon
+  Lb := MkWrap(Self, AppTitle + ' ' + AppVersionString + #13#10#13#10 +  // program name and version
+    'Downloads images from a card reader or folder, renames them using ' +  // description of the program
+    'tokens, and organizes them into job-code folders.' + #13#10#13#10 +  // description of the program
+    'Licensed under the GNU General Public License (see Help > Register).' + #13#10 +  // license note
+    WebsiteURL + #13#10 +  // web address
+    'Built with Lazarus / Free Pascal.', 128, 16, 326, 140);  // build information (position and size)
+  Lb.Font.Style := [];  // normal text
+  MkButton(Self, 'OK', 374, 170, 80, mrOK).Default := True;  // OK button, also the default button
+end;
+
+{ Frees the icon copy. }
+destructor TAboutForm.Destroy;
+begin
+  FIcon.Free;  // free the icon (may be nil)
+  inherited Destroy;  // run the inherited destructor
+end;
+
+{ Draws the icon at its own size, so it stays sharp. }
+procedure TAboutForm.BoxPaint(Sender: TObject);
+begin
+  if FIcon <> nil then  // an icon is available
+    FBox.Canvas.Draw(0, 0, FIcon);  // draw it unscaled
+end;
+
+{ Shows the About box. }
+procedure ShowAbout;
+var
+  F: TAboutForm;  // F: the dialog
+begin
+  F := TAboutForm.CreateAbout(Application);  // create the dialog
+  try
+    F.ShowModal;  // show it and wait
+  finally
+    F.Free;  // free the dialog
+  end;
 end;
 
 const
-  LicenseText =
+  LicenseText =  // license text shown in the Register dialog
     AppTitle + #13#10 +
     'Copyright (C) 2026 The Photo Downloader authors'#13#10#13#10 +
     'This program is free software: you can redistribute it and/or modify ' +
@@ -155,138 +226,200 @@ const
     'along with this program. If not, see <https://www.gnu.org/licenses/>.';
 
 type
-  { TPropsForm - read-only list of everything known about one image }
+  { TPropsForm - read-only list of everything known about one image }  // dialog that lists the properties of one image
   TPropsForm = class(TForm)
   private
-    LV: TListView;
-    FText: string;
-    procedure AddRow(const K, V: string);
-    procedure CopyClick(Sender: TObject);
+    LV: TListView;  // list of properties
+    FText: string;  // same text as plain text for the clipboard
+    procedure AddRow(const K, V: string);  // adds one row to the list and to the text
+    procedure CopyClick(Sender: TObject);  // copies the text to the clipboard
   public
-    constructor CreateProps(AOwner: TComponent; Item: TImageItem);
+    constructor CreateProps(AOwner: TComponent; Item: TImageItem);  // builds the dialog for one image
   end;
 
-  TRegisterForm = class(TForm)
+  TRegisterForm = class(TForm)  // dialog that shows the license
   private
-    procedure LicenseClick(Sender: TObject);
+    procedure LicenseClick(Sender: TObject);  // opens the full license in the browser
   public
-    constructor CreateReg(AOwner: TComponent);
+    constructor CreateReg(AOwner: TComponent);  // builds the license dialog
   end;
 
+  TStatusForm = class(TForm)  // status dialog with a clickable settings file location
+  private
+    FFolder: string;  // FFolder: folder that contains the settings file
+    procedure LinkClick(Sender: TObject);  // opens the settings folder
+  public
+    constructor CreateStatus(AOwner: TComponent; const AText, SettingsFile: string);  // builds the dialog
+  end;
+
+{ Builds the Register dialog with the license text. }
 constructor TRegisterForm.CreateReg(AOwner: TComponent);
 var
-  M: TMemo;
+  M: TMemo;  // M: license text box
 begin
-  inherited CreateNew(AOwner);
-  InitDialog(Self, 'Register', 520, 400);
-  MkLabel(Self, AppTitle + ' ' + AppVersionString, 12, 12);
-  MkWrap(Self, 'No registration or license key is needed. This software is free ' +
-    'software released under the GNU General Public License:', 12, 36, 496, 34);
-  M := TMemo.Create(Self);
-  M.Parent := Self;
-  M.SetBounds(12, 76, 496, 270);
-  M.ReadOnly := True;
-  M.ScrollBars := ssVertical;
-  M.WordWrap := True;
-  M.Text := LicenseText;
-  MkButton(Self, 'View full license online', 12, 360, 170).OnClick := @LicenseClick;
-  MkButton(Self, 'OK', 428, 360, 80, mrOK).Default := True;
+  inherited CreateNew(AOwner);  // create the form without a resource file
+  InitDialog(Self, 'Register', 520, 400);  // set the common dialog properties
+  MkLabel(Self, AppTitle + ' ' + AppVersionString, 12, 12);  // program name and version
+  MkWrap(Self, 'No registration or license key is needed. This software is free ' +  // explanation text
+    'software released under the GNU General Public License:', 12, 36, 496, 34);  // explanation text (position and size)
+  M := TMemo.Create(Self);  // create the memo
+  M.Parent := Self;  // place it on the form
+  M.SetBounds(12, 76, 496, 270);  // position and size it
+  M.ReadOnly := True;  // user cannot edit the license
+  M.ScrollBars := ssVertical;  // vertical scroll bar
+  M.WordWrap := True;  // wrap long lines
+  M.Text := LicenseText;  // show the license
+  MkButton(Self, 'View full license online', 12, 360, 170).OnClick := @LicenseClick;  // button that opens the license on the web
+  MkButton(Self, 'OK', 428, 360, 80, mrOK).Default := True;  // OK button, also the default button
 end;
 
+{ Opens the full license text in the web browser. }
 procedure TRegisterForm.LicenseClick(Sender: TObject);
 begin
   OpenURL('https://www.gnu.org/licenses/gpl-3.0.html');
 end;
 
+{ Adds one property row to the list and to the clipboard text. }
 procedure TPropsForm.AddRow(const K, V: string);
 var
-  LI: TListItem;
+  LI: TListItem;  // LI: new list row
 begin
-  LI := LV.Items.Add;
-  LI.Caption := K;
-  LI.SubItems.Add(V);
-  FText := FText + K + ': ' + V + LineEnding;
+  LI := LV.Items.Add;  // add a row
+  LI.Caption := K;  // property name
+  LI.SubItems.Add(V);  // property value
+  FText := FText + K + ': ' + V + LineEnding;  // append a line to the plain text
 end;
 
+{ Copies the properties to the clipboard. }
 procedure TPropsForm.CopyClick(Sender: TObject);
 begin
-  Clipboard.AsText := FText;
+  Clipboard.AsText := FText;  // copy the text
 end;
 
+{ Builds the Properties dialog for one image. }
 constructor TPropsForm.CreateProps(AOwner: TComponent; Item: TImageItem);
 var
-  W, H: Integer;
-  Ext, Dims: string;
+  W, H: Integer;  // W, H: picture size in pixels
+  Ext, Dims: string;  // Ext: file extension; Dims: size text
 begin
-  inherited CreateNew(AOwner);
-  InitDialog(Self, 'Properties - ' + Item.FileName, 620, 480);
-  LV := TListView.Create(Self);
-  LV.Parent := Self;
-  LV.SetBounds(10, 10, 600, 424);
-  LV.ViewStyle := vsReport;
-  LV.ReadOnly := True;
-  LV.RowSelect := True;
-  with LV.Columns.Add do
+  inherited CreateNew(AOwner);  // create the form without a resource file
+  InitDialog(Self, 'Properties - ' + Item.FileName, 620, 480);  // set the common dialog properties
+  LV := TListView.Create(Self);  // create the list
+  LV.Parent := Self;  // place it on the form
+  LV.SetBounds(10, 10, 600, 424);  // position and size it
+  LV.ViewStyle := vsReport;  // show columns
+  LV.ReadOnly := True;  // user cannot edit the list
+  LV.RowSelect := True;  // select whole rows
+  with LV.Columns.Add do  // first column
   begin
     Caption := 'Property';
-    Width := 140;
-  end;
-  with LV.Columns.Add do
+    Width := 140;  // column title
+  end;  // column width
+  with LV.Columns.Add do  // second column
   begin
     Caption := 'Value';
-    Width := 440;
-  end;
+    Width := 440;  // column title
+  end;  // column width
 
-  Ext := LowerCase(ExtractFileExt(Item.FileName));
-  Dims := 'not read';
-  W := 0;
-  H := 0;
-  if (Ext = '.jpg') or (Ext = '.jpeg') or (Ext = '.jpe') then
-    if ReadJpegDims(Item.FullPath, W, H) then
-      Dims := Format('%d x %d pixels', [W, H]);
+  Ext := LowerCase(ExtractFileExt(Item.FileName));  // file extension in lower case
+  Dims := 'not read';  // size text when the file cannot be read
+  W := 0;  // no width yet
+  H := 0;  // no height yet
+  if (Ext = '.jpg') or (Ext = '.jpeg') or (Ext = '.jpe') then  // only JPEG files are measured
+    if ReadJpegDims(Item.FullPath, W, H) then  // read the pixel size from the file
+      Dims := Format('%d x %d pixels', [W, H]);  // format the size text
 
-  AddRow('File name', Item.FileName);
-  AddRow('Folder', Item.SourceDir);
-  AddRow('Type', UpperCase(Copy(Ext, 2, 10)) + ' file');
-  AddRow('Size', FormatSize(Item.Size) + '  (' + FormatFloat('#,##0', Item.Size) + ' bytes)');
-  AddRow('Dimensions', Dims);
-  AddRow('Date modified', FormatDateTime('yyyy-mm-dd hh:nn:ss', Item.FileTime));
-  AddRow('Date taken', FormatDateTime('yyyy-mm-dd hh:nn:ss', Item.CaptureTime));
-  AddRow('Camera maker', Item.Make);
-  AddRow('Camera model', Item.Camera);
-  AddRow('Serial number', Item.Serial);
-  AddRow('Author / owner', Item.Owner);
-  if Item.ISO > 0 then AddRow('ISO', IntToStr(Item.ISO)) else AddRow('ISO', '');
-  AddRow('Image number', IntToStr(Item.Index));
-  AddRow('Status', Item.StatusText);
-  AddRow('New name', Item.DestPath);
+  AddRow('File name', Item.FileName);  // file name
+  AddRow('Folder', Item.SourceDir);  // folder
+  AddRow('Type', UpperCase(Copy(Ext, 2, 10)) + ' file');  // file type
+  AddRow('Size', FormatSize(Item.Size) + '  (' + FormatFloat('#,##0', Item.Size) + ' bytes)');  // size in readable and exact form
+  AddRow('Dimensions', Dims);  // picture size
+  AddRow('Date modified', FormatDateTime('yyyy-mm-dd hh:nn:ss', Item.FileTime));  // file date
+  AddRow('Date taken', FormatDateTime('yyyy-mm-dd hh:nn:ss', Item.CaptureTime));  // capture date
+  AddRow('Camera maker', Item.Make);  // camera maker
+  AddRow('Camera model', Item.Camera);  // camera model
+  AddRow('Serial number', Item.Serial);  // camera serial number
+  AddRow('Author / owner', Item.Owner);  // author or owner
+  if Item.ISO > 0 then AddRow('ISO', IntToStr(Item.ISO)) else AddRow('ISO', '');  // ISO value, blank when unknown
+  AddRow('Image number', IntToStr(Item.Index));  // image number
+  if Item.ClashInfo <> '' then AddRow('Status', Item.StatusText + ' - ' + Item.ClashInfo)  // status with the name clash reason
+  else AddRow('Status', Item.StatusText);  // status text
+  AddRow('New name', Item.DestPath);  // new file name
 
-  MkButton(Self, 'Copy', 10, 444, 80).OnClick := @CopyClick;
-  MkButton(Self, 'Close', 530, 444, 80, mrOK).Default := True;
+  MkButton(Self, 'Copy', 10, 444, 80).OnClick := @CopyClick;  // button that copies the text
+  MkButton(Self, 'Close', 530, 444, 80, mrOK).Default := True;  // close button
 end;
 
+{ Shows the Properties dialog of an image. }
 procedure ShowImageProperties(Item: TImageItem);
 var
-  F: TPropsForm;
+  F: TPropsForm;  // F: the dialog
 begin
-  if Item = nil then Exit;
-  F := TPropsForm.CreateProps(Application, Item);
+  if Item = nil then Exit;  // nothing to show
+  F := TPropsForm.CreateProps(Application, Item);  // create the dialog
   try
-    F.ShowModal;
+    F.ShowModal;  // show it and wait
   finally
-    F.Free;
+    F.Free;  // free the dialog
   end;
 end;
 
+{ Builds the status dialog; the settings file path is a link that opens its folder. }
+constructor TStatusForm.CreateStatus(AOwner: TComponent; const AText, SettingsFile: string);
+var
+  Lines, TextH: Integer;  // Lines: number of text lines; TextH: height of the text area
+  Lk: TLabel;  // Lk: the clickable settings file label
+  I: Integer;  // I: character counter
+begin
+  inherited CreateNew(AOwner);  // create the form without a resource file
+  FFolder := ExtractFilePath(SettingsFile);  // folder of the settings file
+  Lines := 1;  // count the lines of the text
+  for I := 1 to Length(AText) do  // every character
+    if AText[I] = #10 then Inc(Lines);  // a line break starts another line
+  TextH := Lines * 17 + 4;  // height of the text area
+  InitDialog(Self, 'Status', 520, TextH + 12 + 20 + 40 + 50);  // set the common dialog properties
+  MkWrap(Self, AText, 12, 12, 496, TextH);  // status text
+  MkLabel(Self, 'Settings file (click to open its folder):', 12, TextH + 20);  // prompt
+  Lk := MkWrap(Self, SettingsFile, 12, TextH + 40, 496, 36);  // settings file path
+  Lk.Font.Color := clBlue;  // link color
+  Lk.Font.Style := [fsUnderline];  // link underline
+  Lk.Cursor := crHandPoint;  // hand cursor over the link
+  Lk.Hint := 'Open the folder that contains the settings file';  // tooltip
+  Lk.ShowHint := True;  // show the tooltip
+  Lk.OnClick := @LinkClick;  // open the folder when clicked
+  MkButton(Self, 'OK', 428, TextH + 82, 80, mrOK).Default := True;  // OK button, also the default button
+end;
+
+{ Opens the folder that contains the settings file. }
+procedure TStatusForm.LinkClick(Sender: TObject);
+begin
+  if not OpenDocument(FFolder) then  // open the folder in the file manager
+    MessageDlg(AppTitle, 'Could not open ' + FFolder, mtWarning, [mbOK], 0);  // tell the user
+end;
+
+{ Shows the status dialog. }
+procedure ShowStatus(const AText, SettingsFile: string);
+var
+  F: TStatusForm;  // F: the dialog
+begin
+  F := TStatusForm.CreateStatus(Application, AText, SettingsFile);  // create the dialog
+  try
+    F.ShowModal;  // show it and wait
+  finally
+    F.Free;  // free the dialog
+  end;
+end;
+
+{ Shows the Register dialog. }
 procedure ShowRegister;
 var
-  F: TRegisterForm;
+  F: TRegisterForm;  // F: the dialog
 begin
-  F := TRegisterForm.CreateReg(Application);
+  F := TRegisterForm.CreateReg(Application);  // create the dialog
   try
-    F.ShowModal;
+    F.ShowModal;  // show it and wait
   finally
-    F.Free;
+    F.Free;  // free the dialog
   end;
 end;
 
@@ -295,127 +428,136 @@ end;
 { ====================================================================== }
 
 type
+  { Dialog that asks for the job code (and optionally the source folder). }
   TJobForm = class(TForm)
   private
-    FS: TAppSettings;
-    FCamera: string;
-    cbJob: TComboBox;
-    edExample, edSource: TEdit;
-    procedure UpdateExample(Sender: TObject);
-    procedure DeleteClick(Sender: TObject);
-    procedure PrefsClick(Sender: TObject);
-    procedure SourceBrowseClick(Sender: TObject);
+    FS: TAppSettings;  // program settings
+    FCamera: string;  // camera name for the example
+    cbJob: TComboBox;  // job code box
+    edExample, edSource: TEdit;  // example name box and source folder box
+    procedure UpdateExample(Sender: TObject);  // refreshes the example name
+    procedure DeleteClick(Sender: TObject);  // removes the job code from the history
+    procedure PrefsClick(Sender: TObject);  // opens the Preferences dialog
+    procedure SourceBrowseClick(Sender: TObject);  // asks for the source folder
   public
-    constructor CreateJob(AOwner: TComponent; AS_: TAppSettings; const AJob, ACamera: string;
+    constructor CreateJob(AOwner: TComponent; AS_: TAppSettings; const AJob, ACamera: string;  // builds the dialog
       AskSource: Boolean = False; const ASource: string = '');
   end;
 
+{ Builds the Job Code dialog. }
 constructor TJobForm.CreateJob(AOwner: TComponent; AS_: TAppSettings; const AJob, ACamera: string;
   AskSource: Boolean; const ASource: string);
 var
-  BY: Integer;
+  BY: Integer;  // BY: vertical position of the buttons
 begin
-  inherited CreateNew(AOwner);
-  FS := AS_;
-  FCamera := ACamera;
-  BY := 148;
-  if AskSource then BY := 214;
-  InitDialog(Self, 'Job Code', 388, BY + 42);
-  MkLabel(Self, 'Please enter the job code:', 10, 14);
-  cbJob := MkCombo(Self, 10, 34, 296);
-  cbJob.Items.Assign(FS.JobHistory);
-  cbJob.Text := AJob;
-  cbJob.OnChange := @UpdateExample;
-  MkButton(Self, 'Delete', 316, 33, 60).OnClick := @DeleteClick;
-  MkLabel(Self, 'Example image name:', 10, 72);
-  edExample := MkEdit(Self, 10, 92, 366);
-  edExample.ReadOnly := True;
+  inherited CreateNew(AOwner);  // create the form without a resource file
+  FS := AS_;  // keep the settings
+  FCamera := ACamera;  // keep the camera name
+  BY := 148;  // buttons sit below the example line
+  if AskSource then BY := 214;  // make room for the source folder line
+  InitDialog(Self, 'Job Code', 388, BY + 42);  // set the common dialog properties
+  MkLabel(Self, 'Please enter the job code:', 10, 14);  // prompt
+  cbJob := MkCombo(Self, 10, 34, 296);  // job code box
+  cbJob.Items.Assign(FS.JobHistory);  // fill with the history
+  cbJob.Text := AJob;  // show the current job code
+  cbJob.OnChange := @UpdateExample;  // update the example when the text changes
+  MkButton(Self, 'Delete', 316, 33, 60).OnClick := @DeleteClick;  // button that deletes the entry from the history
+  MkLabel(Self, 'Example image name:', 10, 72);  // prompt
+  edExample := MkEdit(Self, 10, 92, 366);  // example name box
+  edExample.ReadOnly := True;  // user cannot edit the example
   if AskSource then
   begin
-    MkLabel(Self, 'Source folder (leave empty to choose later):', 10, 130);
-    edSource := MkEdit(Self, 10, 150, 330);
-    edSource.Text := ASource;
-    MkButton(Self, '...', 348, 149, 28).OnClick := @SourceBrowseClick;
+    MkLabel(Self, 'Source folder (leave empty to choose later):', 10, 130);  // prompt
+    edSource := MkEdit(Self, 10, 150, 330);  // source folder box
+    edSource.Text := ASource;  // show the current source folder
+    MkButton(Self, '...', 348, 149, 28).OnClick := @SourceBrowseClick;  // button that opens the folder chooser
   end;
-  MkButton(Self, 'Preferences...', 10, BY, 90).OnClick := @PrefsClick;
-  MkButton(Self, 'OK', 206, BY, 80, mrOK).Default := True;
-  MkButton(Self, 'Cancel', 296, BY, 80, mrCancel).Cancel := True;
-  ActiveControl := cbJob;
-  UpdateExample(nil);
+  MkButton(Self, 'Preferences...', 10, BY, 90).OnClick := @PrefsClick;  // button that opens the Preferences dialog
+  MkButton(Self, 'OK', 206, BY, 80, mrOK).Default := True;  // OK button, also the default button
+  MkButton(Self, 'Cancel', 296, BY, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
+  ActiveControl := cbJob;  // start typing in the job code box
+  UpdateExample(nil);  // show the first example
 end;
 
+{ Shows an example file name built from the current settings. }
 procedure TJobForm.UpdateExample(Sender: TObject);
 begin
-  edExample.Text := ExampleDest(FS, FS.DownloadDir, FS.FileNameMask, Trim(cbJob.Text));
+  edExample.Text := ExampleDest(FS, FS.DownloadDir, FS.FileNameMask, Trim(cbJob.Text));  // build the example name
 end;
 
+{ Removes the selected job code from the history. }
 procedure TJobForm.DeleteClick(Sender: TObject);
 var
-  I: Integer;
+  I: Integer;  // I: index of the entry
 begin
-  I := FS.JobHistory.IndexOf(cbJob.Text);
-  if I >= 0 then FS.JobHistory.Delete(I);
-  I := cbJob.Items.IndexOf(cbJob.Text);
-  if I >= 0 then cbJob.Items.Delete(I);
-  cbJob.Text := '';
-  UpdateExample(nil);
+  I := FS.JobHistory.IndexOf(cbJob.Text);  // find it in the history
+  if I >= 0 then FS.JobHistory.Delete(I);  // remove it from the history
+  I := cbJob.Items.IndexOf(cbJob.Text);  // find it in the list
+  if I >= 0 then cbJob.Items.Delete(I);  // remove it from the list
+  cbJob.Text := '';  // clear the box
+  UpdateExample(nil);  // refresh the example
 end;
 
+{ Opens the Preferences dialog and refreshes the example afterwards. }
 procedure TJobForm.PrefsClick(Sender: TObject);
 begin
-  ExecutePreferences(FS, FCamera);
-  UpdateExample(nil);
+  ExecutePreferences(FS, FCamera);  // show the Preferences dialog
+  UpdateExample(nil);  // refresh the example
 end;
 
+{ Lets the user choose the source folder. }
 procedure TJobForm.SourceBrowseClick(Sender: TObject);
 var
-  D: TSelectDirectoryDialog;
+  D: TSelectDirectoryDialog;  // D: folder chooser
 begin
-  D := TSelectDirectoryDialog.Create(Self);
+  D := TSelectDirectoryDialog.Create(Self);  // create the chooser
   try
-    D.Title := 'Select source folder';
-    if (edSource.Text <> '') and DirectoryExists(edSource.Text) then D.InitialDir := edSource.Text;
-    if D.Execute then edSource.Text := D.FileName;
+    D.Title := 'Select source folder';  // window title
+    if (edSource.Text <> '') and DirectoryExists(edSource.Text) then D.InitialDir := edSource.Text;  // start in the current folder when it exists
+    if D.Execute then edSource.Text := D.FileName;  // take the chosen folder
   finally
-    D.Free;
+    D.Free;  // free the chooser
   end;
 end;
 
 function RunJobDialog(S: TAppSettings; var Job, Source: string; const CurrentCamera: string;
   Ask: Boolean): Boolean; forward;
 
+{ Asks for the job code only; returns True when the user clicked OK. }
 function ExecuteJobCode(S: TAppSettings; var Job: string; const CurrentCamera: string): Boolean;
 var
-  Dummy: string;
+  Dummy: string;  // Dummy: unused source folder
 begin
-  Dummy := '';
-  Result := RunJobDialog(S, Job, Dummy, CurrentCamera, False);
+  Dummy := '';  // no source folder
+  Result := RunJobDialog(S, Job, Dummy, CurrentCamera, False);  // run the dialog without the source folder line
 end;
 
+{ Asks for the job code and the source folder; returns True when the user clicked OK. }
 function ExecuteJobCodeSource(S: TAppSettings; var Job, Source: string; const CurrentCamera: string): Boolean;
 begin
-  Result := RunJobDialog(S, Job, Source, CurrentCamera, True);
+  Result := RunJobDialog(S, Job, Source, CurrentCamera, True);  // run the dialog with the source folder line
 end;
 
+{ Shows the Job Code dialog and stores the result in the settings. }
 function RunJobDialog(S: TAppSettings; var Job, Source: string; const CurrentCamera: string;
   Ask: Boolean): Boolean;
 var
-  F: TJobForm;
-  V: string;
-  I: Integer;
+  F: TJobForm;  // F: the dialog
+  V: string;  // V: trimmed job code
+  I: Integer;  // I: history index
 begin
-  F := TJobForm.CreateJob(Application, S, Job, CurrentCamera, Ask, Source);
+  F := TJobForm.CreateJob(Application, S, Job, CurrentCamera, Ask, Source);  // create the dialog
   try
-    Result := F.ShowModal = mrOK;
+    Result := F.ShowModal = mrOK;  // True when the user clicked OK
     if Result then
     begin
       V := Trim(F.cbJob.Text);      // may be blank: the job code is then left out of names
-      Job := V;
-      if Ask then Source := Trim(F.edSource.Text);
-      I := S.JobHistory.IndexOf(V);
-      if I >= 0 then S.JobHistory.Delete(I);
-      if (V <> '') and (V <> '{Job Name}') then S.JobHistory.Insert(0, V);
-      while S.JobHistory.Count > 30 do S.JobHistory.Delete(S.JobHistory.Count - 1);
+      Job := V;  // return the job code
+      if Ask then Source := Trim(F.edSource.Text);  // return the source folder
+      I := S.JobHistory.IndexOf(V);  // find the code in the history
+      if I >= 0 then S.JobHistory.Delete(I);  // remove the old position
+      if (V <> '') and (V <> '{Job Name}') then S.JobHistory.Insert(0, V);  // put it at the top of the history
+      while S.JobHistory.Count > 30 do S.JobHistory.Delete(S.JobHistory.Count - 1);  // keep at most 30 entries
     end;
   finally
     F.Free;
@@ -426,27 +568,28 @@ end;
 { Generic list chooser (user profiles)                                    }
 { ====================================================================== }
 
+{ Shows a list of choices (user profiles); returns True and the chosen entry when the user clicked OK. }
 function ChooseFromList(const ATitle, APrompt: string; Items: TStrings; out Choice: string): Boolean;
 var
-  F: TForm;
-  LB: TListBox;
+  F: TForm;  // F: the dialog
+  LB: TListBox;  // LB: list of choices
 begin
-  Choice := '';
-  F := TForm.CreateNew(Application);
+  Choice := '';  // nothing chosen yet
+  F := TForm.CreateNew(Application);  // create the form
   try
-    InitDialog(F, ATitle, 340, 290);
-    MkLabel(F, APrompt, 10, 10);
-    LB := TListBox.Create(F);
-    LB.Parent := F;
-    LB.SetBounds(10, 32, 320, 210);
-    LB.Items.Assign(Items);
-    if LB.Items.Count > 0 then LB.ItemIndex := 0;
-    MkButton(F, 'OK', 160, 254, 80, mrOK).Default := True;
-    MkButton(F, 'Cancel', 250, 254, 80, mrCancel).Cancel := True;
-    Result := (F.ShowModal = mrOK) and (LB.ItemIndex >= 0);
-    if Result then Choice := LB.Items[LB.ItemIndex];
+    InitDialog(F, ATitle, 340, 290);  // set the common dialog properties
+    MkLabel(F, APrompt, 10, 10);  // prompt
+    LB := TListBox.Create(F);  // create the list
+    LB.Parent := F;  // place it on the form
+    LB.SetBounds(10, 32, 320, 210);  // position and size it
+    LB.Items.Assign(Items);  // fill with the choices
+    if LB.Items.Count > 0 then LB.ItemIndex := 0;  // select the first entry
+    MkButton(F, 'OK', 160, 254, 80, mrOK).Default := True;  // OK button, also the default button
+    MkButton(F, 'Cancel', 250, 254, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
+    Result := (F.ShowModal = mrOK) and (LB.ItemIndex >= 0);  // OK with an entry selected
+    if Result then Choice := LB.Items[LB.ItemIndex];  // return the chosen entry
   finally
-    F.Free;
+    F.Free;  // free the dialog
   end;
 end;
 
@@ -455,58 +598,62 @@ end;
 { ====================================================================== }
 
 type
+  { Helper that holds the check list of the File Types dialog and its button handlers. }
   TTypesHelper = class
-    List: TCheckListBox;
-    procedure AllClick(Sender: TObject);
-    procedure NoneClick(Sender: TObject);
+    List: TCheckListBox;  // list of file types with check boxes
+    procedure AllClick(Sender: TObject);  // checks every type
+    procedure NoneClick(Sender: TObject);  // clears every type
   end;
 
+{ Checks every file type. }
 procedure TTypesHelper.AllClick(Sender: TObject);
 var
-  I: Integer;
+  I: Integer;  // I: loop counter
 begin
-  for I := 0 to List.Items.Count - 1 do List.Checked[I] := True;
+  for I := 0 to List.Items.Count - 1 do List.Checked[I] := True;  // check each entry
 end;
 
+{ Clears every file type. }
 procedure TTypesHelper.NoneClick(Sender: TObject);
 var
-  I: Integer;
+  I: Integer;  // I: loop counter
 begin
-  for I := 0 to List.Items.Count - 1 do List.Checked[I] := False;
+  for I := 0 to List.Items.Count - 1 do List.Checked[I] := False;  // uncheck each entry
 end;
 
+{ Shows the File Types dialog and stores the selection in the settings. }
 function ExecuteFileTypes(S: TAppSettings): Boolean;
 var
-  F: TForm;
-  H: TTypesHelper;
-  B: TButton;
-  I: Integer;
+  F: TForm;  // F: the dialog
+  H: TTypesHelper;  // H: handler object for the list
+  B: TButton;  // B: button being created
+  I: Integer;  // I: loop counter
 begin
-  F := TForm.CreateNew(Application);
-  H := TTypesHelper.Create;
+  F := TForm.CreateNew(Application);  // create the form
+  H := TTypesHelper.Create;  // create the helper
   try
-    InitDialog(F, 'File Types', 360, 360);
-    MkLabel(F, 'Show these file types:', 10, 10);
-    H.List := TCheckListBox.Create(F);
-    H.List.Parent := F;
-    H.List.SetBounds(10, 32, 340, 250);
-    for I := 0 to FileTypeCount - 1 do
+    InitDialog(F, 'File Types', 360, 440);  // set the common dialog properties
+    MkLabel(F, 'Show these file types:', 10, 10);  // prompt
+    H.List := TCheckListBox.Create(F);  // create the list
+    H.List.Parent := F;  // place it on the form
+    H.List.SetBounds(10, 32, 340, 330);  // position and size it
+    for I := 0 to FileTypeCount - 1 do  // every known file type
     begin
-      H.List.Items.Add(FileTypeNames[I]);
-      H.List.Checked[I] := S.TypeOn[I];
+      H.List.Items.Add(FileTypeNames[I]);  // add its name
+      H.List.Checked[I] := S.TypeOn[I];  // check it when it is enabled
     end;
-    B := MkButton(F, 'Select all', 10, 292, 100);
-    B.OnClick := @H.AllClick;
-    B := MkButton(F, 'Clear all', 120, 292, 100);
-    B.OnClick := @H.NoneClick;
-    MkButton(F, 'OK', 180, 326, 80, mrOK).Default := True;
-    MkButton(F, 'Cancel', 270, 326, 80, mrCancel).Cancel := True;
-    Result := F.ShowModal = mrOK;
+    B := MkButton(F, 'Select all', 10, 372, 100);  // Select all button
+    B.OnClick := @H.AllClick;  // connect its handler
+    B := MkButton(F, 'Clear all', 120, 372, 100);  // Clear all button
+    B.OnClick := @H.NoneClick;  // connect its handler
+    MkButton(F, 'OK', 180, 406, 80, mrOK).Default := True;  // OK button, also the default button
+    MkButton(F, 'Cancel', 270, 406, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
+    Result := F.ShowModal = mrOK;  // True when the user clicked OK
     if Result then
-      for I := 0 to FileTypeCount - 1 do S.TypeOn[I] := H.List.Checked[I];
+      for I := 0 to FileTypeCount - 1 do S.TypeOn[I] := H.List.Checked[I];  // store the selection
   finally
-    H.Free;
-    F.Free;
+    H.Free;  // free the helper
+    F.Free;  // free the dialog
   end;
 end;
 
@@ -514,31 +661,32 @@ end;
 { IPTC / XMP dialog                                                       }
 { ====================================================================== }
 
+{ Shows the IPTC/XMP dialog; L holds the values as name=value lines. }
 function ExecuteIptc(L: TStringList): Boolean;
 const
-  Keys: array[0..8] of string =
+  Keys: array[0..8] of string =  // names of the fields
     ('Creator', 'Copyright', 'Credit', 'Source', 'Title', 'Description', 'City', 'Country', 'Keywords');
 var
-  F: TForm;
-  Ed: array[0..8] of TEdit;
-  I: Integer;
+  F: TForm;  // F: the dialog
+  Ed: array[0..8] of TEdit;  // Ed: edit boxes, one per field
+  I: Integer;  // I: loop counter
 begin
-  F := TForm.CreateNew(Application);
+  F := TForm.CreateNew(Application);  // create the form
   try
-    InitDialog(F, 'IPTC/XMP data', 420, 340);
-    for I := 0 to High(Keys) do
+    InitDialog(F, 'IPTC/XMP data', 420, 340);  // set the common dialog properties
+    for I := 0 to High(Keys) do  // every field
     begin
-      MkLabel(F, Keys[I] + ':', 10, 14 + I * 30 + 3);
-      Ed[I] := MkEdit(F, 100, 14 + I * 30, 306);
-      Ed[I].Text := L.Values[Keys[I]];
+      MkLabel(F, Keys[I] + ':', 10, 14 + I * 30 + 3);  // field label
+      Ed[I] := MkEdit(F, 100, 14 + I * 30, 306);  // edit box for the field
+      Ed[I].Text := L.Values[Keys[I]];  // show the current value
     end;
-    MkLabel(F, 'Keywords are separated by commas.', 100, 14 + 9 * 30 - 4);
-    MkButton(F, 'OK', 236, 304, 80, mrOK).Default := True;
-    MkButton(F, 'Cancel', 326, 304, 80, mrCancel).Cancel := True;
-    Result := F.ShowModal = mrOK;
+    MkLabel(F, 'Keywords are separated by commas.', 100, 14 + 9 * 30 - 4);  // hint for the keywords field
+    MkButton(F, 'OK', 236, 304, 80, mrOK).Default := True;  // OK button, also the default button
+    MkButton(F, 'Cancel', 326, 304, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
+    Result := F.ShowModal = mrOK;  // True when the user clicked OK
     if Result then
-      for I := 0 to High(Keys) do
-        L.Values[Keys[I]] := Trim(Ed[I].Text);
+      for I := 0 to High(Keys) do  // every field
+        L.Values[Keys[I]] := Trim(Ed[I].Text);  // store the trimmed value
   finally
     F.Free;
   end;
@@ -548,28 +696,29 @@ end;
 { Edit camera mapping                                                     }
 { ====================================================================== }
 
+{ Shows the Edit mapping dialog for one camera; T8 and T9 are the custom token values. }
 function EditMapping(const Cam: string; var T8, T9: string): Boolean;
 var
-  F: TForm;
-  E8, E9: TEdit;
+  F: TForm;  // F: the dialog
+  E8, E9: TEdit;  // E8, E9: edit boxes for the two tokens
 begin
-  F := TForm.CreateNew(Application);
+  F := TForm.CreateNew(Application);  // create the form
   try
-    InitDialog(F, 'Edit mapping', 380, 150);
-    MkLabel(F, 'Camera: ' + Cam, 10, 12);
-    MkLabel(F, '{T8} =', 10, 46);
-    E8 := MkEdit(F, 70, 42, 300);
-    E8.Text := T8;
-    MkLabel(F, '{T9} =', 10, 78);
-    E9 := MkEdit(F, 70, 74, 300);
-    E9.Text := T9;
-    MkButton(F, 'OK', 200, 114, 80, mrOK).Default := True;
-    MkButton(F, 'Cancel', 290, 114, 80, mrCancel).Cancel := True;
-    Result := F.ShowModal = mrOK;
+    InitDialog(F, 'Edit mapping', 380, 150);  // set the common dialog properties
+    MkLabel(F, 'Camera: ' + Cam, 10, 12);  // camera name
+    MkLabel(F, '{T8} =', 10, 46);  // label of the first token
+    E8 := MkEdit(F, 70, 42, 300);  // edit box for the first token
+    E8.Text := T8;  // show the current value
+    MkLabel(F, '{T9} =', 10, 78);  // label of the second token
+    E9 := MkEdit(F, 70, 74, 300);  // edit box for the second token
+    E9.Text := T9;  // show the current value
+    MkButton(F, 'OK', 200, 114, 80, mrOK).Default := True;  // OK button, also the default button
+    MkButton(F, 'Cancel', 290, 114, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
+    Result := F.ShowModal = mrOK;  // True when the user clicked OK
     if Result then
     begin
-      T8 := E8.Text;
-      T9 := E9.Text;
+      T8 := E8.Text;  // return the first token
+      T9 := E9.Text;  // return the second token
     end;
   finally
     F.Free;
@@ -581,638 +730,700 @@ end;
 { ====================================================================== }
 
 type
+  { The Preferences dialog with its tabs. }
   TPrefsForm = class(TForm)
   private
-    FS: TAppSettings;
-    FCamera: string;
-    FMaps, FPlugins, FPluginOpts: TStringList;
-    FResetSeq, FUpdating: Boolean;
-    PC: TPageControl;
+    FS: TAppSettings;  // program settings
+    FCamera: string;  // camera name for the example
+    FMaps, FPlugins, FPluginOpts: TStringList;  // FMaps: camera mappings; FPlugins: plug-in list; FPluginOpts: plug-in options
+    FResetSeq, FUpdating: Boolean;  // FResetSeq: sequence number reset requested; FUpdating: dialog is being filled
+    PC: TPageControl;  // tab control
     // Download Path
-    cbDir, cbFile, cbJob: TComboBox;
-    chkPromptJob: TCheckBox;
-    chkVerify, chkBackup, chkSafeDel: TCheckBox;
-    edTrash: TEdit;
-    lblTrash: TLabel;
-    edBackup: TEdit;
-    btnBackupBrowse: TButton;
-    seqStart: TSpinEdit;
-    edExample: TEdit;
+    cbDir, cbFile, cbJob: TComboBox;  // download folder, file name and job code boxes
+    chkPromptJob: TCheckBox;  // prompt for the job code every time
+    chkVerify, chkBackup, chkSafeDel: TCheckBox;  // verify copies, make a backup copy, safe deletion
+    edTrash: TEdit;  // folder for the trash
+    lblTrash: TLabel;  // label of the trash folder box
+    edBackup: TEdit;  // backup folder box
+    btnBackupBrowse: TButton;  // button that browses for the backup folder
+    seqStart: TSpinEdit;  // first sequence number
+    edExample: TEdit;  // example file name
     // General
-    rbAuto, rbCamera, rbCard: TRadioButton;
-    edLetters: TEdit;
-    chkPTP, chkReadOnly, chkPreserveRO, chkProfile, chkIgnoreSize, chkRotate, chkJpe,
-    chkLowerName, chkLowerExt, chkStamp, chkSaveJobs, chkExifTxt, chkEject, chkWholeDisk,
-    chkIptc, chkPromptIptc, chkIIM, chkNef, chkExifOwner, chkLoadLast, chkSingle, chkWinSafe: TCheckBox;
-    lblLetters: TLabel;
-    edAuthor, edCopyright: TEdit;
+    rbAuto, rbCamera, rbCard: TRadioButton;  // image source choices
+    edLetters: TEdit;  // drive letters box
+    chkPTP, chkReadOnly, chkPreserveRO, chkProfile, chkAutoRename, chkRenameDup, chkIgnoreDup, chkIgnoreSize, chkRotate, chkJpe,  // general options (first part)
+    chkLowerName, chkLowerExt, chkStamp, chkSaveJobs, chkExifTxt, chkEject, chkWholeDisk,  // general options (second part)
+    chkIptc, chkPromptIptc, chkIIM, chkNef, chkExifOwner, chkLoadLast, chkSingle, chkWinSafe: TCheckBox;  // general options (third part)
+    lblLetters: TLabel;  // label of the drive letters box
+    edAuthor, edCopyright: TEdit;  // author and copyright boxes
     // Automation
-    chkAutoStart, chkAutoMenu, chkAutoPrompt, chkADownload, chkADelete, chkAEject,
-    chkALaunch, chkAExit: TCheckBox;
-    grpActions: TGroupBox;
+    chkAutoStart, chkAutoMenu, chkAutoPrompt, chkADownload, chkADelete, chkAEject,  // automation options (first part)
+    chkALaunch, chkAExit: TCheckBox;  // automation options (second part)
+    grpActions: TGroupBox;  // group of automatic actions
     // Custom button
-    chkCustom: TCheckBox;
-    edCaption, edCmd: TEdit;
-    btnCmd: TButton;
+    chkCustom: TCheckBox;  // custom button on or off
+    edCaption, edCmd: TEdit;  // button caption and command boxes
+    btnCmd: TButton;  // button that browses for the command
     // Mapping
-    lbMaps: TListBox;
-    chkSerial, chkPromptCam: TCheckBox;
-    edCurCam: TEdit;
+    lbMaps: TListBox;  // list of camera mappings
+    chkSerial, chkPromptCam: TCheckBox;  // mapping options
+    edCurCam: TEdit;  // current camera box
     // Plug-ins
-    lbPlugins: TListBox;
-    chkPlugin: TCheckBox;
-    lblPluginInfo: TLabel;
-    procedure BuildPathTab(TS: TTabSheet);
-    procedure BuildGeneralTab(TS: TTabSheet);
-    procedure BuildAutomationTab(TS: TTabSheet);
-    procedure BuildCustomTab(TS: TTabSheet);
-    procedure BuildMappingTab(TS: TTabSheet);
-    procedure BuildPluginTab(TS: TTabSheet);
-    procedure LoadValues;
-    procedure FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
-    procedure ExampleChange(Sender: TObject);
-    procedure BrowseClick(Sender: TObject);
-    procedure BackupBrowseClick(Sender: TObject);
-    procedure BackupChange(Sender: TObject);
-    procedure ResetClick(Sender: TObject);
-    procedure TokensClick(Sender: TObject);
-    procedure LocateClick(Sender: TObject);
-    procedure GeneralChange(Sender: TObject);
-    procedure AutoChange(Sender: TObject);
-    procedure SafeDelChange(Sender: TObject);
-    procedure CustomChange(Sender: TObject);
-    procedure CmdBrowseClick(Sender: TObject);
-    procedure RefreshMaps(Sel: Integer);
-    procedure AddCamera(const CamName: string);
-    procedure MapAddCameraClick(Sender: TObject);
-    procedure MapAddClick(Sender: TObject);
-    procedure MapDeleteClick(Sender: TObject);
-    procedure MapEditClick(Sender: TObject);
-    procedure RefreshPlugins(Sel: Integer);
-    procedure PluginSelect(Sender: TObject);
-    procedure PluginToggle(Sender: TObject);
-    procedure PluginUpClick(Sender: TObject);
-    procedure PluginDownClick(Sender: TObject);
-    procedure PluginSetupClick(Sender: TObject);
+    lbPlugins: TListBox;  // list of plug-ins
+    chkPlugin: TCheckBox;  // plug-in on or off
+    lblPluginInfo: TLabel;  // plug-in information label
+    procedure BuildPathTab(TS: TTabSheet);  // builds the Download Path tab
+    procedure BuildGeneralTab(TS: TTabSheet);  // builds the General tab
+    procedure BuildFileTab(TS: TTabSheet);  // builds the File Handling tab
+    procedure DupChange(Sender: TObject);  // keeps the duplicate options exclusive
+    procedure BuildAutomationTab(TS: TTabSheet);  // builds the Automation tab
+    procedure BuildCustomTab(TS: TTabSheet);  // builds the Custom button tab
+    procedure BuildMappingTab(TS: TTabSheet);  // builds the Mapping tab
+    procedure BuildPluginTab(TS: TTabSheet);  // builds the Plug-ins tab
+    procedure LoadValues;  // fills the controls from the settings
+    procedure FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);  // handles F1
+    procedure ExampleChange(Sender: TObject);  // refreshes the example name
+    procedure BrowseClick(Sender: TObject);  // asks for the download folder
+    procedure BackupBrowseClick(Sender: TObject);  // asks for the backup folder
+    procedure BackupChange(Sender: TObject);  // enables the backup controls
+    procedure ResetClick(Sender: TObject);  // asks to reset the sequence number
+    procedure TokensClick(Sender: TObject);  // shows the token list
+    procedure LocateClick(Sender: TObject);  // locates the card reader
+    procedure GeneralChange(Sender: TObject);  // updates controls after a General option changed
+    procedure AutoChange(Sender: TObject);  // updates controls after an Automation option changed
+    procedure SafeDelChange(Sender: TObject);  // updates controls after the safe deletion option changed
+    procedure CustomChange(Sender: TObject);  // updates controls after the custom button option changed
+    procedure CmdBrowseClick(Sender: TObject);  // asks for the command of the custom button
+    procedure RefreshMaps(Sel: Integer);  // refreshes the mapping list
+    procedure AddCamera(const CamName: string);  // adds a camera to the mappings
+    procedure MapAddCameraClick(Sender: TObject);  // adds the current camera
+    procedure MapAddClick(Sender: TObject);  // adds a new mapping
+    procedure MapDeleteClick(Sender: TObject);  // deletes a mapping
+    procedure MapEditClick(Sender: TObject);  // edits a mapping
+    procedure RefreshPlugins(Sel: Integer);  // refreshes the plug-in list
+    procedure PluginSelect(Sender: TObject);  // shows the information of the selected plug-in
+    procedure PluginToggle(Sender: TObject);  // turns the selected plug-in on or off
+    procedure PluginUpClick(Sender: TObject);  // moves the plug-in up
+    procedure PluginDownClick(Sender: TObject);  // moves the plug-in down
+    procedure PluginSetupClick(Sender: TObject);  // opens the setup of the plug-in
   public
-    constructor CreatePrefs(AOwner: TComponent; AS_: TAppSettings; const ACamera: string);
-    destructor Destroy; override;
-    procedure Store;
+    constructor CreatePrefs(AOwner: TComponent; AS_: TAppSettings; const ACamera: string);  // builds the dialog
+    destructor Destroy; override;  // frees the lists
+    procedure Store;  // stores the values in the settings
   end;
 
+{ Builds the Preferences dialog with all its tabs. }
 constructor TPrefsForm.CreatePrefs(AOwner: TComponent; AS_: TAppSettings; const ACamera: string);
 var
-  BtnOK, BtnCancel: TButton;
+  BtnOK, BtnCancel: TButton;  // BtnOK, BtnCancel: dialog buttons
 begin
-  inherited CreateNew(AOwner);
-  FS := AS_;
-  FCamera := ACamera;
-  FMaps := TStringList.Create;
-  FPlugins := TStringList.Create;
-  FPluginOpts := TStringList.Create;
-  InitDialog(Self, 'Preferences', 520, 692);
-  KeyPreview := True;
-  OnKeyDown := @FormKeyDown;
-  PC := TPageControl.Create(Self);
-  PC.Parent := Self;
-  PC.SetBounds(8, 8, 504, 636);
-  BuildPathTab(PC.AddTabSheet);
-  PC.Pages[0].Caption := 'Download Path';
-  BuildGeneralTab(PC.AddTabSheet);
-  PC.Pages[1].Caption := 'General';
-  BuildAutomationTab(PC.AddTabSheet);
-  PC.Pages[2].Caption := 'Automation';
-  BuildCustomTab(PC.AddTabSheet);
-  PC.Pages[3].Caption := 'Custom button';
-  BuildMappingTab(PC.AddTabSheet);
-  PC.Pages[4].Caption := 'Mapping';
-  BuildPluginTab(PC.AddTabSheet);
-  PC.Pages[5].Caption := 'Plug-ins';
-  BtnOK := MkButton(Self, 'OK', 340, 654, 80, mrOK);
-  BtnOK.Default := True;
-  BtnCancel := MkButton(Self, 'Cancel', 430, 654, 80, mrCancel);
-  BtnCancel.Cancel := True;
-  LoadValues;
+  inherited CreateNew(AOwner);  // create the form without a resource file
+  FS := AS_;  // keep the settings
+  FCamera := ACamera;  // keep the camera name
+  FMaps := TStringList.Create;  // list of mappings
+  FPlugins := TStringList.Create;  // list of plug-ins
+  FPluginOpts := TStringList.Create;  // list of plug-in options
+  InitDialog(Self, 'Preferences', 520, 692);  // set the common dialog properties
+  KeyPreview := True;  // let the form see keys first
+  OnKeyDown := @FormKeyDown;  // handle the F1 key
+  PC := TPageControl.Create(Self);  // create the tab control
+  PC.Parent := Self;  // place it on the form
+  PC.SetBounds(8, 8, 504, 636);  // position and size it
+  PC.MultiLine := True;  // wrap the tab headings when they do not fit on one row
+  BuildPathTab(PC.AddTabSheet);  // build the first tab
+  PC.Pages[0].Caption := 'Download Path';  // tab title
+  BuildGeneralTab(PC.AddTabSheet);  // build the second tab
+  PC.Pages[1].Caption := 'General';  // tab title
+  BuildFileTab(PC.AddTabSheet);  // build the File Handling tab
+  PC.Pages[2].Caption := 'File Handling';  // tab title
+  BuildAutomationTab(PC.AddTabSheet);  // build the third tab
+  PC.Pages[3].Caption := 'Automation';  // tab title
+  BuildMappingTab(PC.AddTabSheet);  // build the fourth tab
+  PC.Pages[4].Caption := 'Mapping';  // tab title
+  BuildCustomTab(PC.AddTabSheet);  // build the fifth tab
+  PC.Pages[5].Caption := 'Custom Button';  // tab title
+  BuildPluginTab(PC.AddTabSheet);  // build the sixth tab
+  PC.Pages[6].Caption := 'Plug-ins';  // tab title
+  BtnOK := MkButton(Self, 'OK', 340, 654, 80, mrOK);  // OK button
+  BtnOK.Default := True;  // OK is the default button
+  BtnCancel := MkButton(Self, 'Cancel', 430, 654, 80, mrCancel);  // Cancel button
+  BtnCancel.Cancel := True;  // Cancel reacts to Esc
+  LoadValues;  // fill the controls from the settings
 end;
 
+{ Frees the lists owned by the dialog. }
 destructor TPrefsForm.Destroy;
 begin
-  FMaps.Free;
-  FPlugins.Free;
-  FPluginOpts.Free;
-  inherited Destroy;
+  FMaps.Free;  // free the mappings
+  FPlugins.Free;  // free the plug-in list
+  FPluginOpts.Free;  // free the plug-in options
+  inherited Destroy;  // run the inherited destructor
 end;
 
+{ Shows the token list when F1 is pressed. }
 procedure TPrefsForm.FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
 begin
-  if (Key = VK_F1) and (Shift = []) then
+  if (Key = VK_F1) and (Shift = []) then  // F1 without modifier keys
   begin
-    ShowTokenHelp;
-    Key := 0;
+    ShowTokenHelp;  // show the token list
+    Key := 0;  // key has been handled
   end;
 end;
 
 { ---- Download Path ---- }
 
+{ Builds the Download Path tab. }
 procedure TPrefsForm.BuildPathTab(TS: TTabSheet);
 const
-  Col1 = '{d} - date'#13#10'{y} - 2-digit year'#13#10'{Y} - 4-digit year'#13#10 +
+  Col1 = '{d} - date'#13#10'{y} - 2-digit year'#13#10'{Y} - 4-digit year'#13#10 +  // token help, first column
          '{m} - month'#13#10'{b} - month (abbr.)'#13#10'{B} - full month'#13#10 +
          '{D} - day of month'#13#10'{a} - weekday';
-  Col2 = '{A} - full weekday'#13#10'{W} - week'#13#10'{t} - time'#13#10'{H} - hour'#13#10 +
+  Col2 = '{A} - full weekday'#13#10'{W} - week'#13#10'{t} - time'#13#10'{H} - hour'#13#10 +  // token help, second column
          '{I} - hour (01-12)'#13#10'{M} - minutes'#13#10'{S} - seconds'#13#10'{q} - folder';
-  Col3 = '{r} - image'#13#10'{o} - orig'#13#10'{f} - filename prefix'#13#10'{O} - owner'#13#10 +
+  Col3 = '{r} - image'#13#10'{o} - orig'#13#10'{f} - filename prefix'#13#10'{O} - owner'#13#10 +  // token help, third column
          '{i} - ISO'#13#10'{c} - camera serial'#13#10'{T} - camera'#13#10'{J} - Job code';
 begin
-  MkLabel(TS, 'Download directory:', 8, 6);
-  cbDir := MkCombo(TS, 8, 26, 436);
-  cbDir.Items.Add(IncludeTrailingPathDelimiter(GetUserDir) + 'Pictures' + PathDelim +
+  MkLabel(TS, 'Download directory:', 8, 6);  // label
+  cbDir := MkCombo(TS, 8, 26, 436);  // download folder box
+  cbDir.Items.Add(IncludeTrailingPathDelimiter(GetUserDir) + 'Pictures' + PathDelim +  // first suggested folder pattern
     'Photo Downloader' + PathDelim + '{Y}' + PathDelim + '{Y}-{m}-{D}-{J}' + PathDelim);
-  cbDir.Items.Add(IncludeTrailingPathDelimiter(GetUserDir) + 'Pictures' + PathDelim +
+  cbDir.Items.Add(IncludeTrailingPathDelimiter(GetUserDir) + 'Pictures' + PathDelim +  // second suggested folder pattern
     '{Y}' + PathDelim + '{Y}-{m}-{D}-{J}' + PathDelim);
-  cbDir.OnChange := @ExampleChange;
-  MkButton(TS, '...', 452, 25, 28).OnClick := @BrowseClick;
+  cbDir.OnChange := @ExampleChange;  // update the example when the text changes
+  MkButton(TS, '...', 452, 25, 28).OnClick := @BrowseClick;  // button that browses for the folder
 
-  MkLabel(TS, 'Filename:', 8, 62);
-  cbFile := MkCombo(TS, 66, 58, 414);
-  cbFile.Items.Add('{o}');
-  cbFile.Items.Add('{Y}{m}{D}-{t}-{o}');
-  cbFile.Items.Add('RA{Y}{m}{D}-{r}');
-  cbFile.OnChange := @ExampleChange;
+  MkLabel(TS, 'Filename:', 8, 62);  // label
+  cbFile := MkCombo(TS, 66, 58, 414);  // file name box
+  cbFile.Items.Add('{o}');  // suggested pattern: original name
+  cbFile.Items.Add('{Y}{m}{D}-{t}-{o}');  // suggested pattern: date, time and original name
+  cbFile.Items.Add('RA{Y}{m}{D}-{r}');  // suggested pattern: prefix and number
+  cbFile.OnChange := @ExampleChange;  // update the example when the text changes
 
-  MkLabel(TS, 'Job code {J}:', 8, 94);
-  cbJob := MkCombo(TS, 90, 90, 390);
-  cbJob.Items.Add('{Job Name}');
-  cbJob.OnChange := @ExampleChange;
+  MkLabel(TS, 'Job code {J}:', 8, 94);  // label
+  cbJob := MkCombo(TS, 90, 90, 390);  // job code box
+  cbJob.Items.Add('{Job Name}');  // placeholder job code
+  cbJob.OnChange := @ExampleChange;  // update the example when the text changes
 
-  chkPromptJob := MkCheck(TS, 'Prompt for Job code every time Downloader is run', 8, 120);
-  MkLabel(TS, 'Sequence number starting', 8, 152);
-  seqStart := TSpinEdit.Create(TS);
-  seqStart.Parent := TS;
-  seqStart.SetBounds(170, 148, 80, 23);
-  seqStart.MinValue := 0;
-  seqStart.MaxValue := 999999999;
-  MkButton(TS, 'Reset', 262, 147, 70).OnClick := @ResetClick;
+  chkPromptJob := MkCheck(TS, 'Prompt for Job code every time Downloader is run', 8, 120);  // prompt for the job code check box
+  MkLabel(TS, 'Sequence number starting', 8, 152);  // label
+  seqStart := TSpinEdit.Create(TS);  // create the sequence number box
+  seqStart.Parent := TS;  // place it on the tab
+  seqStart.SetBounds(170, 148, 80, 23);  // position and size it
+  seqStart.MinValue := 0;  // smallest value
+  seqStart.MaxValue := 999999999;  // largest value
+  MkButton(TS, 'Reset', 262, 147, 70).OnClick := @ResetClick;  // button that resets the sequence number
 
-  MkLabel(TS, 'Directory and filename tokens (press F1 for a complete list):', 8, 184);
-  MkWrap(TS, Col1, 8, 204, 150, 125);
-  MkWrap(TS, Col2, 168, 204, 150, 125);
-  MkWrap(TS, Col3, 330, 204, 150, 125);
-  MkLabel(TS, '{seq#} - download sequence', 8, 332);
-  MkLabel(TS, '{n4} - download sequence number (this session)', 8, 350);
-  MkButton(TS, 'Show tokens...', 380, 346, 100).OnClick := @TokensClick;
+  MkLabel(TS, 'Directory and filename tokens (press F1 for a complete list):', 8, 184);  // label
+  MkWrap(TS, Col1, 8, 204, 150, 125);  // token help, first column
+  MkWrap(TS, Col2, 168, 204, 150, 125);  // token help, second column
+  MkWrap(TS, Col3, 330, 204, 150, 125);  // token help, third column
+  MkLabel(TS, '{seq#} - download sequence', 8, 332);  // token label
+  MkLabel(TS, '{n4} - download sequence number (this session)', 8, 350);  // token label
+  MkButton(TS, 'Show tokens...', 380, 346, 100).OnClick := @TokensClick;  // button that shows all tokens
 
-  MkLabel(TS, 'Example image', 8, 386);
-  edExample := MkEdit(TS, 8, 406, 472);
-  edExample.ReadOnly := True;
+  MkLabel(TS, 'Example image', 8, 386);  // label
+  edExample := MkEdit(TS, 8, 406, 472);  // example box
+  edExample.ReadOnly := True;  // user cannot edit the example
 
-  chkVerify := MkCheck(TS, 'Verify every copy (read it back and compare checksums)', 8, 446);
-  chkBackup := MkCheck(TS, 'Also save a second copy to a backup folder', 8, 474);
-  chkBackup.OnClick := @BackupChange;
-  MkLabel(TS, 'Backup directory (same patterns as above):', 26, 502);
-  edBackup := MkEdit(TS, 26, 522, 418);
-  btnBackupBrowse := MkButton(TS, '...', 452, 521, 28);
-  btnBackupBrowse.OnClick := @BackupBrowseClick;
-  MkLabel(TS, 'The backup is made from the verified download, before rotation or metadata changes.', 26, 550);
+  chkVerify := MkCheck(TS, 'Verify every copy (read it back and compare checksums)', 8, 446);  // verify copies check box
+  chkBackup := MkCheck(TS, 'Also save a second copy to a backup folder', 8, 474);  // backup copy check box
+  chkBackup.OnClick := @BackupChange;  // enable the backup controls when changed
+  MkLabel(TS, 'Backup directory (same patterns as above):', 26, 502);  // label
+  edBackup := MkEdit(TS, 26, 522, 418);  // backup folder box
+  btnBackupBrowse := MkButton(TS, '...', 452, 521, 28);  // button that browses for the backup folder
+  btnBackupBrowse.OnClick := @BackupBrowseClick;  // connect its handler
+  MkLabel(TS, 'The backup is made from the verified download, before rotation or metadata changes.', 26, 550);  // note about the backup
 end;
 
+{ Enables the backup folder controls only when the backup is turned on. }
 procedure TPrefsForm.BackupChange(Sender: TObject);
 begin
-  edBackup.Enabled := chkBackup.Checked;
-  btnBackupBrowse.Enabled := chkBackup.Checked;
+  edBackup.Enabled := chkBackup.Checked;  // enable the folder box
+  btnBackupBrowse.Enabled := chkBackup.Checked;  // enable the browse button
 end;
 
+{ Lets the user choose the backup folder. }
 procedure TPrefsForm.BackupBrowseClick(Sender: TObject);
 var
-  D: TSelectDirectoryDialog;
+  D: TSelectDirectoryDialog;  // D: folder chooser
 begin
-  D := TSelectDirectoryDialog.Create(Self);
+  D := TSelectDirectoryDialog.Create(Self);  // create the chooser
   try
-    D.Title := 'Select backup directory';
-    if D.Execute then
-      edBackup.Text := IncludeTrailingPathDelimiter(D.FileName) +
-        '{Y}' + PathDelim + '{Y}-{m}-{D}-{J}' + PathDelim;
+    D.Title := 'Select backup directory';  // window title
+    if D.Execute then  // when the user chose a folder
+      edBackup.Text := IncludeTrailingPathDelimiter(D.FileName) +  // build the pattern from the chosen folder
+        '{Y}' + PathDelim + '{Y}-{m}-{D}-{J}' + PathDelim;  // year and date subfolders
   finally
-    D.Free;
+    D.Free;  // free the chooser
   end;
 end;
 
+{ Updates the example file name from the current boxes. }
 procedure TPrefsForm.ExampleChange(Sender: TObject);
 begin
-  if FUpdating then Exit;
-  edExample.Text := ExampleDest(FS, cbDir.Text, cbFile.Text, cbJob.Text);
+  if FUpdating then Exit;  // ignore changes while the dialog is being filled
+  edExample.Text := ExampleDest(FS, cbDir.Text, cbFile.Text, cbJob.Text);  // build the example name
 end;
 
+{ Lets the user choose the download folder. }
 procedure TPrefsForm.BrowseClick(Sender: TObject);
 var
-  D: TSelectDirectoryDialog;
+  D: TSelectDirectoryDialog;  // D: folder chooser
 begin
-  D := TSelectDirectoryDialog.Create(Self);
+  D := TSelectDirectoryDialog.Create(Self);  // create the chooser
   try
-    D.Title := 'Select download directory';
-    if D.Execute then
-      cbDir.Text := IncludeTrailingPathDelimiter(D.FileName) +
-        '{Y}' + PathDelim + '{Y}-{m}-{D}-{J}' + PathDelim;
+    D.Title := 'Select download directory';  // window title
+    if D.Execute then  // when the user chose a folder
+      cbDir.Text := IncludeTrailingPathDelimiter(D.FileName) +  // build the pattern from the chosen folder
+        '{Y}' + PathDelim + '{Y}-{m}-{D}-{J}' + PathDelim;  // year and date subfolders
   finally
-    D.Free;
+    D.Free;  // free the chooser
   end;
 end;
 
+{ Remembers that the sequence number is to be reset and tells the user. }
 procedure TPrefsForm.ResetClick(Sender: TObject);
 begin
-  FResetSeq := True;
-  ShowMessage('The sequence number will be reset to ' + IntToStr(seqStart.Value) +
+  FResetSeq := True;  // reset when OK is pressed
+  ShowMessage('The sequence number will be reset to ' + IntToStr(seqStart.Value) +  // tell the user the new number
     ' when you press OK.');
 end;
 
+{ Shows the token list. }
 procedure TPrefsForm.TokensClick(Sender: TObject);
 begin
-  ShowTokenHelp;
+  ShowTokenHelp;  // show the token help
 end;
 
 { ---- General ---- }
 
+{ Builds the General tab. }
 procedure TPrefsForm.BuildGeneralTab(TS: TTabSheet);
 var
-  G: TGroupBox;
-  Y: Integer;
+  G: TGroupBox;  // G: group box for the image source
+  Y: Integer;  // Y: vertical position of the next control
 begin
-  G := TGroupBox.Create(TS);
-  G.Parent := TS;
-  G.Caption := 'Image source';
-  G.SetBounds(6, 2, 482, 150);
-  rbAuto := MkRadio(G, 'Auto-detect camera or card reader (used by Refresh and automation)', 10, 2);
-  rbCamera := MkRadio(G, 'Camera (connected by USB)', 10, 26);
-  rbCard := MkRadio(G, 'Card reader or external storage device', 10, 50);
-  lblLetters := MkLabel(G, 'Drive letter or letters:', 34, 84);
-  edLetters := MkEdit(G, 170, 80, 110);
+  G := TGroupBox.Create(TS);  // create the group box
+  G.Parent := TS;  // place it on the tab
+  G.Caption := 'Image source';  // group title
+  G.SetBounds(6, 2, 482, 150);  // position and size it
+  rbAuto := MkRadio(G, 'Auto-detect camera or card reader (used by Refresh and automation)', 10, 2);  // automatic detection choice
+  rbCamera := MkRadio(G, 'Camera (connected by USB)', 10, 26);  // camera choice
+  rbCard := MkRadio(G, 'Card reader or external storage device', 10, 50);  // card reader choice
+  lblLetters := MkLabel(G, 'Drive letter or letters:', 34, 84);  // label of the drive letters box
+  edLetters := MkEdit(G, 170, 80, 110);  // drive letters box
   {$IFNDEF WINDOWS}
   lblLetters.Visible := False;       // Linux has no drive letters: removable drives are found from the mount list
   edLetters.Visible := False;
   {$ENDIF}
-  MkButton(G, 'Locate card reader', 300, 78, 150).OnClick := @LocateClick;
-  chkPTP := MkCheck(G, 'Disable PTP downloads', 10, 108);
+  MkButton(G, 'Locate card reader', 300, 78, 150).OnClick := @LocateClick;  // button that locates the card reader
+  chkPTP := MkCheck(G, 'Disable PTP downloads', 10, 108);  // PTP option
 
-  Y := 156;
-  chkLoadLast := MkCheck(TS, 'Load the last used source folder at startup (otherwise nothing is scanned)', 8, Y);
-  Inc(Y, 21);
-  chkReadOnly := MkCheck(TS, 'Save files as read-only', 8, Y);
-  chkReadOnly.Width := 240;
-  chkPreserveRO := MkCheck(TS, 'Preserve read-only status', 260, Y);
-  Inc(Y, 21);
-  chkProfile := MkCheck(TS, 'Prompt for user profile at startup', 8, Y);
-  Inc(Y, 21);
-  chkIgnoreSize := MkCheck(TS, 'Ignore file size check to allow for images modified after downloading', 8, Y);
-  Inc(Y, 21);
-  chkRotate := MkCheck(TS, 'Auto-rotate JPEGs after downloading (lossless rotation)', 8, Y);
-  Inc(Y, 21);
-  chkJpe := MkCheck(TS, 'Rename files with .jpe extension to .jpg when downloading', 8, Y);
-  Inc(Y, 21);
-  chkLowerName := MkCheck(TS, 'Convert filename to lower case', 8, Y);
-  chkLowerName.Width := 240;
-  chkLowerExt := MkCheck(TS, 'Lower case file extensions', 260, Y);
-  Inc(Y, 21);
-  chkStamp := MkCheck(TS, 'Use image capture time for file timestamp', 8, Y);
-  Inc(Y, 21);
-  chkSaveJobs := MkCheck(TS, 'Save date based job codes for next time Photo Downloader is run', 8, Y);
-  Inc(Y, 21);
-  chkExifTxt := MkCheck(TS, 'Generate text file containing EXIF shooting data', 8, Y);
-  Inc(Y, 21);
-  chkEject := MkCheck(TS, 'Automatically ''eject'' card reader media when disconnecting', 8, Y);
-  Inc(Y, 21);
-  chkWholeDisk := MkCheck(TS, 'Scan whole disk for known image types', 8, Y);
-  Inc(Y, 21);
-  chkIptc := MkCheck(TS, 'Add IPTC/XMP data to downloaded images', 8, Y);
-  Inc(Y, 21);
-  chkPromptIptc := MkCheck(TS, 'Prompt for IPTC/XMP data every time Photo Downloader is run', 28, Y);
-  Inc(Y, 21);
-  chkIIM := MkCheck(TS, 'Also write legacy IPTC IIM data to downloaded images', 28, Y);
-  Inc(Y, 21);
-  chkNef := MkCheck(TS, 'Enable writing of legacy IPTC IIM data to Nikon NEF raw files', 28, Y);
-  Inc(Y, 28);
-  chkExifOwner := MkCheck(TS, 'Add author and copyright to EXIF of downloaded JPEGs (only where empty)', 8, Y);
-  Inc(Y, 26);
-  MkLabel(TS, 'Author:', 28, Y + 3);
-  edAuthor := MkEdit(TS, 100, Y, 380);
-  Inc(Y, 28);
-  MkLabel(TS, 'Copyright:', 28, Y + 3);
-  edCopyright := MkEdit(TS, 100, Y, 380);
-  Inc(Y, 32);
-  chkSingle := MkCheck(TS, 'Run only one copy of Photo Downloader at a time (applies at next start)', 8, Y);
-  chkWinSafe := MkCheck(TS, 'Windows-safe file names (replace characters such as : ? * " < > |)', 8, Y);
-  {$IFDEF WINDOWS}
-  chkWinSafe.Visible := False;       // Windows always applies these rules
-  {$ELSE}
+  Y := 156;  // start below the group box
+  chkLoadLast := MkCheck(TS, 'Load the last used source folder at startup (otherwise nothing is scanned)', 8, Y);  // load last source option
+  Inc(Y, 21);  // next row
+  chkProfile := MkCheck(TS, 'Prompt for user profile at startup', 8, Y);  // profile prompt option
+  Inc(Y, 21);  // next row
+  chkSaveJobs := MkCheck(TS, 'Save date based job codes for next time Photo Downloader is run', 8, Y);  // date based job codes option
+  Inc(Y, 21);  // next row
+  chkEject := MkCheck(TS, 'Automatically ''eject'' card reader media when disconnecting', 8, Y);  // eject option
+  Inc(Y, 21);  // next row
+  chkWholeDisk := MkCheck(TS, 'Scan whole disk for known image types', 8, Y);  // whole disk option
+  Inc(Y, 21);  // next row
+  chkIptc := MkCheck(TS, 'Add IPTC/XMP data to downloaded images', 8, Y);  // IPTC option
+  Inc(Y, 21);  // next row
+  chkPromptIptc := MkCheck(TS, 'Prompt for IPTC/XMP data every time Photo Downloader is run', 28, Y);  // prompt for IPTC option
+  Inc(Y, 21);  // next row
+  chkIIM := MkCheck(TS, 'Also write legacy IPTC IIM data to downloaded images', 28, Y);  // legacy IIM option
+  Inc(Y, 21);  // next row
+  chkNef := MkCheck(TS, 'Enable writing of legacy IPTC IIM data to Nikon NEF raw files', 28, Y);  // NEF option
+  Inc(Y, 28);  // next row with a gap
+  chkExifOwner := MkCheck(TS, 'Add author and copyright to EXIF of downloaded JPEGs (only where empty)', 8, Y);  // EXIF owner option
+  Inc(Y, 26);  // next row
+  MkLabel(TS, 'Author:', 28, Y + 3);  // label
+  edAuthor := MkEdit(TS, 100, Y, 380);  // author box
+  Inc(Y, 28);  // next row
+  MkLabel(TS, 'Copyright:', 28, Y + 3);  // label
+  edCopyright := MkEdit(TS, 100, Y, 380);  // copyright box
+  Inc(Y, 32);  // next row
+  chkSingle := MkCheck(TS, 'Run only one copy of Photo Downloader at a time (applies at next start)', 8, Y);  // single instance option (Windows only)
+  {$IFNDEF WINDOWS}
   chkSingle.Visible := False;        // single instance is not available on Linux yet
   {$ENDIF}
 
-  chkIptc.OnClick := @GeneralChange;
-  chkExifOwner.OnClick := @GeneralChange;
-  rbAuto.OnClick := @GeneralChange;
-  rbCamera.OnClick := @GeneralChange;
-  rbCard.OnClick := @GeneralChange;
+  chkIptc.OnClick := @GeneralChange;  // update the controls when the option changes
+  chkExifOwner.OnClick := @GeneralChange;  // update the controls when the option changes
+  rbAuto.OnClick := @GeneralChange;  // update the controls when the choice changes
+  rbCamera.OnClick := @GeneralChange;  // update the controls when the choice changes
+  rbCard.OnClick := @GeneralChange;  // update the controls when the choice changes
 end;
 
+{ Builds the File Handling tab (how downloaded files are named, copied and treated). }
+procedure TPrefsForm.BuildFileTab(TS: TTabSheet);
+var
+  Y: Integer;  // Y: vertical position of the next control
+
+  { Creates a check box in the single column and moves Y to the next row. }
+  function Row(const Cap: string): TCheckBox;
+  begin
+    Result := MkCheck(TS, Cap, 8, Y);  // check box in the column
+    Result.Width := 470;  // full width of the tab
+    Inc(Y, 24);  // next row
+  end;
+
+begin
+  Y := 10;  // first row
+  chkReadOnly := Row('Save files as read-only');  // read-only option
+  chkPreserveRO := Row('Preserve read-only status');  // preserve read-only option
+  chkAutoRename := Row('Rename name clashes as (1), (2) ...');  // rename name clashes option
+  chkIgnoreDup := Row('Ignore duplicate files on download');  // skip duplicates option
+  chkRenameDup := Row('Download duplicates as (1), (2) ...');  // download duplicates renamed option
+  chkIgnoreSize := Row('Ignore file size check to allow for images modified after downloading');  // ignore size option
+  chkRotate := Row('Auto-rotate JPEGs after downloading (lossless rotation)');  // auto-rotate option
+  chkJpe := Row('Rename files with .jpe extension to .jpg when downloading');  // rename .jpe option
+  chkLowerName := Row('Convert filename to lower case');  // lower case name option
+  chkLowerExt := Row('Lower case file extensions');  // lower case extension option
+  chkStamp := Row('Use image capture time for file timestamp');  // capture time option
+  chkExifTxt := Row('Generate text file containing EXIF shooting data');  // EXIF text file option
+  chkWinSafe := Row('Windows-safe file names (replace characters such as : ? * " < > |)');  // Windows-safe names option (Linux only)
+  {$IFDEF WINDOWS}
+  chkWinSafe.Visible := False;       // Windows always applies these rules
+  {$ENDIF}
+  chkIgnoreDup.OnClick := @DupChange;  // keep the two duplicate options exclusive
+  chkRenameDup.OnClick := @DupChange;  // keep the two duplicate options exclusive
+end;
+
+{ Keeps "Ignore duplicate files" and "Download duplicates as (1), (2)" from being checked together. }
+procedure TPrefsForm.DupChange(Sender: TObject);
+begin
+  if Sender = chkIgnoreDup then  // the ignore option was clicked
+  begin
+    if chkIgnoreDup.Checked then chkRenameDup.Checked := False;  // ignoring excludes renaming
+  end
+  else if Sender = chkRenameDup then  // the rename option was clicked
+  begin
+    if chkRenameDup.Checked then chkIgnoreDup.Checked := False;  // renaming excludes ignoring
+  end;
+end;
+
+{ Enables the controls that depend on other General options. }
 procedure TPrefsForm.GeneralChange(Sender: TObject);
 begin
-  chkPromptIptc.Enabled := chkIptc.Checked;
-  chkIIM.Enabled := chkIptc.Checked;
-  chkNef.Enabled := chkIptc.Checked;
-  edAuthor.Enabled := chkExifOwner.Checked;
-  edCopyright.Enabled := chkExifOwner.Checked;
-  edLetters.Enabled := rbCard.Checked;
+  chkPromptIptc.Enabled := chkIptc.Checked;  // prompt option needs IPTC
+  chkIIM.Enabled := chkIptc.Checked;  // IIM option needs IPTC
+  chkNef.Enabled := chkIptc.Checked;  // NEF option needs IPTC
+  edAuthor.Enabled := chkExifOwner.Checked;  // author box needs the EXIF owner option
+  edCopyright.Enabled := chkExifOwner.Checked;  // copyright box needs the EXIF owner option
+  edLetters.Enabled := rbCard.Checked;  // drive letters need the card reader choice
 end;
 
+{ Finds removable drives and shows them (Windows: fills the drive letters box). }
 procedure TPrefsForm.LocateClick(Sender: TObject);
 var
-  L: TStringList;
-  I: Integer;
-  Letters: string;
+  L: TStringList;  // L: removable drives found
+  I: Integer;  // I: loop counter
+  Letters: string;  // Letters: drive letters or the list text
 begin
-  L := TStringList.Create;
+  L := TStringList.Create;  // create the list
   try
-    ListRemovableDrives(L);
-    if L.Count = 0 then
-      ShowMessage('No card reader or removable drive was found.')
+    ListRemovableDrives(L);  // find the removable drives
+    if L.Count = 0 then  // none found
+      ShowMessage('No card reader or removable drive was found.')  // tell the user
     else
     begin
       {$IFDEF WINDOWS}
-      Letters := '';
-      for I := 0 to L.Count - 1 do
-        Letters := Letters + Copy(L[I], 1, 1);
-      edLetters.Text := Letters;
+      Letters := '';  // start with no letters
+      for I := 0 to L.Count - 1 do  // every drive
+        Letters := Letters + Copy(L[I], 1, 1);  // take the drive letter
+      edLetters.Text := Letters;  // show the letters
       {$ELSE}
       // Linux has no drive letters: list the mounted removable drives that were found
-      Letters := '';
-      for I := 0 to L.Count - 1 do
-        Letters := Letters + #13#10 + L[I];
-      ShowMessage('Removable drives found:' + Letters);
+      Letters := '';  // start with no text
+      for I := 0 to L.Count - 1 do  // every drive
+        Letters := Letters + #13#10 + L[I];  // add one drive per line
+      ShowMessage('Removable drives found:' + Letters);  // show the drives
       {$ENDIF}
-      rbCard.Checked := True;
+      rbCard.Checked := True;  // switch to the card reader choice
     end;
   finally
-    L.Free;
+    L.Free;  // free the list
   end;
 end;
 
 { ---- Automation ---- }
 
+{ Builds the Automation tab. }
 procedure TPrefsForm.BuildAutomationTab(TS: TTabSheet);
 begin
-  MkWrap(TS, 'Use the settings below to enable automatic downloading of images when ' +
+  MkWrap(TS, 'Use the settings below to enable automatic downloading of images when ' +  // explanation text
     'Downloader is run. Select "Prompt before starting auto sequence" if you want to be ' +
     'able to choose whether automation should run.'#13#10 +
     'The automation sequence will stop if there are any errors or an operation is canceled.',
-    8, 8, 480, 90);
-  chkAutoStart := MkCheck(TS, 'Enable Automation at startup', 66, 104);
-  chkAutoMenu := MkCheck(TS, 'Enable Automation menu option and keyboard shortcut', 66, 128);
-  chkAutoPrompt := MkCheck(TS, 'Prompt before starting auto sequence', 66, 152);
-  grpActions := TGroupBox.Create(TS);
-  grpActions.Parent := TS;
-  grpActions.Caption := 'Actions';
-  grpActions.SetBounds(44, 186, 420, 180);
-  chkADownload := MkCheck(grpActions, 'Download files when application is started', 28, 6);
-  chkADelete := MkCheck(grpActions, 'Delete files from CF card after downloading', 28, 32);
-  chkAEject := MkCheck(grpActions, '''Soft eject'' card reader media', 28, 58);
-  chkALaunch := MkCheck(grpActions, 'Launch app associated with custom button', 28, 84);
-  chkAExit := MkCheck(grpActions, 'Exit Downloader', 28, 110);
-  chkSafeDel := MkCheck(TS, 'Safe delete (Recycle Bin, or a hidden trash folder on cards)', 44, 376);
-  chkSafeDel.Width := 420;
-  chkSafeDel.OnClick := @SafeDelChange;
-  lblTrash := MkLabel(TS, 'Trash folder name on cards:', 64, 404);
-  edTrash := MkEdit(TS, 220, 400, 180);
-  chkAutoStart.OnClick := @AutoChange;
-  chkAutoMenu.OnClick := @AutoChange;
+    8, 8, 480, 90);  // position and size
+  chkAutoStart := MkCheck(TS, 'Enable Automation at startup', 66, 104);  // startup option
+  chkAutoMenu := MkCheck(TS, 'Enable Automation menu option and keyboard shortcut', 66, 128);  // menu option
+  chkAutoPrompt := MkCheck(TS, 'Prompt before starting auto sequence', 66, 152);  // prompt option
+  grpActions := TGroupBox.Create(TS);  // create the group box
+  grpActions.Parent := TS;  // place it on the tab
+  grpActions.Caption := 'Actions';  // group title
+  grpActions.SetBounds(44, 186, 420, 180);  // position and size it
+  chkADownload := MkCheck(grpActions, 'Download files when application is started', 28, 6);  // download action
+  chkADelete := MkCheck(grpActions, 'Delete files from CF card after downloading', 28, 32);  // delete action
+  chkAEject := MkCheck(grpActions, '''Soft eject'' card reader media', 28, 58);  // eject action
+  chkALaunch := MkCheck(grpActions, 'Launch app associated with custom button', 28, 84);  // launch action
+  chkAExit := MkCheck(grpActions, 'Exit Downloader', 28, 110);  // exit action
+  chkSafeDel := MkCheck(TS, 'Safe delete (Recycle Bin, or a hidden trash folder on cards)', 44, 376);  // safe delete option
+  chkSafeDel.Width := 420;  // make room for the long text
+  chkSafeDel.OnClick := @SafeDelChange;  // update the controls when the option changes
+  lblTrash := MkLabel(TS, 'Trash folder name on cards:', 64, 404);  // label
+  edTrash := MkEdit(TS, 220, 400, 180);  // trash folder name box
+  chkAutoStart.OnClick := @AutoChange;  // update the controls when the option changes
+  chkAutoMenu.OnClick := @AutoChange;  // update the controls when the option changes
 end;
 
+{ Enables the trash folder controls only when safe delete is on. }
 procedure TPrefsForm.SafeDelChange(Sender: TObject);
 begin
-  edTrash.Enabled := chkSafeDel.Checked;
-  lblTrash.Enabled := chkSafeDel.Checked;
+  edTrash.Enabled := chkSafeDel.Checked;  // enable the folder name box
+  lblTrash.Enabled := chkSafeDel.Checked;  // enable its label
 end;
 
+{ Enables the automation controls that depend on other options. }
 procedure TPrefsForm.AutoChange(Sender: TObject);
 begin
-  chkAutoPrompt.Enabled := chkAutoMenu.Checked;
-  grpActions.Enabled := chkAutoStart.Checked or chkAutoMenu.Checked;
-  chkADownload.Enabled := grpActions.Enabled;
-  chkADelete.Enabled := grpActions.Enabled;
-  chkAEject.Enabled := grpActions.Enabled;
-  chkALaunch.Enabled := grpActions.Enabled;
-  chkAExit.Enabled := grpActions.Enabled;
+  chkAutoPrompt.Enabled := chkAutoMenu.Checked;  // prompt needs the menu option
+  grpActions.Enabled := chkAutoStart.Checked or chkAutoMenu.Checked;  // actions need startup or menu automation
+  chkADownload.Enabled := grpActions.Enabled;  // enable the download action
+  chkADelete.Enabled := grpActions.Enabled;  // enable the delete action
+  chkAEject.Enabled := grpActions.Enabled;  // enable the eject action
+  chkALaunch.Enabled := grpActions.Enabled;  // enable the launch action
+  chkAExit.Enabled := grpActions.Enabled;  // enable the exit action
 end;
 
 { ---- Custom button ---- }
 
+{ Builds the Custom button tab. }
 procedure TPrefsForm.BuildCustomTab(TS: TTabSheet);
 var
-  G: TGroupBox;
+  G: TGroupBox;  // G: group box for the custom button
 begin
-  G := TGroupBox.Create(TS);
-  G.Parent := TS;
-  G.Caption := 'Custom button';
-  G.SetBounds(16, 24, 458, 160);
-  chkCustom := MkCheck(G, 'Enable custom button', 10, 6);
-  MkLabel(G, 'Button caption:', 10, 40);
-  edCaption := MkEdit(G, 110, 36, 150);
-  MkLabel(G, 'Command line (use %f for file and %d for directory):', 10, 68);
-  edCmd := MkEdit(G, 10, 88, 392);
-  btnCmd := MkButton(G, '...', 410, 87, 28);
-  btnCmd.OnClick := @CmdBrowseClick;
-  MkWrap(TS, 'Select "Enable custom button" to add a custom button to Downloader. The ' +
+  G := TGroupBox.Create(TS);  // create the group box
+  G.Parent := TS;  // place it on the tab
+  G.Caption := 'Custom button';  // group title
+  G.SetBounds(16, 24, 458, 160);  // position and size it
+  chkCustom := MkCheck(G, 'Enable custom button', 10, 6);  // enable option
+  MkLabel(G, 'Button caption:', 10, 40);  // label
+  edCaption := MkEdit(G, 110, 36, 150);  // caption box
+  MkLabel(G, 'Command line (use %f for file and %d for directory):', 10, 68);  // label
+  edCmd := MkEdit(G, 10, 88, 392);  // command line box
+  btnCmd := MkButton(G, '...', 410, 87, 28);  // button that browses for the command
+  btnCmd.OnClick := @CmdBrowseClick;  // connect its handler
+  MkWrap(TS, 'Select "Enable custom button" to add a custom button to Downloader. The ' +  // explanation text
     'custom button can be used to launch the application of your choice. Pressing the ' +
     'custom button after downloading your files will run the command line, with %f replaced ' +
     'by the last downloaded file and %d by the folder containing the downloaded files.',
-    8, 204, 480, 120);
-  chkCustom.OnClick := @CustomChange;
+    8, 204, 480, 120);  // position and size
+  chkCustom.OnClick := @CustomChange;  // update the controls when the option changes
 end;
 
+{ Enables the custom button controls only when the button is on. }
 procedure TPrefsForm.CustomChange(Sender: TObject);
 begin
-  edCaption.Enabled := chkCustom.Checked;
-  edCmd.Enabled := chkCustom.Checked;
-  btnCmd.Enabled := chkCustom.Checked;
+  edCaption.Enabled := chkCustom.Checked;  // enable the caption box
+  edCmd.Enabled := chkCustom.Checked;  // enable the command box
+  btnCmd.Enabled := chkCustom.Checked;  // enable the browse button
 end;
 
+{ Lets the user choose the program for the custom button. }
 procedure TPrefsForm.CmdBrowseClick(Sender: TObject);
 var
-  D: TOpenDialog;
+  D: TOpenDialog;  // D: file chooser
 begin
-  D := TOpenDialog.Create(Self);
+  D := TOpenDialog.Create(Self);  // create the chooser
   try
-    if D.Execute then edCmd.Text := '"' + D.FileName + '" "%f"';
+    if D.Execute then edCmd.Text := '"' + D.FileName + '" "%f"';  // build the command line from the chosen program
   finally
-    D.Free;
+    D.Free;  // free the chooser
   end;
 end;
 
 { ---- Mapping ---- }
 
+{ Builds the Mapping tab. }
 procedure TPrefsForm.BuildMappingTab(TS: TTabSheet);
 begin
-  MkLabel(TS, 'Current camera model mappings for the {T8} and {T9} tokens:', 8, 6);
-  lbMaps := TListBox.Create(TS);
-  lbMaps.Parent := TS;
-  lbMaps.SetBounds(8, 26, 478, 250);
-  MkWrap(TS, 'Add camera models by clicking on the "Add camera..." button.', 8, 288, 340, 34);
-  MkButton(TS, 'Add camera...', 366, 286, 120).OnClick := @MapAddCameraClick;
-  chkSerial := MkCheck(TS, 'Identify camera using serial number, owner string or user comment', 8, 326);
-  MkLabel(TS, 'Current camera:', 8, 358);
-  edCurCam := MkEdit(TS, 100, 354, 290);
-  edCurCam.ReadOnly := False;
-  MkButton(TS, 'Add', 400, 353, 86).OnClick := @MapAddClick;
-  chkPromptCam := MkCheck(TS, 'Prompt for camera mappings when a new camera is detected', 8, 386);
-  MkWrap(TS, 'Remove entries from the list by selecting them and pressing the "Delete" button.',
+  MkLabel(TS, 'Current camera model mappings for the {T8} and {T9} tokens:', 8, 6);  // label
+  lbMaps := TListBox.Create(TS);  // create the list
+  lbMaps.Parent := TS;  // place it on the tab
+  lbMaps.SetBounds(8, 26, 478, 250);  // position and size it
+  MkWrap(TS, 'Add camera models by clicking on the "Add camera..." button.', 8, 288, 340, 34);  // hint text
+  MkButton(TS, 'Add camera...', 366, 286, 120).OnClick := @MapAddCameraClick;  // button that adds a camera from a picture
+  chkSerial := MkCheck(TS, 'Identify camera using serial number, owner string or user comment', 8, 326);  // serial number option
+  MkLabel(TS, 'Current camera:', 8, 358);  // label
+  edCurCam := MkEdit(TS, 100, 354, 290);  // current camera box
+  edCurCam.ReadOnly := False;  // user may edit the name
+  MkButton(TS, 'Add', 400, 353, 86).OnClick := @MapAddClick;  // button that adds the current camera
+  chkPromptCam := MkCheck(TS, 'Prompt for camera mappings when a new camera is detected', 8, 386);  // prompt option
+  MkWrap(TS, 'Remove entries from the list by selecting them and pressing the "Delete" button.',  // hint text
     8, 418, 340, 34);
-  MkButton(TS, 'Delete', 366, 416, 120).OnClick := @MapDeleteClick;
-  MkWrap(TS, 'Click on the "Edit..." button to edit the value of the {T8} and {T9} tokens for ' +
+  MkButton(TS, 'Delete', 366, 416, 120).OnClick := @MapDeleteClick;  // button that deletes a mapping
+  MkWrap(TS, 'Click on the "Edit..." button to edit the value of the {T8} and {T9} tokens for ' +  // hint text
     'the selected camera.', 8, 458, 340, 34);
-  MkButton(TS, 'Edit...', 366, 456, 120).OnClick := @MapEditClick;
+  MkButton(TS, 'Edit...', 366, 456, 120).OnClick := @MapEditClick;  // button that edits a mapping
 end;
 
+{ Fills the mapping list from the stored mappings and selects entry Sel. }
 procedure TPrefsForm.RefreshMaps(Sel: Integer);
 var
-  I: Integer;
-  N, A, B: string;
+  I: Integer;  // I: loop counter
+  N, A, B: string;  // N: camera name; A, B: values of the two tokens
 begin
-  lbMaps.Items.BeginUpdate;
+  lbMaps.Items.BeginUpdate;  // stop redrawing while filling
   try
-    lbMaps.Items.Clear;
-    for I := 0 to FMaps.Count - 1 do
+    lbMaps.Items.Clear;  // clear the list
+    for I := 0 to FMaps.Count - 1 do  // every mapping
     begin
-      MapSplit(FMaps[I], N, A, B);
-      if I = 0 then N := 'Default mapping';
-      lbMaps.Items.Add(N + ' -> {T8}=' + A + ' | {T9}=' + B);
+      MapSplit(FMaps[I], N, A, B);  // split the entry
+      if I = 0 then N := 'Default mapping';  // first entry is the default
+      lbMaps.Items.Add(N + ' -> {T8}=' + A + ' | {T9}=' + B);  // add the line to the list
     end;
   finally
-    lbMaps.Items.EndUpdate;
+    lbMaps.Items.EndUpdate;  // redraw the list
   end;
-  if (Sel >= 0) and (Sel < lbMaps.Items.Count) then lbMaps.ItemIndex := Sel;
+  if (Sel >= 0) and (Sel < lbMaps.Items.Count) then lbMaps.ItemIndex := Sel;  // select the entry
 end;
 
+{ Adds a camera model to the mappings unless it is there already. }
 procedure TPrefsForm.AddCamera(const CamName: string);
 var
-  I: Integer;
-  N, A, B: string;
+  I: Integer;  // I: loop counter
+  N, A, B: string;  // N: camera name; A, B: values of the two tokens
 begin
-  if Trim(CamName) = '' then Exit;
-  for I := 1 to FMaps.Count - 1 do
+  if Trim(CamName) = '' then Exit;  // ignore empty names
+  for I := 1 to FMaps.Count - 1 do  // check the existing cameras
   begin
-    MapSplit(FMaps[I], N, A, B);
-    if SameText(N, CamName) then
+    MapSplit(FMaps[I], N, A, B);  // split the entry
+    if SameText(N, CamName) then  // already known
     begin
-      RefreshMaps(I);
+      RefreshMaps(I);  // just select it
       Exit;
     end;
   end;
-  FMaps.Add(MapJoin(Trim(CamName), '{T1}', '{T1}'));
-  RefreshMaps(FMaps.Count - 1);
+  FMaps.Add(MapJoin(Trim(CamName), '{T1}', '{T1}'));  // add the camera with the default tokens
+  RefreshMaps(FMaps.Count - 1);  // select the new entry
 end;
 
+{ Reads the camera model from a chosen picture and adds it. }
 procedure TPrefsForm.MapAddCameraClick(Sender: TObject);
 var
-  D: TOpenDialog;
-  Info: TExifInfo;
+  D: TOpenDialog;  // D: file chooser
+  Info: TExifInfo;  // Info: EXIF data of the picture
 begin
-  D := TOpenDialog.Create(Self);
+  D := TOpenDialog.Create(Self);  // create the chooser
   try
-    D.Title := 'Select an image from the camera';
-    D.Filter := 'Images|*.jpg;*.jpeg;*.nef;*.cr2;*.dng;*.arw;*.tif;*.tiff|All files|*.*';
+    D.Title := 'Select an image from the camera';  // window title
+    D.Filter := 'Images|*.jpg;*.jpeg;*.nef;*.cr2;*.dng;*.arw;*.tif;*.tiff|All files|*.*';  // file types shown
     if D.Execute then
     begin
-      if ReadExifFromFile(D.FileName, Info) and (Info.Model <> '') then
-        AddCamera(Info.Model)
+      if ReadExifFromFile(D.FileName, Info) and (Info.Model <> '') then  // read the camera model
+        AddCamera(Info.Model)  // add the camera
       else
-        ShowMessage('No camera model could be read from that file.');
+        ShowMessage('No camera model could be read from that file.');  // tell the user
     end;
   finally
-    D.Free;
+    D.Free;  // free the chooser
   end;
 end;
 
+{ Adds the camera named in the current camera box. }
 procedure TPrefsForm.MapAddClick(Sender: TObject);
 begin
-  AddCamera(edCurCam.Text);
+  AddCamera(edCurCam.Text);  // add the camera
 end;
 
+{ Deletes the selected mapping (the default mapping cannot be deleted). }
 procedure TPrefsForm.MapDeleteClick(Sender: TObject);
 var
-  I: Integer;
+  I: Integer;  // I: selected entry
 begin
-  I := lbMaps.ItemIndex;
-  if I <= 0 then
+  I := lbMaps.ItemIndex;  // selected entry
+  if I <= 0 then  // nothing selected or the default entry
   begin
-    if I = 0 then ShowMessage('The default mapping cannot be deleted.');
+    if I = 0 then ShowMessage('The default mapping cannot be deleted.');  // explain why the default stays
     Exit;
   end;
-  FMaps.Delete(I);
-  RefreshMaps(Min(I, FMaps.Count - 1));
+  FMaps.Delete(I);  // remove the entry
+  RefreshMaps(Min(I, FMaps.Count - 1));  // select a neighbor
 end;
 
+{ Edits the token values of the selected mapping. }
 procedure TPrefsForm.MapEditClick(Sender: TObject);
 var
-  I: Integer;
-  N, A, B: string;
+  I: Integer;  // I: selected entry
+  N, A, B: string;  // N: camera name; A, B: values of the two tokens
 begin
-  I := lbMaps.ItemIndex;
-  if I < 0 then Exit;
-  MapSplit(FMaps[I], N, A, B);
-  if I = 0 then N := 'Default';
-  if EditMapping(N, A, B) then
+  I := lbMaps.ItemIndex;  // selected entry
+  if I < 0 then Exit;  // nothing selected
+  MapSplit(FMaps[I], N, A, B);  // split the entry
+  if I = 0 then N := 'Default';  // show the default entry under its own name
+  if EditMapping(N, A, B) then  // let the user edit the tokens
   begin
-    FMaps[I] := MapJoin(N, A, B);
-    RefreshMaps(I);
+    FMaps[I] := MapJoin(N, A, B);  // store the new values
+    RefreshMaps(I);  // redraw the list
   end;
 end;
 
 { ---- Plug-ins ---- }
 
+{ Builds the Plug-ins tab. }
 procedure TPrefsForm.BuildPluginTab(TS: TTabSheet);
 begin
-  lbPlugins := TListBox.Create(TS);
-  lbPlugins.Parent := TS;
-  lbPlugins.SetBounds(8, 8, 380, 200);
-  lbPlugins.OnClick := @PluginSelect;
-  MkButton(TS, 'Up', 404, 8, 80).OnClick := @PluginUpClick;
-  MkButton(TS, 'Down', 404, 40, 80).OnClick := @PluginDownClick;
-  chkPlugin := MkCheck(TS, 'Enable plug-in', 8, 220);
-  chkPlugin.Width := 130;
-  chkPlugin.OnClick := @PluginToggle;
-  MkButton(TS, 'Setup...', 150, 218, 100).OnClick := @PluginSetupClick;
-  lblPluginInfo := MkWrap(TS, '', 8, 258, 478, 80);
+  lbPlugins := TListBox.Create(TS);  // create the list
+  lbPlugins.Parent := TS;  // place it on the tab
+  lbPlugins.SetBounds(8, 8, 380, 200);  // position and size it
+  lbPlugins.OnClick := @PluginSelect;  // show the information when an entry is selected
+  MkButton(TS, 'Up', 404, 8, 80).OnClick := @PluginUpClick;  // move up button
+  MkButton(TS, 'Down', 404, 40, 80).OnClick := @PluginDownClick;  // move down button
+  chkPlugin := MkCheck(TS, 'Enable plug-in', 8, 220);  // enable option
+  chkPlugin.Width := 130;  // make room for the setup button
+  chkPlugin.OnClick := @PluginToggle;  // toggle the plug-in when changed
+  MkButton(TS, 'Setup...', 150, 218, 100).OnClick := @PluginSetupClick;  // setup button
+  lblPluginInfo := MkWrap(TS, '', 8, 258, 478, 80);  // information label
 end;
 
+{ Fills the plug-in list and selects entry Sel. }
 procedure TPrefsForm.RefreshPlugins(Sel: Integer);
 var
-  I: Integer;
+  I: Integer;  // I: loop counter
 begin
-  lbPlugins.Items.Clear;
-  for I := 0 to FPlugins.Count - 1 do
-    if FPlugins.ValueFromIndex[I] = '1' then
-      lbPlugins.Items.Add(FPlugins.Names[I] + ' - enabled')
+  lbPlugins.Items.Clear;  // clear the list
+  for I := 0 to FPlugins.Count - 1 do  // every plug-in
+    if FPlugins.ValueFromIndex[I] = '1' then  // enabled plug-in
+      lbPlugins.Items.Add(FPlugins.Names[I] + ' - enabled')  // add the name with its state
     else
-      lbPlugins.Items.Add(FPlugins.Names[I] + ' - disabled');
-  if (Sel >= 0) and (Sel < lbPlugins.Items.Count) then lbPlugins.ItemIndex := Sel;
-  PluginSelect(nil);
+      lbPlugins.Items.Add(FPlugins.Names[I] + ' - disabled');  // add the name with its state
+  if (Sel >= 0) and (Sel < lbPlugins.Items.Count) then lbPlugins.ItemIndex := Sel;  // select the entry
+  PluginSelect(nil);  // show its information
 end;
 
+{ Shows the information of the selected plug-in. }
 procedure TPrefsForm.PluginSelect(Sender: TObject);
 var
-  I: Integer;
-  Nm, Info: string;
+  I: Integer;  // I: selected entry
+  Nm, Info: string;  // Nm: plug-in name; Info: information text
 begin
-  I := lbPlugins.ItemIndex;
-  FUpdating := True;
+  I := lbPlugins.ItemIndex;  // selected entry
+  FUpdating := True;  // do not react to the check box change
   try
     if I < 0 then
     begin
-      chkPlugin.Checked := False;
-      lblPluginInfo.Caption := '';
+      chkPlugin.Checked := False;  // no entry selected
+      lblPluginInfo.Caption := '';  // clear the information
       Exit;
     end;
-    Nm := FPlugins.Names[I];
-    chkPlugin.Checked := FPlugins.ValueFromIndex[I] = '1';
-    if Nm = 'JPEG auto profile' then
+    Nm := FPlugins.Names[I];  // plug-in name
+    chkPlugin.Checked := FPlugins.ValueFromIndex[I] = '1';  // enabled state
+    if Nm = 'JPEG auto profile' then  // text for each known plug-in
       Info := 'Automatically embeds color profiles in JPEGs.'#13#10 +
               'Different color profiles can be defined for each camera model.'#13#10 +
               '(Not yet implemented in this build.)'
@@ -1225,225 +1436,238 @@ begin
               '(Not yet implemented in this build.)'
     else
       Info := 'Resizes JPEGs while downloading.'#13#10 + '(Not yet implemented in this build.)';
-    lblPluginInfo.Caption := Info;
+    lblPluginInfo.Caption := Info;  // show the information
   finally
-    FUpdating := False;
+    FUpdating := False;  // react to changes again
   end;
 end;
 
+{ Turns the selected plug-in on or off. }
 procedure TPrefsForm.PluginToggle(Sender: TObject);
 var
-  I: Integer;
+  I: Integer;  // I: selected entry
 begin
-  if FUpdating then Exit;
-  I := lbPlugins.ItemIndex;
-  if I < 0 then Exit;
-  if chkPlugin.Checked then
-    FPlugins[I] := FPlugins.Names[I] + '=1'
+  if FUpdating then Exit;  // ignore changes made by the program
+  I := lbPlugins.ItemIndex;  // selected entry
+  if I < 0 then Exit;  // nothing selected
+  if chkPlugin.Checked then  // check box is on
+    FPlugins[I] := FPlugins.Names[I] + '=1'  // store enabled
   else
-    FPlugins[I] := FPlugins.Names[I] + '=0';
-  RefreshPlugins(I);
+    FPlugins[I] := FPlugins.Names[I] + '=0';  // store disabled
+  RefreshPlugins(I);  // redraw the list
 end;
 
+{ Moves the selected plug-in one place up. }
 procedure TPrefsForm.PluginUpClick(Sender: TObject);
 var
-  I: Integer;
+  I: Integer;  // I: selected entry
 begin
-  I := lbPlugins.ItemIndex;
-  if I > 0 then
+  I := lbPlugins.ItemIndex;  // selected entry
+  if I > 0 then  // not already first
   begin
-    FPlugins.Exchange(I, I - 1);
-    RefreshPlugins(I - 1);
+    FPlugins.Exchange(I, I - 1);  // swap with the previous entry
+    RefreshPlugins(I - 1);  // redraw the list
   end;
 end;
 
+{ Moves the selected plug-in one place down. }
 procedure TPrefsForm.PluginDownClick(Sender: TObject);
 var
-  I: Integer;
+  I: Integer;  // I: selected entry
 begin
-  I := lbPlugins.ItemIndex;
-  if (I >= 0) and (I < FPlugins.Count - 1) then
+  I := lbPlugins.ItemIndex;  // selected entry
+  if (I >= 0) and (I < FPlugins.Count - 1) then  // not already last
   begin
-    FPlugins.Exchange(I, I + 1);
-    RefreshPlugins(I + 1);
+    FPlugins.Exchange(I, I + 1);  // swap with the next entry
+    RefreshPlugins(I + 1);  // redraw the list
   end;
 end;
 
+{ Opens the setup of the selected plug-in. }
 procedure TPrefsForm.PluginSetupClick(Sender: TObject);
 var
-  I: Integer;
-  Nm, V: string;
+  I: Integer;  // I: selected entry
+  Nm, V: string;  // Nm: plug-in name; V: option value
 begin
-  I := lbPlugins.ItemIndex;
-  if I < 0 then Exit;
-  Nm := FPlugins.Names[I];
-  if Nm = 'Backup' then
+  I := lbPlugins.ItemIndex;  // selected entry
+  if I < 0 then Exit;  // nothing selected
+  Nm := FPlugins.Names[I];  // plug-in name
+  if Nm = 'Backup' then  // backup plug-in
   begin
-    ShowMessage('Backups are now set on the Download Path tab:'#13#10 +
+    ShowMessage('Backups are now set on the Download Path tab:'#13#10 +  // explain where backups are set up
       '"Also save a second copy to a backup folder".');
   end
   else if Nm = 'Directory Maker' then
   begin
-    V := FPluginOpts.Values['Directory Maker'];
-    if InputQuery('Directory Maker', 'Folders to create (comma separated):', V) then
-      FPluginOpts.Values['Directory Maker'] := V;
+    V := FPluginOpts.Values['Directory Maker'];  // current option value
+    if InputQuery('Directory Maker', 'Folders to create (comma separated):', V) then  // ask for the folders
+      FPluginOpts.Values['Directory Maker'] := V;  // store the new value
   end
   else
-    ShowMessage('The "' + Nm + '" plug-in has no options in this build.');
+    ShowMessage('The "' + Nm + '" plug-in has no options in this build.');  // plug-in without options
 end;
 
 { ---- load / store ---- }
 
+{ Fills the dialog controls from the settings. }
 procedure TPrefsForm.LoadValues;
 begin
-  FUpdating := True;
+  FUpdating := True;  // do not react to changes while filling
   try
-    cbDir.Text := FS.DownloadDir;
-    cbFile.Text := FS.FileNameMask;
-    cbJob.Text := FS.JobCode;
-    chkPromptJob.Checked := FS.PromptJobCode;
-    chkVerify.Checked := FS.VerifyCopy;
-    chkBackup.Checked := FS.BackupOn;
-    edBackup.Text := FS.BackupDir;
-    BackupChange(nil);
-    seqStart.Value := FS.SeqStart;
+    cbDir.Text := FS.DownloadDir;  // download folder
+    cbFile.Text := FS.FileNameMask;  // file name pattern
+    cbJob.Text := FS.JobCode;  // job code
+    chkPromptJob.Checked := FS.PromptJobCode;  // prompt for the job code
+    chkVerify.Checked := FS.VerifyCopy;  // verify copies
+    chkBackup.Checked := FS.BackupOn;  // backup on or off
+    edBackup.Text := FS.BackupDir;  // backup folder
+    BackupChange(nil);  // enable or disable the backup controls
+    seqStart.Value := FS.SeqStart;  // first sequence number
 
-    rbAuto.Checked := FS.SourceMode = smAuto;
-    rbCamera.Checked := FS.SourceMode = smCamera;
-    rbCard.Checked := FS.SourceMode = smCardReader;
-    edLetters.Text := FS.DriveLetters;
-    chkPTP.Checked := FS.DisablePTP;
-    chkReadOnly.Checked := FS.SaveReadOnly;
-    chkPreserveRO.Checked := FS.PreserveReadOnly;
-    chkProfile.Checked := FS.PromptProfile;
-    chkIgnoreSize.Checked := FS.IgnoreSizeCheck;
-    chkRotate.Checked := FS.AutoRotate;
-    chkJpe.Checked := FS.RenameJpe;
-    chkLowerName.Checked := FS.LowerName;
-    chkLowerExt.Checked := FS.LowerExt;
-    chkStamp.Checked := FS.UseCaptureTime;
-    chkSaveJobs.Checked := FS.SaveDateJobCodes;
-    chkExifTxt.Checked := FS.WriteExifText;
-    chkEject.Checked := FS.AutoEject;
-    chkWholeDisk.Checked := FS.ScanWholeDisk;
-    chkIptc.Checked := FS.AddIptc;
-    chkPromptIptc.Checked := FS.PromptIptc;
-    chkIIM.Checked := FS.WriteIptcIIM;
-    chkNef.Checked := FS.WriteIptcNef;
-    chkExifOwner.Checked := FS.WriteExifOwner;
-    chkLoadLast.Checked := FS.LoadLastAtStartup;
-    chkSingle.Checked := FS.SingleInstance;
-    chkWinSafe.Checked := FS.WinSafeNames;
-    edAuthor.Text := FS.ExifAuthor;
-    edCopyright.Text := FS.ExifCopyright;
+    rbAuto.Checked := FS.SourceMode = smAuto;  // automatic source
+    rbCamera.Checked := FS.SourceMode = smCamera;  // camera source
+    rbCard.Checked := FS.SourceMode = smCardReader;  // card reader source
+    edLetters.Text := FS.DriveLetters;  // drive letters
+    chkPTP.Checked := FS.DisablePTP;  // disable PTP
+    chkReadOnly.Checked := FS.SaveReadOnly;  // save files as read-only
+    chkPreserveRO.Checked := FS.PreserveReadOnly;  // preserve read-only status
+    chkProfile.Checked := FS.PromptProfile;  // prompt for the profile
+    chkIgnoreSize.Checked := FS.IgnoreSizeCheck;  // ignore the size check
+    chkAutoRename.Checked := FS.AutoRenameClash;  // rename name clashes automatically
+    chkIgnoreDup.Checked := FS.IgnoreDuplicates;  // skip duplicate files
+    chkRenameDup.Checked := FS.RenameDuplicates;  // download duplicates renamed
+    chkRotate.Checked := FS.AutoRotate;  // auto-rotate JPEGs
+    chkJpe.Checked := FS.RenameJpe;  // rename .jpe files
+    chkLowerName.Checked := FS.LowerName;  // lower case names
+    chkLowerExt.Checked := FS.LowerExt;  // lower case extensions
+    chkStamp.Checked := FS.UseCaptureTime;  // use the capture time
+    chkSaveJobs.Checked := FS.SaveDateJobCodes;  // save date based job codes
+    chkExifTxt.Checked := FS.WriteExifText;  // write the EXIF text file
+    chkEject.Checked := FS.AutoEject;  // eject automatically
+    chkWholeDisk.Checked := FS.ScanWholeDisk;  // scan the whole disk
+    chkIptc.Checked := FS.AddIptc;  // add IPTC data
+    chkPromptIptc.Checked := FS.PromptIptc;  // prompt for IPTC data
+    chkIIM.Checked := FS.WriteIptcIIM;  // write legacy IIM data
+    chkNef.Checked := FS.WriteIptcNef;  // write IIM data to NEF files
+    chkExifOwner.Checked := FS.WriteExifOwner;  // write EXIF owner data
+    chkLoadLast.Checked := FS.LoadLastAtStartup;  // load the last folder at start-up
+    chkSingle.Checked := FS.SingleInstance;  // single instance
+    chkWinSafe.Checked := FS.WinSafeNames;  // Windows-safe names
+    edAuthor.Text := FS.ExifAuthor;  // EXIF author
+    edCopyright.Text := FS.ExifCopyright;  // EXIF copyright
 
-    chkAutoStart.Checked := FS.AutoAtStartup;
-    chkAutoMenu.Checked := FS.AutoMenu;
-    chkAutoPrompt.Checked := FS.AutoPrompt;
-    chkADownload.Checked := FS.AutoDownload;
-    chkADelete.Checked := FS.AutoDelete;
-    chkSafeDel.Checked := FS.SafeDelete;
-    edTrash.Text := FS.SafeDeleteFolder;
-    chkAEject.Checked := FS.AutoSoftEject;
-    chkALaunch.Checked := FS.AutoLaunch;
-    chkAExit.Checked := FS.AutoExit;
+    chkAutoStart.Checked := FS.AutoAtStartup;  // automation at start-up
+    chkAutoMenu.Checked := FS.AutoMenu;  // automation menu
+    chkAutoPrompt.Checked := FS.AutoPrompt;  // automation prompt
+    chkADownload.Checked := FS.AutoDownload;  // automatic download
+    chkADelete.Checked := FS.AutoDelete;  // automatic delete
+    chkSafeDel.Checked := FS.SafeDelete;  // safe delete
+    edTrash.Text := FS.SafeDeleteFolder;  // trash folder name
+    chkAEject.Checked := FS.AutoSoftEject;  // automatic soft eject
+    chkALaunch.Checked := FS.AutoLaunch;  // automatic launch
+    chkAExit.Checked := FS.AutoExit;  // automatic exit
 
-    chkCustom.Checked := FS.CustomEnabled;
-    edCaption.Text := FS.CustomCaption;
-    edCmd.Text := FS.CustomCmd;
+    chkCustom.Checked := FS.CustomEnabled;  // custom button on or off
+    edCaption.Text := FS.CustomCaption;  // custom button caption
+    edCmd.Text := FS.CustomCmd;  // custom button command
 
-    FMaps.Assign(FS.Mappings);
-    chkSerial.Checked := FS.IdentifyBySerial;
-    chkPromptCam.Checked := FS.PromptNewCamera;
-    edCurCam.Text := FCamera;
-    FPlugins.Assign(FS.Plugins);
-    FPluginOpts.Assign(FS.PluginOpts);
+    FMaps.Assign(FS.Mappings);  // copy the camera mappings
+    chkSerial.Checked := FS.IdentifyBySerial;  // identify cameras by serial number
+    chkPromptCam.Checked := FS.PromptNewCamera;  // prompt for new cameras
+    edCurCam.Text := FCamera;  // current camera
+    FPlugins.Assign(FS.Plugins);  // copy the plug-in list
+    FPluginOpts.Assign(FS.PluginOpts);  // copy the plug-in options
   finally
-    FUpdating := False;
+    FUpdating := False;  // react to changes again
   end;
-  GeneralChange(nil);
-  AutoChange(nil);
-  SafeDelChange(nil);
-  CustomChange(nil);
-  RefreshMaps(0);
-  RefreshPlugins(0);
-  ExampleChange(nil);
+  GeneralChange(nil);  // update the dependent controls
+  AutoChange(nil);  // update the dependent controls
+  SafeDelChange(nil);  // update the dependent controls
+  CustomChange(nil);  // update the dependent controls
+  RefreshMaps(0);  // fill the mapping list
+  RefreshPlugins(0);  // fill the plug-in list
+  ExampleChange(nil);  // show the example name
 end;
 
+{ Writes the dialog values back to the settings. }
 procedure TPrefsForm.Store;
 begin
-  FS.DownloadDir := Trim(cbDir.Text);
-  FS.FileNameMask := Trim(cbFile.Text);
+  FS.DownloadDir := Trim(cbDir.Text);  // download folder
+  FS.FileNameMask := Trim(cbFile.Text);  // file name pattern
   FS.JobCode := Trim(cbJob.Text);        // may be blank
-  FS.PromptJobCode := chkPromptJob.Checked;
-  FS.VerifyCopy := chkVerify.Checked;
-  FS.BackupOn := chkBackup.Checked and (Trim(edBackup.Text) <> '');
-  FS.BackupDir := Trim(edBackup.Text);
-  FS.SeqStart := seqStart.Value;
-  if FResetSeq then FS.SeqNext := FS.SeqStart;
+  FS.PromptJobCode := chkPromptJob.Checked;  // prompt for the job code
+  FS.VerifyCopy := chkVerify.Checked;  // verify copies
+  FS.BackupOn := chkBackup.Checked and (Trim(edBackup.Text) <> '');  // backup needs a folder
+  FS.BackupDir := Trim(edBackup.Text);  // backup folder
+  FS.SeqStart := seqStart.Value;  // first sequence number
+  if FResetSeq then FS.SeqNext := FS.SeqStart;  // apply the sequence number reset
 
-  if rbCamera.Checked then FS.SourceMode := smCamera
-  else if rbCard.Checked then FS.SourceMode := smCardReader
-  else FS.SourceMode := smAuto;
-  FS.DriveLetters := Trim(edLetters.Text);
-  FS.DisablePTP := chkPTP.Checked;
-  FS.SaveReadOnly := chkReadOnly.Checked;
-  FS.PreserveReadOnly := chkPreserveRO.Checked;
-  FS.PromptProfile := chkProfile.Checked;
-  FS.IgnoreSizeCheck := chkIgnoreSize.Checked;
-  FS.AutoRotate := chkRotate.Checked;
-  FS.RenameJpe := chkJpe.Checked;
-  FS.LowerName := chkLowerName.Checked;
-  FS.LowerExt := chkLowerExt.Checked;
-  FS.UseCaptureTime := chkStamp.Checked;
-  FS.SaveDateJobCodes := chkSaveJobs.Checked;
-  FS.WriteExifText := chkExifTxt.Checked;
-  FS.AutoEject := chkEject.Checked;
-  FS.ScanWholeDisk := chkWholeDisk.Checked;
-  FS.AddIptc := chkIptc.Checked;
-  FS.PromptIptc := chkPromptIptc.Checked;
-  FS.WriteIptcIIM := chkIIM.Checked;
-  FS.WriteIptcNef := chkNef.Checked;
-  FS.WriteExifOwner := chkExifOwner.Checked;
-  FS.LoadLastAtStartup := chkLoadLast.Checked;
-  FS.SingleInstance := chkSingle.Checked;
-  FS.WinSafeNames := chkWinSafe.Checked;
+  if rbCamera.Checked then FS.SourceMode := smCamera  // camera source
+  else if rbCard.Checked then FS.SourceMode := smCardReader  // card reader source
+  else FS.SourceMode := smAuto;  // automatic source
+  FS.DriveLetters := Trim(edLetters.Text);  // drive letters
+  FS.DisablePTP := chkPTP.Checked;  // disable PTP
+  FS.SaveReadOnly := chkReadOnly.Checked;  // save files as read-only
+  FS.PreserveReadOnly := chkPreserveRO.Checked;  // preserve read-only status
+  FS.PromptProfile := chkProfile.Checked;  // prompt for the profile
+  FS.IgnoreSizeCheck := chkIgnoreSize.Checked;  // ignore the size check
+  FS.AutoRenameClash := chkAutoRename.Checked;  // rename name clashes automatically
+  FS.IgnoreDuplicates := chkIgnoreDup.Checked;  // skip duplicate files
+  FS.RenameDuplicates := chkRenameDup.Checked;  // download duplicates renamed
+  FS.AutoRotate := chkRotate.Checked;  // auto-rotate JPEGs
+  FS.RenameJpe := chkJpe.Checked;  // rename .jpe files
+  FS.LowerName := chkLowerName.Checked;  // lower case names
+  FS.LowerExt := chkLowerExt.Checked;  // lower case extensions
+  FS.UseCaptureTime := chkStamp.Checked;  // use the capture time
+  FS.SaveDateJobCodes := chkSaveJobs.Checked;  // save date based job codes
+  FS.WriteExifText := chkExifTxt.Checked;  // write the EXIF text file
+  FS.AutoEject := chkEject.Checked;  // eject automatically
+  FS.ScanWholeDisk := chkWholeDisk.Checked;  // scan the whole disk
+  FS.AddIptc := chkIptc.Checked;  // add IPTC data
+  FS.PromptIptc := chkPromptIptc.Checked;  // prompt for IPTC data
+  FS.WriteIptcIIM := chkIIM.Checked;  // write legacy IIM data
+  FS.WriteIptcNef := chkNef.Checked;  // write IIM data to NEF files
+  FS.WriteExifOwner := chkExifOwner.Checked;  // write EXIF owner data
+  FS.LoadLastAtStartup := chkLoadLast.Checked;  // load the last folder at start-up
+  FS.SingleInstance := chkSingle.Checked;  // single instance
+  FS.WinSafeNames := chkWinSafe.Checked;  // Windows-safe names
   {$IFDEF WINDOWS}WinSafeNamesOn := True;{$ELSE}WinSafeNamesOn := FS.WinSafeNames;{$ENDIF}
-  FS.ExifAuthor := Trim(edAuthor.Text);
-  FS.ExifCopyright := Trim(edCopyright.Text);
+  FS.ExifAuthor := Trim(edAuthor.Text);  // EXIF author
+  FS.ExifCopyright := Trim(edCopyright.Text);  // EXIF copyright
 
-  FS.AutoAtStartup := chkAutoStart.Checked;
-  FS.AutoMenu := chkAutoMenu.Checked;
-  FS.AutoPrompt := chkAutoPrompt.Checked;
-  FS.AutoDownload := chkADownload.Checked;
-  FS.AutoDelete := chkADelete.Checked;
-  FS.SafeDelete := chkSafeDel.Checked;
-  FS.SafeDeleteFolder := CleanTrashName(edTrash.Text);
-  FS.AutoSoftEject := chkAEject.Checked;
-  FS.AutoLaunch := chkALaunch.Checked;
-  FS.AutoExit := chkAExit.Checked;
+  FS.AutoAtStartup := chkAutoStart.Checked;  // automation at start-up
+  FS.AutoMenu := chkAutoMenu.Checked;  // automation menu
+  FS.AutoPrompt := chkAutoPrompt.Checked;  // automation prompt
+  FS.AutoDownload := chkADownload.Checked;  // automatic download
+  FS.AutoDelete := chkADelete.Checked;  // automatic delete
+  FS.SafeDelete := chkSafeDel.Checked;  // safe delete
+  FS.SafeDeleteFolder := CleanTrashName(edTrash.Text);  // trash folder name
+  FS.AutoSoftEject := chkAEject.Checked;  // automatic soft eject
+  FS.AutoLaunch := chkALaunch.Checked;  // automatic launch
+  FS.AutoExit := chkAExit.Checked;  // automatic exit
 
-  FS.CustomEnabled := chkCustom.Checked;
-  FS.CustomCaption := edCaption.Text;
-  FS.CustomCmd := edCmd.Text;
+  FS.CustomEnabled := chkCustom.Checked;  // custom button on or off
+  FS.CustomCaption := edCaption.Text;  // custom button caption
+  FS.CustomCmd := edCmd.Text;  // custom button command
 
-  FS.Mappings.Assign(FMaps);
-  FS.IdentifyBySerial := chkSerial.Checked;
-  FS.PromptNewCamera := chkPromptCam.Checked;
-  FS.Plugins.Assign(FPlugins);
-  FS.PluginOpts.Assign(FPluginOpts);
+  FS.Mappings.Assign(FMaps);  // copy the camera mappings back
+  FS.IdentifyBySerial := chkSerial.Checked;  // identify cameras by serial number
+  FS.PromptNewCamera := chkPromptCam.Checked;  // prompt for new cameras
+  FS.Plugins.Assign(FPlugins);  // copy the plug-in list back
+  FS.PluginOpts.Assign(FPluginOpts);  // copy the plug-in options back
 end;
 
+{ Shows the Preferences dialog; the settings change only when the user clicked OK. }
 function ExecutePreferences(S: TAppSettings; const CurrentCamera: string): Boolean;
 var
-  F: TPrefsForm;
+  F: TPrefsForm;  // F: the dialog
 begin
-  F := TPrefsForm.CreatePrefs(Application, S, CurrentCamera);
+  F := TPrefsForm.CreatePrefs(Application, S, CurrentCamera);  // create the dialog
   try
-    Result := F.ShowModal = mrOK;
-    if Result then F.Store;
+    Result := F.ShowModal = mrOK;  // True when the user clicked OK
+    if Result then F.Store;  // store the values
   finally
-    F.Free;
+    F.Free;  // free the dialog
   end;
 end;
 
