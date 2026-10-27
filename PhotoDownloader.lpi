@@ -18,7 +18,7 @@
       <UseVersionInfo Value="True"/>
       <AutoIncrementBuild Value="True"/>
       <MinorVersionNr Value="1"/>
-      <BuildNr Value="52"/>
+      <BuildNr Value="56"/>
       <StringTable FileDescription="Photo Downloader" ProductName="Photo Downloader"/>
     </VersionInfo>
     <BuildModes>
@@ -96,7 +96,23 @@
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
+        <Filename Value="uPngFix.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="uSplash.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
         <Filename Value="uTiffRead.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="uWebP.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="uVideoThumb.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
@@ -108,7 +124,7 @@
   <CompilerOptions>
     <Version Value="11"/>
     <Target>
-      <Filename Value="PhotoDownloader"/>
+      <Filename Value="bin/$(TargetOS)/PhotoDownloader"/>
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir);third_party/XelHeic"/>
@@ -129,7 +145,7 @@
       </Options>
     </Linking>
     <Other>
-      <CustomOptions Value="-g -gl -vm5023 03 -Xs -XX"/>
+      <CustomOptions Value="-g -gl -vm5023,5024"/>
     </Other>
   </CompilerOptions>
 </CONFIG>

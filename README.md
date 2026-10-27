@@ -1,28 +1,32 @@
 # Photo Downloader
 
 [![License: GPL v3](https://img.shields.io/badge/license-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.html)
-![Status: pre-release](https://img.shields.io/badge/status-pre-release-yellow.svg)
+![Status: alpha](https://img.shields.io/badge/status-alpha-yellow.svg)
 
 A free, open source Windows desktop tool that copies photos from memory cards and folders,
 renames them from templates and files them into job-code folders. Written in Lazarus 4.8 / Free Pascal 3.2.2.
 
 Website: <https://rexalfes.github.io/Photo-Downloader/> | Downloads: <https://github.com/RexAlfes/Photo-Downloader/releases> | Issues: <https://github.com/RexAlfes/Photo-Downloader/issues>
 
-> **pre-release software.** Keep your original files until you have checked the copies.
+> **Alpha software.** Keep your original files until you have checked the copies.
+
+## Documentation
+- [User Manual](docs/User_Manual.md) – how to use every part of the program.
 
 ## Features
 - Date / job-code list, thumbnail grid (small and large) and list view, image viewer, status line.
 - List view has column headings; click one to sort by it (click again to reverse).
 - Job Code dialog at start-up with history and a live example of the destination path. The job code may be left blank: `{J}` then expands to nothing and the dash or underscore next to it is removed from folder and file names.
 - Token-based folder and file naming (`{T8}`, `{T9}`, `{r}`, sequence numbers, camera and EXIF values), per-camera mapping.
-- Thumbnails and viewer for JPEG, PNG, BMP, GIF, TIFF (including compressed, palette, 1-bit and fax scans), DNG, HEIC, AVIF and the embedded previews of RAW files (NEF, NRW, CR2, CR3, CRW, ARW and others).
-- File type filter (View > File Types...), progress windows with Cancel while a folder loads, and a disk cache for slow thumbnails.
-- Status per image: new file, already downloaded, name clash, duplicate (same size, time and camera), with the reason shown.
+- Thumbnails and viewer for JPEG, PNG, BMP, GIF, TIFF (including compressed, palette, 1-bit and fax scans), DNG, WebP (lossy, lossless and transparent, decoded by the program itself), HEIC, AVIF and the embedded previews of RAW files (NEF, NRW, CR2, CR3, CRW, ARW and others).
+- Video (MP4, MOV, LRV) and audio (MP3): capture date and length from the movie header, thumbnails from the system (Windows Shell; `ffmpegthumbnailer` or `ffmpeg` on Linux) with a play-symbol or music-note tile as fallback, double-click plays them in the default player.
+- File type filter (View > File Types..., with MP4, MOV and LRV as separate entries), progress windows with Cancel while a folder loads, and a disk cache for slow thumbnails.
+- Status per image: new file, already downloaded, name clash (the new name is already taken), duplicate (the same picture twice: same size, time and camera), with the reason shown. See the [User Manual](docs/User_Manual.md) for exactly how each status is decided.
 - XMP sidecar from IPTC/XMP details; author and copyright written only into JPEG fields that are empty.
 - Verified copy (checksum read-back) and an optional backup folder; files whose backup failed are never offered for deletion.
 - Delete from the card only for files that were downloaded and exist in the destination. Safe delete (on by default) moves them to the Recycle Bin, or to a hidden `$trash.bin` folder (name can be changed in Preferences > Automation) on the card, instead of erasing them. File > View Trash and File > Empty Trash... manage the card's trash folder.
 - Auto-rotate: pictures are shown upright, and downloaded JPEGs, including progressive ones, can be turned losslessly by their EXIF orientation (Preferences > General). A progressive file is saved back as a sequential JPEG.
-- User profiles (optionally chosen at start-up; "Default" keeps the current settings), export of settings, Eject, right-click Open image location and Properties.
+- User profiles (optionally chosen at start-up; "Default" keeps the current settings), export of settings, Eject, right-click Show in source folder / Show in destination folder and Properties.
 - Single instance by default (switchable in Preferences > General). Nothing is scanned at start-up; the last folder is remembered.
 
 ## Build
@@ -42,9 +46,9 @@ settings. The decoder is the pure-Pascal Xelitan HEIC decoder, bundled in `third
 under Project > Project Inspector > Required Packages, remove it so units are not found twice.
 
 ## File type filter
-Use View > File Types... (or the right-click menu) to choose which kinds of files are listed and downloaded: JPEG, PNG, BMP, GIF, TIFF, RAW by brand, DNG, HEIC, AVIF, video, audio and THM. All are selected by default except video, audio and THM (switched off until their previews are verified); **Clear all** and **Select all** are provided. The choice is kept in `PhotoDownloader.ini`.
+Use View > File Types... (or the right-click menu) to choose which kinds of files are listed and downloaded: JPEG, PNG, BMP, GIF, TIFF, RAW by brand, DNG, WebP, HEIC, AVIF, video, audio and THM. All are selected by default except video, audio and THM (switched off until their previews are verified); **Clear all** and **Select all** are provided. The choice is kept in `PhotoDownloader.ini`.
 
-Files that are already downloaded are shown on a grey background; name clashes are red.
+Files that are already downloaded are shown on a gray background; name clashes are red.
 
 ## Logging and troubleshooting
 Help > Logging switches the diagnostic log on or off (on by default). Help > Save log file... copies the log to a folder of your choice so you can email it. HEIC and AVIF thumbnails are cached in the `thumbcache` folder (next to the settings file on Windows, in `~/.cache/PhotoDownloader/` on Linux), so reopening a folder is much faster.
@@ -52,7 +56,7 @@ Help > Logging switches the diagnostic log on or off (on by default). Help > Sav
 ## Verified copy and backup
 Preferences > Download Path has two options. **Verify every copy** (on by default) reads each copy back and compares its checksum with the original; a bad copy is deleted and retried once. **Also save a second copy to a backup folder** writes every file to a second folder, using the same folder and file name patterns, from the verified download and before any rotation or metadata changes. If a backup copy fails, that file is never offered for deletion from the image source.
 
-**Cancel and resume.** Cancel stops inside the current file and deletes the partial copy. Downloading again continues with the cancelled file and skips files that are already downloaded.
+**Cancel and resume.** Cancel stops inside the current file and deletes the partial copy. Downloading again continues with the canceled file and skips files that are already downloaded.
 
 ## Linux
 The program builds and runs on Linux (tested on Linux Mint 22.3, XFCE, GTK 3). Card detection uses `/proc/mounts`, eject uses udisksctl, safe delete uses `gio trash`, settings are in `~/.config` and the cache in `~/.cache`; see `docs/Linux_Build.md`. Single-instance handling and USB camera download are not available on Linux.
@@ -70,7 +74,7 @@ There is no fixed limit on the number of images scanned. The source folder and a
 - Windows is the primary platform. Card-reader detection, eject and single-instance handling are Windows only.
 - Not implemented yet: direct USB camera (PTP/MTP) download, GPS geotagging, watch mode,
   embedded IIM/IPTC (XMP is written as a `.xmp` sidecar), download history.
-- TIFF thumbnails: LZW, PackBits, Deflate and CCITT fax (Group 3/4) compression, 1/2/4/8/16-bit grey, palette, RGB and CMYK, in strips or tiles, are supported. Not supported (placeholder thumbnail): JPEG-compressed TIFF, planar layout, floating point samples, BigTIFF.
+- TIFF thumbnails: LZW, PackBits, Deflate and CCITT fax (Group 3/4) compression, 1/2/4/8/16-bit gray, palette, RGB and CMYK, in strips or tiles, are supported. Not supported (placeholder thumbnail): JPEG-compressed TIFF, planar layout, floating point samples, BigTIFF.
 - {r} (image number) is the longest run of digits in the original name (last on a tie).
 - The code is compiled and tested by the project owner; report compiler messages or bugs as issues.
 

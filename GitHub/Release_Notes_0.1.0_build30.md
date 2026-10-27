@@ -5,7 +5,7 @@
 ### What's new
 - **File type filter.** View > File Types... (also on the right-click menu) lists and downloads only the file types you tick. All are on by default; Select all and Clear all buttons; saved in the ini file.
 - **Progress pop-ups.** A pop-up with a Cancel button shows while the source folder is read, and the download pop-up now follows the size of the files copied.
-- **AVIF.** Second fix to the bundled decoder (the deblocking step read past the end of the picture buffer). Please re-test your AVIF files and send `thumbnail.log` if any still show a grey box.
+- **AVIF.** Second fix to the bundled decoder (the deblocking step read past the end of the picture buffer). Please re-test your AVIF files and send `thumbnail.log` if any still show a gray box.
 - Earlier builds' changes carry over: bundled HEIC decoder, AVIF listing, decoder edge fix, 64-bit note, lossless auto-rotate, Canon CR3, settings file documentation.
 
 ### In development

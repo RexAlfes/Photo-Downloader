@@ -4,7 +4,7 @@
 
 ### What's new
 - **Canon CR3.** Camera, date, ISO and body serial are now read from the file, so token naming, duplicate and name-clash checks work. Thumbnails and the viewer use the full-size JPEG preview stored in the file.
-- **HEIC / HEIF.** Camera and date are read from the file's EXIF data, so renaming and duplicate checks work. The image preview is **in development** (HEVC decoding); a labelled placeholder is shown meanwhile.
+- **HEIC / HEIF.** Camera and date are read from the file's EXIF data, so renaming and duplicate checks work. The image preview is **in development** (HEVC decoding); a labeled placeholder is shown meanwhile.
 - **Support links** and **cleaner build** from earlier alphas carry over.
 
 ### In development
