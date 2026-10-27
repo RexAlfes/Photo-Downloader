@@ -1,5 +1,6 @@
 # Lazarus / Free Pascal build output
 lib/
+bin/
 backup/
 *.o
 *.ppu
@@ -12,6 +13,7 @@ backup/
 *.rst
 
 # Compiled programs (publish these as GitHub Release assets instead)
+/PhotoDownloader
 *.exe
 *.dll
 *.dbg
@@ -22,8 +24,26 @@ backup/
 *.bak
 *.~*
 *.#*
+.~lock.*
 link*.res
 *.lrs
+
+# Release packages (publish these as GitHub Release assets instead)
+*.zip
+*.tar.gz
+
+# Local working folders that are not part of the repository
+Add-Ons/
+Archive/
+Developer Notes/
+HEIC/
+Icon/
+Notes/
+Sample Screen Shots/
+Test Files/
+Logs/
+Claude Prompt/
+third_party/libheif-master/
 
 # Application runtime files
 PhotoDownloader.ini
@@ -32,6 +52,7 @@ thumbnail.log
 
 # OS and editor files
 Thumbs.db
+tree*.txt
 desktop.ini
 .DS_Store
 *.swp
