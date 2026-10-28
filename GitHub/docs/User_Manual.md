@@ -1,6 +1,6 @@
 # Photo Downloader – User Manual
 
-**Version:** 0.1.0 (build 55) · **License:** GNU GPL v3 or later · **Platforms:** Windows 64-bit (primary), Linux 64-bit (GTK 3, tested on Linux Mint 22.3)
+**Version:** 0.1.0 (build 56) · **License:** GNU GPL v3 or later · **Platforms:** Windows 64-bit (primary), Linux 64-bit (GTK 3, tested on Linux Mint 22.3)
 
 Photo Downloader copies photos from a memory card, card reader or folder to your computer. It renames them from templates, files them into folders by date and job code, and checks every copy. This manual explains each part of the program in the order you will meet it.
 
@@ -144,6 +144,14 @@ If you turn on **Rename name clashes as (1), (2) …** (Preferences > File Handl
 
 **Duplicates.** Preferences > File Handling has two exclusive options: **Ignore duplicate files on download** (the default; duplicates are skipped) and **Download duplicates as (1), (2) …**. With both off, duplicates are downloaded only when their new name is free. With the second option, duplicate files are downloaded too, and any that would collide with an existing file get the same `(1)`, `(2)` numbering. Because a duplicate is still a duplicate afterwards, downloading the same card again with this option on makes another numbered copy each time.
 
+**Good to know about duplicates.**
+
+- **Names do not matter for the duplicate check.** Two files are duplicates when their size, capture time and camera match, even if their file names differ (for example `IMG_0001.jpg` and `IMG_0001 copy.jpg`).
+- **A number is added only when the name is taken.** With **Download duplicates as (1), (2) …**, a duplicate becomes `name (1).jpg` only if its new destination name is already used, by a file in the destination folder or by another picture in the same download. If its new name is different, it is downloaded under that name with no number. Several duplicates that share a name are numbered `(1)`, `(2)`, `(3)` in turn. The card shows the planned name, number included.
+- **The amber color does not depend on the options.** It shows the status. The options only decide what **Download** does with those files (skip them, download them numbered, or download them only when the name is free).
+- **A downloaded duplicate stays amber.** After a download the original shows as *Already downloaded*, but a duplicate is never compared with the destination, so it keeps the status *Duplicate file*. If you download the same card again with **Download duplicates as (1), (2) …** on, another numbered copy is made each time. Use **Ignore duplicate files on download** to avoid that.
+- With logging on, the log records for every duplicate whether it was renamed or skipped and why.
+
 ## 7. Selecting pictures
 
 Click a card to select it; Ctrl-click and Shift-click extend the selection. The Edit menu has shortcuts:
@@ -159,7 +167,7 @@ Click a card to select it; Ctrl-click and Shift-click extend the selection. The 
 
 Only **New file** pictures and name clashes are downloaded; downloaded files are skipped, and so are duplicates unless you turned on **Download duplicates as (1), (2) …**.
 
-**Right-click a picture** for: View image, Show in source folder, Show in destination folder (only for files already downloaded), Download selected file(s), Delete selected file(s) from source, Properties (everything known about the file, with a Copy button), and then the same choices as the View menu (except the Image Date Selector): Show 'Downloaded' files, Show 'Duplicate' files, File Types…, List View and the two Thumbnail Views.
+**Right-click a picture** for: View image, Show in source folder, Show in destination folder (only for files already downloaded), Download selected file(s), Delete selected file(s) from source, Properties (everything known about the file, with a Copy button), Refresh (rescans the source, the same as File > Refresh or F5), and then the same choices as the View menu (except the Image Date Selector): Show 'Downloaded' files, Show 'Duplicate' files, File Types…, List View and the two Thumbnail Views.
 
 ## 8. Naming files and folders (tokens)
 
