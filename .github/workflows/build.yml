@@ -1,5 +1,5 @@
 # Compile check for Photo Downloader.
-# Builds PhotoDownloader.lpi with lazbuild on Windows and on Linux (GTK 3) for every push and pull request.
+# Builds PhotoDownloader.lpi on Windows 64-bit and on Linux 64-bit (GTK 3) with lazbuild for every push and pull request.
 # It only compiles. It does not create releases, change files or touch the build number.
 name: Build
 
@@ -31,9 +31,11 @@ jobs:
           - name: Windows 64-bit
             os: windows-latest
             ws: ''
+            lpi: PhotoDownloader.lpi
           - name: Linux 64-bit (GTK 3)
             os: ubuntu-latest
             ws: '--ws=gtk3'
+            lpi: PhotoDownloader.lpi
 
     steps:
       - name: Check out the source
@@ -53,7 +55,7 @@ jobs:
 
       - name: Compile
         shell: bash
-        run: lazbuild --build-all --recursive ${{ matrix.ws }} PhotoDownloader.lpi
+        run: lazbuild --build-all --recursive ${{ matrix.ws }} ${{ matrix.lpi }}
 
       - name: Show the result
         shell: bash

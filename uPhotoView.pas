@@ -8,10 +8,13 @@ uses
   Classes, SysUtils, Math, Types, Controls, Graphics, StdCtrls, ExtCtrls, Forms, LCLType, uItems;
 
 const
-  SmallCellWidth = 200;  // width of a card in the small view
+  MinThumbSize = 64;  // smallest thumbnail box in pixels (the Small preset)
+  MaxThumbSize = 320;  // largest thumbnail box in pixels (the Large preset)
+  ThumbSizeStep = 16;  // change of one Ctrl + mouse wheel notch
+  SmallCardText = 139;  // width of the text beside a 64 pixel thumbnail
 
 type
-  TViewMode = (vmList, vmSmall, vmLarge);  // list, small thumbnails, large thumbnails
+  TViewMode = (vmList, vmCards);  // one line per picture, or cards with a thumbnail of ThumbSize pixels
   TOpenItemEvent = procedure(Sender: TObject; Index: Integer) of object;  // called when an item is opened (double-click)
   THeaderClickEvent = procedure(Sender: TObject; Col: Integer) of object;  // called when a list column heading is clicked
 
@@ -21,7 +24,11 @@ type
     FItems: TList;                  // visible items, not owned
     FMode: TViewMode;  // current view mode
     FScroll: TScrollBar;  // vertical scroll bar
-    FCellW, FCellH, FCols, FLineH, FThumbBox, FTotalH, FLargeW: Integer;  // FCellW, FCellH: card size; FCols: cards per row; FLineH: text line height; FThumbBox: thumbnail box size; FTotalH: total height; FLargeW: cached large card width
+    FCellW, FCellH, FCols, FLineH, FThumbBox, FTotalH, FLargeW: Integer;  // FCellW, FCellH: card size; FCols: cards per row; FLineH: text line height; FThumbBox: thumbnail box size; FTotalH: total height; FLargeW: cached width of the longest card text
+    FThumbSize: Integer;            // wanted thumbnail box size in pixels (MinThumbSize..MaxThumbSize)
+    FOnThumbSize: TNotifyEvent;     // called when Ctrl + mouse wheel changed the size
+    FFit: Boolean;                  // Fit to Window: cards share the width, thumbnails at most 160 pixels
+    FFitCols: Integer;              // cards per row in Fit to Window
     FFocusIdx, FAnchor: Integer;  // focused item and the anchor of a shift-selection
     FLaidOut: Boolean;  // True once the sizes have been computed
     FLoadBudget: Integer;           // thumbnails that may still be decoded in this paint
@@ -48,6 +55,8 @@ type
     procedure DrawThumb(Item: TImageItem; X, Y: Integer);  // draws one thumbnail or its placeholder
     function FitLeft(const S: string; MaxW: Integer): string;  // shortens text from the left with '...'
     procedure SetMode(AValue: TViewMode);  // changes the view mode
+    procedure SetThumbSize(AValue: Integer);  // changes the thumbnail size (keeps the top row in view)
+    procedure SetFit(AValue: Boolean);  // switches Fit to Window on or off (keeps the top row in view)
     procedure SelectIndex(Idx: Integer; Shift: TShiftState);  // selects an item (with Shift/Ctrl rules)
     procedure EnsureVisible(Idx: Integer);  // scrolls so an item is visible
   protected
@@ -64,12 +73,22 @@ type
     procedure SetItems(const L: TList);  // replaces the shown items
     procedure SelectionChanged;  // redraws after the selection changed
     procedure ScrollToItem(Item: TImageItem);  // scrolls to an item
-    { width of one large-thumbnail card (wide enough for the first text line) }
-    function LargeCellWidth: Integer;  // width of one large-thumbnail card
+    { width of the text of the longest usual card line, measured once }
+    function SmallTextWidth: Integer;  // text width beside the smallest thumbnail
+    function LargeCellWidth: Integer;  // text width of the longest usual card line
+    { size at which thumbnails are decoded: 160 up to a box of 160, else 320 }
+    function DecodeBox: Integer;  // decode size for the current thumbnail size
+    { card width: margin, thumbnail, gap and text; the text grows from 125 px at 64 to the full line at 160 }
+    function CardWidth: Integer;  // width of one card at the current thumbnail size
+    function CardWidthFor(ASize: Integer): Integer;  // width of one card for a given thumbnail size
     { width of one card in the current view (0 for the list view) }
     function CellWidthNow: Integer;  // width of one card in the current view
     function ScrollBarWidth: Integer;  // width of the scroll bar
     property Mode: TViewMode read FMode write SetMode;  // the view mode
+    property ThumbSize: Integer read FThumbSize write SetThumbSize;  // thumbnail box size in pixels
+    property FitToWindow: Boolean read FFit write SetFit;  // cards fill the window width (thumbnails at most 160 pixels)
+    property ThumbBoxNow: Integer read FThumbBox;  // thumbnail box size in use now (differs from ThumbSize in Fit to Window)
+    property OnThumbSizeChange: TNotifyEvent read FOnThumbSize write FOnThumbSize;  // event: Ctrl + wheel changed the size
     property OnSelectionChange: TNotifyEvent read FOnSelChange write FOnSelChange;  // event: selection changed
     property OnOpenItem: TOpenItemEvent read FOnOpenItem write FOnOpenItem;  // event: item opened
     property OnHeaderClick: THeaderClickEvent read FOnHeaderClick write FOnHeaderClick;  // event: heading clicked
@@ -94,7 +113,9 @@ constructor TPhotoView.Create(AOwner: TComponent);
 begin
   inherited Create(AOwner);  // run the base constructor
   FItems := TList.Create;  // list of the shown items (not owned)
-  FMode := vmSmall;  // small thumbnails by default
+  FMode := vmCards;  // cards by default
+  FThumbSize := 160;  // medium thumbnails by default
+  FThumbBox := 160;  // matching box size
   FFocusIdx := -1;  // nothing focused
   FAnchor := -1;  // no selection anchor
   FLineH := 15;  // default text line height
@@ -159,7 +180,7 @@ begin
   if Assigned(FOnSelChange) then FOnSelChange(Self);  // notify the owner
 end;
 
-{ Returns the width of a large card; computed once from the longest usual first text line. }
+{ Returns the width of the text part of a card at full size; computed once from the longest usual line. }
 function TPhotoView.LargeCellWidth: Integer;
 var
   Bmp: TBitmap;  // Bmp: temporary bitmap used to measure text
@@ -174,23 +195,100 @@ begin
   Bmp := TBitmap.Create;  // temporary bitmap
   try
     Bmp.Canvas.Font.Assign(Font);  // use the grid's font
-    Result := 3 + 160 + 4 + Bmp.Canvas.TextWidth('0000) WWWW_00000000_WWWW.WWW (999.99 MB)') + 8;  // margin + thumbnail + gap + longest line + margin
+    Result := Bmp.Canvas.TextWidth('0000) WWWW_00000000_WWWW (999.99 MB)');  // longest usual card line
+    Result := Max(Result, Bmp.Canvas.TextWidth('00/00/0000 00:00:00   WWWWW   999.99 MB'));  // second line: date, type, size
   finally
     Bmp.Free;  // free the bitmap
   end;
-  if Result < 340 then Result := 340;  // at least 340 pixels
+  if Result < 168 then Result := 168;  // at least 168 pixels
   FLargeW := Result;  // remember the value
+end;
+
+{ Text width beside the smallest thumbnail: wide enough for the whole second line (date, type, size). }
+function TPhotoView.SmallTextWidth: Integer;
+var
+  Bmp: TBitmap;  // Bmp: temporary bitmap used to measure text
+begin
+  Bmp := TBitmap.Create;  // temporary bitmap
+  try
+    Bmp.Canvas.Font.Assign(Font);  // use the grid's font
+    Result := Bmp.Canvas.TextWidth('00/00/0000 00:00:00   LRPREV   999.9 MB') + 6;  // widest usual second line
+  finally
+    Bmp.Free;  // free the bitmap
+  end;
+  if Result < SmallCardText then Result := SmallCardText;  // at least the fixed minimum
+end;
+
+{ Card width at the current thumbnail size. }
+function TPhotoView.CardWidth: Integer;
+begin
+  Result := CardWidthFor(FThumbSize);  // width for the wanted size
+end;
+
+{ Card width for a thumbnail box of ASize pixels. }
+function TPhotoView.CardWidthFor(ASize: Integer): Integer;
+var
+  TextW: Integer;  // TextW: width of the text beside the thumbnail
+begin
+  TextW := SmallTextWidth + (LargeCellWidth - SmallTextWidth) *
+    (EnsureRange(ASize, MinThumbSize, 160) - MinThumbSize) div (160 - MinThumbSize);  // grows from the small to the full text width
+  Result := 3 + ASize + 4 + TextW + 8;  // margin + thumbnail + gap + text + margin
+end;
+
+{ Decode size for thumbnails: 160 pixels up to a thumbnail box of 160, 320 pixels above that. }
+function TPhotoView.DecodeBox: Integer;
+begin
+  if FFit or (FThumbSize <= 160) then Result := 160 else Result := MaxThumbSize;  // two tiers keep the cache small
+end;
+
+{ Switches Fit to Window on or off, re-lays out the cards and keeps the first visible card in view. }
+procedure TPhotoView.SetFit(AValue: Boolean);
+var
+  OldTier, TopIdx, I: Integer;  // OldTier: decode size before; TopIdx: first visible card; I: item counter
+begin
+  if AValue = FFit then Exit;  // nothing changed
+  OldTier := DecodeBox;  // decode size before the change
+  if (FMode <> vmList) and (FCellH > 0) and (FCols > 0) then
+    TopIdx := (FScroll.Position div FCellH) * FCols  // first card of the top visible row
+  else
+    TopIdx := 0;
+  FFit := AValue;  // remember the setting
+  if DecodeBox <> OldTier then  // thumbnails must be made again at the other size
+    for I := 0 to FItems.Count - 1 do ReleaseThumb(TImageItem(FItems[I]));
+  DoLayout;  // new card sizes
+  if (FMode <> vmList) and FScroll.Enabled and (FCols > 0) then
+    FScroll.Position := EnsureRange((TopIdx div FCols) * FCellH, 0, MaxOffset);  // same top card as before
+  Invalidate;  // redraw
+end;
+
+{ Changes the thumbnail size, re-lays out the cards and keeps the first visible card in view. }
+procedure TPhotoView.SetThumbSize(AValue: Integer);
+var
+  OldTier, TopIdx, I: Integer;  // OldTier: decode size before; TopIdx: first visible card; I: item counter
+begin
+  AValue := EnsureRange(AValue, MinThumbSize, MaxThumbSize);  // keep the size in range
+  if AValue = FThumbSize then Exit;  // nothing changed
+  OldTier := DecodeBox;  // decode size before the change
+  if (FMode <> vmList) and (FCellH > 0) and (FCols > 0) then
+    TopIdx := ((FScroll.Position) div FCellH) * FCols  // first card of the top visible row
+  else
+    TopIdx := 0;
+  FThumbSize := AValue;  // remember the size
+  if DecodeBox <> OldTier then  // thumbnails must be made again at the other size
+    for I := 0 to FItems.Count - 1 do ReleaseThumb(TImageItem(FItems[I]));
+  DoLayout;  // new card sizes
+  if (FMode <> vmList) and FScroll.Enabled and (FCols > 0) then
+    FScroll.Position := EnsureRange((TopIdx div FCols) * FCellH, 0, MaxOffset);  // same top card as before
+  Invalidate;  // redraw
 end;
 
 { Returns the card width of the current view (0 for the list). }
 function TPhotoView.CellWidthNow: Integer;
 begin
-  case FMode of  // by view mode
-    vmSmall: Result := SmallCellWidth;  // small cards have a fixed width
-    vmLarge: Result := LargeCellWidth;  // large cards fit their first line
+  if FMode = vmList then
+    Result := 0  // list rows have no card width
   else
-    Result := 0;  // list rows have no card width
-  end;
+    Result := CardWidth;  // cards fit thumbnail and text
 end;
 
 { Returns the width of the scroll bar. }
@@ -213,26 +311,33 @@ begin
   end;
   W := ClientWidth - FScroll.Width;  // width without the scroll bar
   if W < 60 then W := 60;  // not narrower than 60
-  case FMode of
-    vmList:
-      begin
-        FCellW := W;  // list: one full-width row per picture
-        FCellH := FLineH + 4;  // row height
-      end;
-    vmSmall:
-      begin
-        FThumbBox := 64;  // small view: 64-pixel thumbnails
-        FCellW := SmallCellWidth;  // fixed card width
-        FCellH := FLineH * 5 + 10;  // five text lines plus margin
-      end;
+  if FMode = vmList then
+  begin
+    FCellW := W;  // list: one full-width row per picture
+    FCellH := FLineH + 4;  // row height
+  end
   else
+  begin
+    if FFit then
     begin
-      FThumbBox := 160;  // large view: 160-pixel thumbnails
-      FCellW := LargeCellWidth;  // card width fits the first line
-      FCellH := FThumbBox + FLineH + 12;  // thumbnail plus one line plus margin
+      // Fit to Window: as few columns as keep the cards at 160 pixels or less, but not narrower than 64-pixel cards;
+      // the cards share the width evenly and the thumbnail size follows the card width
+      FFitCols := Max(1, (W + CardWidthFor(160) - 1) div CardWidthFor(160));  // columns for cards of at most 160 pixels
+      while (FFitCols > 1) and (W div FFitCols < CardWidthFor(MinThumbSize)) do Dec(FFitCols);  // not narrower than the small card
+      FCellW := W div FFitCols;  // card width
+      FThumbBox := EnsureRange(MinThumbSize + (FCellW - CardWidthFor(MinThumbSize)) * 96 div
+        Max(1, CardWidthFor(160) - CardWidthFor(MinThumbSize)), MinThumbSize, 160);  // thumbnail size that fits the card width
+    end
+    else
+    begin
+      FThumbBox := FThumbSize;  // thumbnail box in pixels
+      FCellW := CardWidth;  // card width fits thumbnail and text
     end;
+    FCellH := Max(FLineH * 5 + 10, FThumbBox + FLineH + 12);  // five text lines, or thumbnail plus the destination line
   end;
-  if FMode = vmList then FCols := 1 else FCols := Max(1, W div FCellW);  // cards per row (always at least one)
+  if FMode = vmList then FCols := 1
+  else if FFit then FCols := FFitCols  // Fit to Window: the computed number of columns
+  else FCols := Max(1, W div FCellW);  // cards per row (always at least one)
   Rows := (FItems.Count + FCols - 1) div FCols;  // number of rows, rounded up
   FTotalH := Rows * FCellH;  // total height of all rows
 
@@ -452,7 +557,7 @@ begin
     if FLoadBudget > 0 then  // still allowed to load in this paint
     begin
       Dec(FLoadBudget);  // use one load
-      EnsureThumb(Item, 160);  // load the thumbnail
+      EnsureThumb(Item, DecodeBox);  // load the thumbnail
     end
     else
       FNeedMore := True;  // postpone to the next paint
@@ -527,6 +632,37 @@ var
     Canvas.TextRect(Rect(X, YY, Right, YY + FLineH), X, YY, S);  // clip and draw the text
   end;
 
+  { Pre + file name + Suf in Avail pixels: when too long, the middle of the name is replaced by '...'
+    so that the end of the name, with its extension, stays visible. }
+  function FitName(const Pre, Name, Suf: string; Avail: Integer): string;
+  var
+    Ext, Base, Tail: string;  // Ext: extension with dot; Base: name without it; Tail: last 8 characters of a long name
+    N: Integer;  // N: characters of the base name kept
+  begin
+    Result := Pre + Name + Suf;
+    if Canvas.TextWidth(Result) <= Avail then Exit;  // fits as it is
+    Ext := ExtractFileExt(Name);  // the extension
+    Base := Copy(Name, 1, Length(Name) - Length(Ext));  // the name without it
+    if (Suf = '') and (Length(Base) > 19) then  // card: long name = first 8 characters, '...', last 8 characters
+    begin
+      Tail := Copy(Base, Length(Base) - 7, 8);  // last 8 characters
+      N := 8;  // characters kept at the front
+      repeat
+        Result := Pre + Copy(Base, 1, N) + '...' + Tail + Ext + Suf;
+        if Canvas.TextWidth(Result) <= Avail then Exit;  // fits
+        Dec(N);  // a very narrow card: keep fewer characters at the front
+      until N < 1;
+      Exit;  // (the shortest form is returned)
+    end;
+    N := Length(Base);
+    while N > 1 do
+    begin
+      Dec(N);  // keep one character less
+      Result := Pre + Copy(Base, 1, N) + '...' + Ext + Suf;
+      if Canvas.TextWidth(Result) <= Avail then Exit;  // now it fits
+    end;
+  end;
+
 begin
   Inner := Rect(R.Left, R.Top, R.Right - 1, R.Bottom - 1);  // area inside the card
   if Item.IsProblem then  // picture has a problem
@@ -544,12 +680,16 @@ begin
   Canvas.Font.Color := clBlack;  // black text
 
   Line1 := Format('%d) %s (%s)', [Item.Index, Item.FileName, Item.SizeText]);  // name, number and size
-  Line2 := FormatDateTime('mm"/"dd"/"yy hh":"nn":"ss', Item.CaptureTime);  // capture date and time
+  Line2 := FormatDateTime('mm"/"dd"/"yyyy hh":"nn":"ss', Item.CaptureTime);  // capture date and time
+  if FMode <> vmList then  // cards: add the file type (the name above may be shortened)
+    Line2 := Line2 + '   ' + UpperCase(Copy(ExtractFileExt(Item.FileName), 2, 8)) + '   ' + Item.SizeText;  // date, type, size
   Line3 := 'Status: ' + Item.StatusText;  // status text
 
   if FMode = vmList then  // list view
   begin
     Y := Inner.Top + 1;  // text line position
+    Line1 := FitName(Format('%d) ', [Item.Index]), Item.FileName, ' (' + Item.SizeText + ')',
+      Min(Inner.Left + 330, Inner.Right) - (Inner.Left + 4));  // keep the extension visible
     Txt(Inner.Left + 4, Y, Min(Inner.Left + 330, Inner.Right), Line1);  // file name and size
     Txt(Inner.Left + 336, Y, Inner.Left + 456, Line2);  // capture time
     Txt(Inner.Left + 462, Y, Inner.Left + 580, Item.StatusText);  // status
@@ -568,6 +708,8 @@ begin
     Canvas.Font.Color := clBlack;  // black text
     MaxW := Inner.Right - 2;  // right limit of the text
     Y := TY;  // first text line position
+    Line1 := FitName(Format('%d) ', [Item.Index]), ChangeFileExt(Item.FileName, ''), '',
+      MaxW - (TX + FThumbBox + 4));  // cards: number and name only (type and size are on the date line)
     Txt(TX + FThumbBox + 4, Y, MaxW, Line1);  // line 1: number, name and size
     Txt(TX + FThumbBox + 4, Y + FLineH, MaxW, Line2);  // line 2: capture time
     Txt(TX + FThumbBox + 4, Y + FLineH * 2, MaxW, Line3);  // line 3: status
@@ -800,7 +942,24 @@ end;
 { Mouse wheel: scrolls by whole rows. }
 function TPhotoView.DoMouseWheel(Shift: TShiftState; WheelDelta: Integer;
   MousePos: TPoint): Boolean;
+var
+  I: Integer;  // I: size to start the Ctrl + wheel change from
 begin
+  if (ssCtrl in Shift) and (FMode <> vmList) then  // Ctrl + wheel: thumbnail size
+  begin
+    I := FThumbSize;  // size to start from
+    if FFit then  // leaving Fit to Window: start from the size in use now
+    begin
+      I := FThumbBox;
+      SetFit(False);  // back to a fixed size
+      FThumbSize := EnsureRange(I, MinThumbSize, MaxThumbSize);  // continue from the fitted size
+      DoLayout;  // cards at that size
+    end;
+    SetThumbSize(I + (WheelDelta div 120) * ThumbSizeStep);  // one notch changes the size by a step
+    if Assigned(FOnThumbSize) then FOnThumbSize(Self);  // tell the window (settings and menu marks)
+    Result := True;  // handled
+    Exit;
+  end;
   Result := inherited DoMouseWheel(Shift, WheelDelta, MousePos);  // let the base class try first
   if Result then Exit;  // already handled
   Result := True;  // report it as handled

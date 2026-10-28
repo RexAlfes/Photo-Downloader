@@ -1,6 +1,6 @@
 # Photo Downloader – User Manual
 
-**Version:** 0.1.0 (build 56) · **License:** GNU GPL v3 or later · **Platforms:** Windows 64-bit (primary), Linux 64-bit (GTK 3, tested on Linux Mint 22.3)
+**Version:** 0.1.0.58 · **License:** GNU GPL v3 or later · **Platforms:** Windows 64-bit (primary), Linux 64-bit (GTK 3, tested on Linux Mint 22.3)
 
 Photo Downloader copies photos from a memory card, card reader or folder to your computer. It renames them from templates, files them into folders by date and job code, and checks every copy. This manual explains each part of the program in the order you will meet it.
 
@@ -33,9 +33,18 @@ Photo Downloader copies photos from a memory card, card reader or folder to your
 
 ## 1. Installing and starting
 
-**Windows.** Download `PhotoDownloader.0.1.0.build.N.win64.exe` from the [Releases page](https://github.com/RexAlfes/Photo-Downloader/releases) and run it. There is no installer; the program is a single file. You can keep it in any folder.
+**Windows.** Download `PhotoDownloader.<version>.Win64.exe` from the [Releases page](https://github.com/RexAlfes/Photo-Downloader/releases) and run it. There is no installer; the program is a single file. You can keep it in any folder.
 
-**Linux.** Download `PhotoDownloader.0.1.0.build.N.linux64.tar.gz`, unpack it and run `PhotoDownloader`. The program needs `udisks2` (to eject cards), `gio` (for the trash) and `xdg-open` (to open folders). To build it yourself, see `docs/Linux_Build.md` in the repository.
+**Windows warning: "Windows protected your PC" / "Unknown publisher".** Photo Downloader is a free, open source program and its file is not code-signed (a signing certificate costs money every year), so Windows may stop it the first time you run it. You will see a blue window titled **Windows protected your PC** (Microsoft Defender SmartScreen) saying that it prevented an unrecognized app from starting, with **Publisher: Unknown publisher**. This does not mean the file is damaged. Windows shows it for any new program that is not signed or not yet widely downloaded. To run the program:
+
+1. Make sure you downloaded the file from the official [Releases page](https://github.com/RexAlfes/Photo-Downloader/releases) and not from another site.
+2. In the blue window click **More info**. A **Run anyway** button appears. Click it. Windows remembers your choice for that file, so you will not be asked again.
+3. If there is no **Run anyway** button, close the window, right-click the downloaded file (the `.exe`, or the `.zip` before you unpack it), choose **Properties**, tick **Unblock** at the bottom of the General tab, click **OK** and start the program again.
+4. Your browser may also say the file "isn't commonly downloaded" or "could harm your device". In Edge or Chrome open the downloads list, choose the **...** menu next to the file and pick **Keep** (then **Keep anyway**).
+5. On Windows 11 with **Smart App Control** turned on, unsigned programs are blocked without a **Run anyway** choice. You can switch Smart App Control off in Windows Security > App & browser control > Smart App Control settings, but on many Windows versions it cannot be turned on again afterwards, so decide carefully. Or build the program yourself from the source (see the README).
+6. If your antivirus program quarantines the file, restore it and add the folder to its exceptions. Photo Downloader does not need administrator rights; if anything asks for them, answer **No**.
+
+**Linux.** Download `PhotoDownloader.<version>.linux64.tar.gz`, unpack it and run `PhotoDownloader`. The program needs `udisks2` (to eject cards), `gio` (for the trash) and `xdg-open` (to open folders). To build it yourself, see `docs/Linux_Build.md` in the repository.
 
 **Starting.** A splash screen appears for at least five seconds (click it to close it sooner). Then the **Job Code** window appears (see [section 4](#4-job-codes)). By default nothing is scanned at start-up; you choose a source folder or insert a card.
 
@@ -47,13 +56,15 @@ Photo Downloader copies photos from a memory card, card reader or folder to your
 |---|---|
 | **Menu bar** | File, Edit, View and Help. |
 | **Date – Job code list** (left) | One line per capture date found on the card, with its job code. Also called the *Image Date Selector*. |
-| **Picture area** (right) | The pictures as large thumbnails, small thumbnails or a list. |
+| **Picture area** (right) | The pictures as thumbnail cards (Small, Medium, Large or Fit to Window) or as a list. |
 | **Status line** (bottom) | How many files will be downloaded, how many have problems, and the result of the last copy. |
 | **Buttons** | **Close**, **Delete**, **Download**, and an optional **Custom** button. |
 
 Each picture card shows its number, file name and size, the date and time it was taken, its status, the camera model and the new name it will get.
 
-**Views.** View > List View shows one line per picture with column headings (File, Captured, Status, Camera, Destination). Click a heading to sort; click it again to reverse the order. The two thumbnail views show a picture with its details beside it. The order you choose also applies to the viewer.
+**Views.** View > List View shows one line per picture with column headings (File, Captured, Status, Camera, Destination). Click a heading to sort; click it again to reverse the order. The thumbnail views show a picture with its details beside it: the number and file name (without the extension) on the first line, then the capture date, the **file type** and the **size** (for example `10/28/26 11:02:00   NEF   24.1 MB`), the status, the camera and the destination. A name that is too long is shortened with "...". The order you choose also applies to the viewer.
+
+**Thumbnail size.** View > Thumbnail View offers **Small** (64 pixels, Ctrl+T), **Medium** (160 pixels, Ctrl+M), **Large** (320 pixels, Ctrl+X) and **Fit to Window**. Fit to Window is the default for new settings: it uses as few columns as keep the thumbnails at 160 pixels or less and shares the window width evenly, so nothing is left over at the right, and it follows the window when you resize it. You can also hold **Ctrl** and turn the mouse wheel over the pictures to make the thumbnails larger or smaller in small steps (64 to 320 pixels); that replaces Fit to Window with the size you stop at. The same choices are in the right-click menu. Larger sizes use more memory, so fewer thumbnails are kept at once.
 
 **Date list.** Selecting pictures highlights their dates in the list. Clicking dates selects all pictures of those dates. If a highlighted date is out of sight, the list scrolls to it. Hide or show the list with View > Image Date Selector (Ctrl+Tab).
 
@@ -167,7 +178,7 @@ Click a card to select it; Ctrl-click and Shift-click extend the selection. The 
 
 Only **New file** pictures and name clashes are downloaded; downloaded files are skipped, and so are duplicates unless you turned on **Download duplicates as (1), (2) …**.
 
-**Right-click a picture** for: View image, Show in source folder, Show in destination folder (only for files already downloaded), Download selected file(s), Delete selected file(s) from source, Properties (everything known about the file, with a Copy button), Refresh (rescans the source, the same as File > Refresh or F5), and then the same choices as the View menu (except the Image Date Selector): Show 'Downloaded' files, Show 'Duplicate' files, File Types…, List View and the two Thumbnail Views.
+**Right-click a picture** for: View image, Show in source folder, Show in destination folder (only for files already downloaded), Download selected file(s), Delete selected file(s) from source, Save .lrprev preview(s) as JPG... (only when Lightroom previews are selected), Properties (everything known about the file, with a Copy button), Refresh (rescans the source, the same as File > Refresh or F5), and then the same choices as the View menu (except the Image Date Selector): Show 'Downloaded' files, Show 'Duplicate' files, File Types…, List View and the Thumbnail Views (small, medium, large and fit to window).
 
 ## 8. Naming files and folders (tokens)
 
@@ -307,7 +318,7 @@ A **profile** is a saved set of preferences – useful if you use several camera
 
 ## 14. Choosing file types
 
-View > **File Types…** (or right-click > File Types…) selects which kinds of file are shown and copied: JPEG, PNG, BMP, GIF, TIFF, WebP, HEIC/AVIF, RAW (NEF and NRW are separate, with the other RAW formats), video (MP4, MOV and LRV are separate options, so each can be shown or hidden on its own, for example to download them to different destinations), audio and THM. THM files are switched **off** by default; video and audio are on. (If you already have a settings file, saved choices are kept: switch MP4, MOV, LRV or Audio on in this dialog.)
+View > **File Types…** (or right-click > File Types…) selects which kinds of file are shown and copied: JPEG, PNG, BMP, GIF, TIFF, WebP, HEIC/AVIF, RAW (NEF and NRW are separate, with the other RAW formats), video (MP4, MOV and LRV are separate options, so each can be shown or hidden on its own, for example to download them to different destinations), audio and THM. Adobe Lightroom previews (`.lrprev`) can be listed too; select them, right-click and choose **Save .lrprev preview(s) as JPG...** to write the largest preview of each (at most 256 pixels) as a `.jpg` in a folder you choose (the picture is saved as stored in the file; existing files are never overwritten). Audio (MP3), THM and Lightroom preview files are switched **off** by default; video is on. The **Default** button sets every choice back to the program's own default (nothing changes until you click OK). (If you already have a settings file, saved choices are kept.)
 
 ## 15. Supported picture formats
 
@@ -320,6 +331,7 @@ View > **File Types…** (or right-click > File Types…) selects which kinds of
 | HEIC, HEIF, AVIF | Yes, with the bundled decoder; no extra software needed. Files that are corrupt show the gray box with a red X. |
 | Video (MP4, MOV, LRV, one option each) | Listed and copied. The capture date and length come from the movie header. The thumbnail is a real frame from the Windows Shell, or on Linux from ffmpegthumbnailer or ffmpeg when installed (`sudo apt install ffmpegthumbnailer`). Otherwise the cover picture inside the file or a `.thm` file with the same name is used, and if there is none, a dark tile with a play symbol. Double-click plays the video in your default player. |
 | Audio (MP3) | Listed and copied. It shows a default music-note tile, and double-click plays it in your default player. |
+| Adobe Lightroom preview (.lrprev) | Listed and copied. The thumbnail and viewer show the largest preview stored in the file, at most 256 pixels, already upright. The file holds no original file name and no EXIF data, so the capture date is the file's own date; the preview cannot be matched to its photo by name. |
 
 ## 16. Logging and troubleshooting
 
@@ -333,6 +345,7 @@ Help > **Logging (for troubleshooting)** writes problems to a file named `thumbn
 | Problem | What to check |
 |---|---|
 | A thumbnail is a gray box with a red X | The file could not be decoded. It may be damaged, not really a picture, or an unsupported variant. Look it up in the log. |
+| Windows says "Windows protected your PC" or "Unknown publisher" | The program file is not code-signed. Click **More info**, then **Run anyway**; see [section 1](#1-installing-and-starting) for the other cases (Unblock, browser warning, Smart App Control). |
 | Nothing happens at start-up | By design nothing is scanned until you choose a source (Ctrl+O), unless "Load the last used source folder" is on. |
 | Card is not found | Press F5; on Windows check the drive letters in Preferences > General or use **Locate card reader**. |
 | Everything shows "Already downloaded" | The destination already holds files with the same names and sizes. Change the job code or the templates, or turn off the size check. |
@@ -353,8 +366,10 @@ Help > **Logging (for troubleshooting)** writes problems to a file named `thumbn
 | Ctrl+C | IPTC/XMP Data |
 | Ctrl+J | Job Code |
 | Ctrl+L | List View |
-| Ctrl+T | Small thumbnails |
-| Ctrl+X | Large thumbnails |
+| Ctrl+T | Small thumbnails (64 px) |
+| Ctrl+M | Medium thumbnails (160 px) |
+| Ctrl+X | Large thumbnails (320 px) |
+| Ctrl + mouse wheel | Change the thumbnail size |
 | Ctrl+Tab | Show or hide the Image Date Selector |
 | F1 (in Preferences) | Token list |
 | Arrow keys, Home, End, Page Up/Down, Space | Move through the pictures; double-click opens the viewer |
@@ -372,6 +387,8 @@ Typical locations: Windows `C:\Users\<you>\AppData\Local\PhotoDownloader\`; Linu
 **Can I download the same card twice?** Yes. Files that are already in the destination show as *Already downloaded* and are skipped.
 
 **Why does a duplicate not download?** Two files with the same size, capture time and camera are treated as the same picture. Turn on View > Show 'Duplicate' files to see them.
+
+**Why does Windows call the publisher "Unknown"?** The program is free and not code-signed, so Windows cannot name a publisher. See [section 1](#1-installing-and-starting) for what to click.
 
 **Can I use it without an internet connection?** Yes. It only uses the internet when you open the website, the Releases page or the donation links from the Help menu.
 

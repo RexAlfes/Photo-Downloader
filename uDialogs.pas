@@ -603,6 +603,7 @@ type
     List: TCheckListBox;  // list of file types with check boxes
     procedure AllClick(Sender: TObject);  // checks every type
     procedure NoneClick(Sender: TObject);  // clears every type
+    procedure DefaultClick(Sender: TObject);  // sets every type to the application default
   end;
 
 { Checks every file type. }
@@ -619,6 +620,14 @@ var
   I: Integer;  // I: loop counter
 begin
   for I := 0 to List.Items.Count - 1 do List.Checked[I] := False;  // uncheck each entry
+end;
+
+{ Sets every file type to the application default. }
+procedure TTypesHelper.DefaultClick(Sender: TObject);
+var
+  I: Integer;  // I: loop counter
+begin
+  for I := 0 to List.Items.Count - 1 do List.Checked[I] := FileTypeDefaultOn(I);  // default for each entry
 end;
 
 { Shows the File Types dialog and stores the selection in the settings. }
@@ -646,6 +655,8 @@ begin
     B.OnClick := @H.AllClick;  // connect its handler
     B := MkButton(F, 'Clear all', 120, 372, 100);  // Clear all button
     B.OnClick := @H.NoneClick;  // connect its handler
+    B := MkButton(F, 'Default', 230, 372, 100);  // Default button
+    B.OnClick := @H.DefaultClick;  // connect its handler
     MkButton(F, 'OK', 180, 406, 80, mrOK).Default := True;  // OK button, also the default button
     MkButton(F, 'Cancel', 270, 406, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
     Result := F.ShowModal = mrOK;  // True when the user clicked OK

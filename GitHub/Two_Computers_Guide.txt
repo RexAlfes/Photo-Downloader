@@ -1,0 +1,78 @@
+WORKING ON TWO COMPUTERS (Windows and Linux) WITH GIT AND GITHUB - Photo Downloader
+=====================================================================================
+
+The idea: the GitHub repository is the ONE true copy of the code. Each computer has a working
+copy (a "clone"). You copy changes between computers with "push" (send to GitHub) and "pull"
+(get from GitHub), never by copying files around by hand.
+
+Daily rhythm (same on both computers)
+-------------------------------------
+  1. START of a session : Pull   (get what the other computer sent)
+  2. Work, compile, test
+  3. END of a session   : Commit (save a snapshot with a short message), then Push (send it)
+
+If you forget step 1 you may edit an old copy, and Git will ask you to sort out the difference
+later. So: pull first, always.
+
+Which program to use
+--------------------
+Easiest: GitHub Desktop (Windows). It has buttons "Fetch/Pull origin", "Commit to main" and
+"Push origin". On Linux the same steps work in a terminal (below), or with the community build
+of GitHub Desktop.
+
+Terminal version (works on both; open a terminal in the PhotoDownloader folder):
+  git pull                       get the latest
+  git status                     what did I change?
+  git add -A                     take all my changes into the next snapshot
+  git commit -m "short message"  save the snapshot, e.g. "Save lrprev as JPG"
+  git push                       send it to GitHub
+
+One-time setup on each computer
+-------------------------------
+  1. Install Git (Windows: git-scm.com; Linux: sudo apt install git).
+  2. Tell Git who you are (once per computer):
+       git config --global user.name  "Your Name"
+       git config --global user.email "you@example.com"
+  3. Get the code (once per computer; this creates the folder PhotoDownloader):
+       git clone https://github.com/RexAlfes/Photo-Downloader PhotoDownloader
+     GitHub asks you to sign in the first time you push (a browser window opens, or use a
+     personal access token as the password).
+  4. Open PhotoDownloader.lpi in Lazarus as usual.
+
+The version number file (the one thing to watch)
+------------------------------------------------
+The Lazarus IDE changes PhotoDownloader.lpi every time you compile (the build number goes up).
+If both computers do that you get conflicts. Rules:
+  * Compile in the Lazarus IDE on ONE computer (Windows). That computer owns the build number.
+  * On Linux compile with:  lazbuild PhotoDownloader.lpi   (lazbuild does not change the number),
+    or in the IDE, and then throw the number change away before pulling:
+        git checkout PhotoDownloader.lpi
+  * Commit PhotoDownloader.lpi only when you make a bundle / release.
+
+Branches (optional, later)
+--------------------------
+A branch is a separate line of work. Safe habit: do new work on a branch called "dev" and only
+move it to "main" when it is tested.
+    git switch -c dev              create and move to the branch "dev" (first time)
+    git push -u origin dev         send the branch to GitHub (first time)
+    ... later, when tested: on GitHub open a "Pull request" from dev to main and click Merge.
+GitHub Actions (the Build tab on GitHub) compiles every push for Windows and Linux. A green
+check means it compiles on both.
+
+Marking a release
+-----------------
+When a bundle is stable and tested: set the version in PhotoDownloader.lpi (for example 0.1.0.58),
+commit, then tag it:
+    git tag v0.1.0.58
+    git push origin v0.1.0.58
+Then on GitHub: Releases > Draft a new release > choose the tag, paste the release notes, attach
+the .exe / .zip / .tar.gz files (see "Git Instructions.txt").
+
+If something goes wrong
+-----------------------
+  * "Your local changes would be overwritten": commit or discard your changes first
+    (git stash saves them aside; git stash pop brings them back).
+  * "Merge conflict": both computers changed the same lines. Open the file, look for the lines
+    with <<<<<<< ======= >>>>>>>, keep the version you want, delete the marker lines, then
+    git add -A and git commit. Tell Claude if you get stuck: paste the message.
+  * Never "force push" (git push --force) unless you know exactly why.

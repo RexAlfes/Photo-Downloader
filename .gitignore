@@ -57,11 +57,3 @@ desktop.ini
 .DS_Store
 *.swp
 *.tmp
-
-# Lazarus per-computer files (session, backups) - these differ on every computer
-*.lps
-backup/
-*.bak
-*~
-lib/
-bin/

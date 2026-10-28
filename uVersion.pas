@@ -7,7 +7,7 @@ unit uVersion;
 
 interface
 
-function AppVersionString: string;     // e.g. '0.1.0 build 5'
+function AppVersionString: string;     // e.g. '0.1.0.58' (major.minor.revision.build)
 
 implementation
 
@@ -17,7 +17,8 @@ uses
   {$IFDEF LINUX}, elfreader{$ENDIF}
   {$IFDEF DARWIN}, machoreader{$ENDIF};
 
-{ Returns "major.minor.release build N" from the version resource, or 'unknown' if it cannot be read. }
+{ Returns "major.minor.revision.build" (for example 0.1.0.58) from the version resource, or 'unknown' if it cannot be read.
+  From 0.1.0.58 on the revision goes up with every bundle; the build number restarts at 1 and is counted up by the IDE (Project Options > Version Info). }
 function AppVersionString: string;
 var
   VI: TVersionInfo;  // reader for the executable's version resource
@@ -27,7 +28,7 @@ begin
   try
     try
       VI.Load(HINSTANCE);  // load the resource of the running program
-      Result := Format('%d.%d.%d build %d',  // format the four version numbers as text
+      Result := Format('%d.%d.%d.%d',  // format the four version numbers as text
         [VI.FixedInfo.FileVersion[0], VI.FixedInfo.FileVersion[1],
          VI.FixedInfo.FileVersion[2], VI.FixedInfo.FileVersion[3]]);
     except

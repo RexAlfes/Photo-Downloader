@@ -4,9 +4,10 @@ GITHUB UPDATE INSTRUCTIONS - Photo Downloader
 Repository: https://github.com/RexAlfes/Photo-Downloader
 Website:    https://rexalfes.github.io/Photo-Downloader/   (served from the docs folder on main)
 
-WHAT GOES WHERE (unzip PhotoDownloader-Claude N.zip first)
+WHAT GOES WHERE (unzip PhotoDownloader.<version>.zip first, for example PhotoDownloader.0.1.0.58.zip)
 ------------------------------------------------------------
-Normal upload   : *.pas, *.lpr, *.lpi, *.ico, README.md, .gitignore, .github/FUNDING.yml
+See also GitHub/Two_Computers_Guide.txt (working on two computers, pull/commit/push).
+Normal upload   : *.pas, *.lpr, *.lpi (PhotoDownloader.lpi), *.ico, README.md, .gitignore, .github/FUNDING.yml, .github/workflows/build.yml
 Manual, as needed: the User Manual. Copy GitHub/docs/User_Manual.md into the repository's docs folder
                   (README.md links to it) whenever it changes.
 Manual, as needed: the website page. Copy GitHub/docs/index.html into the repository's docs folder
@@ -21,7 +22,7 @@ OPTION 1 - WEBSITE UPLOAD
 2. Drag in the source files and the .github folder. Dragging a folder keeps its structure.
    Do not drag in the zip's docs or GitHub folders.
    Files with the same name replace the old ones. Up to 100 files per upload.
-3. Message example: "Build 56: new transparent icon, Linux icon and launcher kit, right-click Refresh, duplicate rename display, Linux Preferences tabs, manual updates". Commit directly to main.
+3. Message example: "Version 0.1.0.58: save .lrprev previews as JPG, four-digit year on cards; version 0.1.0 build 57: thumbnail sizes (small, medium, large, fit to window, Ctrl+wheel), file type and size on the cards, Lightroom previews (.lrprev), File Types Default button, compile check workflow". Commit directly to main.
 4. The website cannot delete files. To delete: open the file, click the three dots, Delete file.
 5. If a folder starts with a dot (.github) and will not drag in, use Add file > Create new file and type
    ".github/FUNDING.yml" as the name, then paste the contents.
@@ -34,6 +35,15 @@ OPTION 2 - GIT
    git commit -m "Build 26: AVIF files supported"
    git push
 git add -A also records deleted and renamed files.
+
+COMPILE CHECK (GitHub Actions)
+------------------------------
+.github/workflows/build.yml compiles the project with lazbuild on Windows and on Linux (GTK 3) after every push and
+pull request. See the result in the Actions tab, or as a green check or red cross beside each commit.
+It only compiles: it never creates a release and never changes the build number. Run it by hand with
+Actions > Build > Run workflow. If a run fails, open it and copy the log of the failed step.
+If you use the website upload, create the file with Add file > Create new file and the name
+".github/workflows/build.yml", then paste the contents.
 
 GITHUB PAGES
 ------------
@@ -52,12 +62,15 @@ Build 42 is the baseline. After uploading: git tag baseline-build-42 && git push
 
 RELEASE
 -------
-Releases > Draft a new release. Tag example: Build-56. Paste the matching release notes file.
-Attach one file per platform and tick "Set as a pre-release":
-  PhotoDownloader.0.1.0.build.56.win64.exe      (Windows 64-bit)
-  PhotoDownloader.0.1.0.build.56.linux64.tar.gz (Linux 64-bit; pack the executable in a tar.gz so it stays executable)
-Keep "win" or "linux" in each file name: the website download buttons read the newest release and label each file
-Windows or Linux from its name.
+Releases > Draft a new release. Tag example: v0.1.0.58. Paste the matching release notes file.
+Attach these files and tick "Set as a pre-release":
+  PhotoDownloader.0.1.0.58.Win64.exe      (Windows 64-bit, single file)
+  PhotoDownloader.0.1.0.58.Win64.zip      (Windows 64-bit, zipped copy of the exe)
+  PhotoDownloader.0.1.0.58.linux64.tar.gz (Linux 64-bit; pack the executable in a tar.gz so it stays executable)
+  User_Manual.0.1.0.58.odt                (User Manual, editable)
+  User_Manual.0.1.0.58.md                 (User Manual, text)
+Keep "win" or "linux" in each program file name (any capitalization): the website download buttons read the newest
+release and label each file Windows or Linux from its name. Other files are listed as plain downloads.
 
 DONATION LINKS
 --------------

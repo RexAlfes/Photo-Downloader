@@ -16,21 +16,21 @@ const
   DonateVenmoURL = 'https://venmo.com/u/RexAlfes';
 
 const
-  FileTypeCount = 19;  // number of file type groups in the filter
+  FileTypeCount = 20;  // number of file type groups in the filter
   { File type groups of the filter (View > File Types). Key = name in the ini file. }
   FileTypeKeys: array[0..FileTypeCount - 1] of string =  // ini key for each file type group
     ('Jpeg', 'Png', 'Bmp', 'Gif', 'Tiff', 'CanonRaw', 'NikonRaw', 'NikonNrw', 'SonyRaw', 'Dng', 'OtherRaw',
-     'Heic', 'Avif', 'WebP', 'Mp4', 'Mov', 'Lrv', 'Audio', 'Thm');
+     'Heic', 'Avif', 'WebP', 'Mp4', 'Mov', 'Lrv', 'Audio', 'Thm', 'LrPrev');
   FileTypeNames: array[0..FileTypeCount - 1] of string =  // text shown for each group in the File Types dialog
     ('JPEG (.jpg .jpeg .jpe)', 'PNG (.png)', 'BMP (.bmp)', 'GIF (.gif)', 'TIFF (.tif .tiff)',
      'Canon RAW (.cr2 .cr3 .crw)', 'Nikon RAW (.nef)', 'Nikon Coolpix RAW (.nrw)', 'Sony RAW (.arw .srf .sr2)',
      'Adobe DNG (.dng)', 'Other RAW (.orf .raf .rw2 .pef .srw .raw)',
      'HEIC / HEIF (.heic .heif)', 'AVIF (.avif)', 'WebP (.webp)', 'Video MP4 (.mp4)', 'Video MOV (.mov)', 'Video LRV (.lrv)', 'Audio (.mp3)',
-     'Camera thumbnail files (.thm)');
+     'Camera thumbnail files (.thm)', 'Lightroom previews (.lrprev)');
   FileTypeExts: array[0..FileTypeCount - 1] of string =  // extensions (each between semicolons) that belong to each group
     (';.jpg;.jpeg;.jpe;', ';.png;', ';.bmp;', ';.gif;', ';.tif;.tiff;', ';.cr2;.cr3;.crw;', ';.nef;', ';.nrw;',
      ';.arw;.srf;.sr2;', ';.dng;', ';.orf;.raf;.rw2;.pef;.srw;.raw;', ';.heic;.heif;', ';.avif;', ';.webp;',
-     ';.mp4;', ';.mov;', ';.lrv;', ';.mp3;', ';.thm;');
+     ';.mp4;', ';.mov;', ';.lrv;', ';.mp3;', ';.thm;', ';.lrprev;');
 
 var
   { False while logging is switched off (Help > Logging) }
@@ -40,6 +40,8 @@ var
 
 { Index of the file type group an extension (with dot, any case) belongs to, or -1 }
 function FileTypeIndex(const Ext: string): Integer;
+{ True when file type group I is switched on in the application defaults (all except .thm, .mp3 and .lrprev) }
+function FileTypeDefaultOn(I: Integer): Boolean;
 
 type
   TSourceMode = (smAuto, smCamera, smCardReader);  // where pictures come from: automatic, camera or card reader
@@ -88,9 +90,11 @@ type
     Iptc: TStringList;  // IPTC/XMP field values
     // View state
     ShowDownloaded, ShowDuplicates, ShowDateSelector: Boolean;  // which pictures the grid shows
-    ViewMode: Integer;              // 0 list, 1 small thumbs, 2 large thumbs
+    ViewMode: Integer;              // 0 list, 1 thumbnail cards
+    FitWindow: Boolean;             // thumbnail view "Fit to Window" (default): cards share the window width, thumbnails at most 160 pixels
+    ThumbSize: Integer;             // thumbnail box in pixels, 64..320 (presets: 64 small, 160 medium, 320 large)
     LoggingOn: Boolean;             // write thumbnail.log (Help > Logging)
-    TypeOn: array[0..FileTypeCount - 1] of Boolean;   // file type filter (all on by default)
+    TypeOn: array[0..FileTypeCount - 1] of Boolean;   // file type filter (all on by default except .thm, .mp3 and .lrprev)
     function TypeShown(const FileName: string): Boolean;  // True when the file's type group is shown
     constructor Create;  // creates the settings with default values
     destructor Destroy; override;  // frees the lists
@@ -324,13 +328,18 @@ begin
   ShowDownloaded := True;  // show downloaded pictures
   ShowDuplicates := True;  // show duplicates
   ShowDateSelector := True;  // show the date selector
-  ViewMode := 2;  // large thumbnails
-  for I := 0 to FileTypeCount - 1 do TypeOn[I] := True;  // show every file type
-  // camera thumbnail (.thm) files are only helpers for videos: off by default (video and audio are on)
-  for I := 0 to FileTypeCount - 1 do  // check each type
-    if FileTypeKeys[I] = 'Thm' then  // is it .thm?
-      TypeOn[I] := False;  // hide it
+  ViewMode := 1;  // thumbnail cards
+  ThumbSize := 160;  // medium thumbnails
+  FitWindow := True;  // thumbnails fit the window width by default
+  for I := 0 to FileTypeCount - 1 do TypeOn[I] := FileTypeDefaultOn(I);  // application default for each file type
   LoggingOn := True;  // logging on
+end;
+
+{ Application default of a file type group: on, except camera thumbnail (.thm) files (only helpers for
+  videos), audio (.mp3) and Lightroom previews (.lrprev). }
+function FileTypeDefaultOn(I: Integer): Boolean;
+begin
+  Result := not ((FileTypeKeys[I] = 'Thm') or (FileTypeKeys[I] = 'Audio') or (FileTypeKeys[I] = 'LrPrev'));
 end;
 
 { Returns the index of the file type group that holds an extension, or -1. }
@@ -428,8 +437,20 @@ begin
     ShowDownloaded := ReadBool('View', 'ShowDownloaded', ShowDownloaded);  // load: show already downloaded pictures
     ShowDuplicates := ReadBool('View', 'ShowDuplicates', ShowDuplicates);  // load: show duplicates
     ShowDateSelector := ReadBool('View', 'ShowDateSelector', ShowDateSelector);  // load: show the date selector
-    ViewMode := ReadInteger('View', 'ThumbView', ViewMode);  // load: view mode (0 list, 1 small, 2 large)
-    if (ViewMode < 0) or (ViewMode > 2) then ViewMode := 2;  // keep the view mode in range
+    ViewMode := ReadInteger('View', 'ThumbView', ViewMode);  // load: view mode (0 list, otherwise cards)
+    if ViewMode < 0 then ViewMode := 1;  // keep the view mode in range
+    if ValueExists('View', 'ThumbSize') then  // thumbnail size saved by this version
+      ThumbSize := ReadInteger('View', 'ThumbSize', ThumbSize)
+    else if ValueExists('View', 'ThumbView') then  // older settings file: the size came from the view mode
+    begin
+      if ViewMode = 1 then ThumbSize := 64  // 1 meant small thumbnails
+      else if ViewMode > 1 then ThumbSize := 160;  // 2 meant the large thumbnails of that time (160 pixels)
+    end;
+    if ViewMode > 1 then ViewMode := 1;  // cards
+    if ThumbSize < 64 then ThumbSize := 64;  // keep the size in range
+    if ThumbSize > 320 then ThumbSize := 320;
+    // a settings file from an older build has a fixed size: keep it; the Fit to Window default applies to new settings
+    FitWindow := ReadBool('View', 'FitToWindow', FitWindow and not ValueExists('View', 'ThumbView'));  // load: Fit to Window
     for I := 0 to FileTypeCount - 1 do  // each file type group
       TypeOn[I] := ReadBool('FileTypes', FileTypeKeys[I], TypeOn[I]);
     if ValueExists('FileTypes', 'Video') then  // older settings file: one switch covered all video types
@@ -524,7 +545,9 @@ begin
     WriteBool('View', 'ShowDownloaded', ShowDownloaded);  // save: show already downloaded pictures
     WriteBool('View', 'ShowDuplicates', ShowDuplicates);  // save: show duplicates
     WriteBool('View', 'ShowDateSelector', ShowDateSelector);  // save: show the date selector
-    WriteInteger('View', 'ThumbView', ViewMode);  // save: view mode (0 list, 1 small, 2 large)
+    WriteInteger('View', 'ThumbView', ViewMode);  // save: view mode (0 list, 1 cards)
+    WriteInteger('View', 'ThumbSize', ThumbSize);  // save: thumbnail size in pixels
+    WriteBool('View', 'FitToWindow', FitWindow);  // save: Fit to Window
     for I := 0 to FileTypeCount - 1 do  // each file type group
       WriteBool('FileTypes', FileTypeKeys[I], TypeOn[I]);  // save: group on/off
     WriteBool('General', 'Logging', LoggingOn);  // save: write the log file11|program name shown in titles

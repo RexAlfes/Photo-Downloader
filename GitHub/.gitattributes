@@ -1,0 +1,23 @@
+# Line endings: text files are stored with LF in the repository, so Windows and Linux do not
+# produce "every line changed" differences. (Git converts on checkout where needed.)
+* text=auto
+*.pas  text eol=lf
+*.lpr  text eol=lf
+*.inc  text eol=lf
+*.lpi  text eol=lf
+*.md   text eol=lf
+*.txt  text eol=lf
+*.yml  text eol=lf
+*.html text eol=lf
+# Shell scripts must keep LF or Linux cannot run them
+*.sh   text eol=lf
+*.desktop text eol=lf
+
+# Binary files: never convert or merge as text
+*.ico  binary
+*.png  binary
+*.jpg  binary
+*.docx binary
+*.odt  binary
+*.zip  binary
+*.exe  binary
