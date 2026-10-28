@@ -59,7 +59,7 @@ Preferences > Download Path has two options. **Verify every copy** (on by defaul
 **Cancel and resume.** Cancel stops inside the current file and deletes the partial copy. Downloading again continues with the canceled file and skips files that are already downloaded.
 
 ## Linux
-The program builds and runs on Linux (tested on Linux Mint 22.3, XFCE, GTK 3). Card detection uses `/proc/mounts`, eject uses udisksctl, safe delete uses `gio trash`, settings are in `~/.config` and the cache in `~/.cache`; see `docs/Linux_Build.md`. Single-instance handling and USB camera download are not available on Linux.
+The program builds and runs on Linux (tested on Linux Mint 22.3, XFCE, GTK 3). Card detection uses `/proc/mounts`, eject uses udisksctl, safe delete uses `gio trash`, settings are in `~/.config` and the cache in `~/.cache`; see `docs/Linux_Build.md` (including `linux/install-desktop.sh`, which adds the menu entry and icon). Single-instance handling and USB camera download are not available on Linux.
 
 ## Number of images
 There is no fixed limit on the number of images scanned. The source folder and all its subfolders are read (hidden and system folders are skipped) and every supported file is listed. The practical limits are memory and time:

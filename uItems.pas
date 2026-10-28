@@ -690,7 +690,15 @@ begin
     for I := 0 to Items.Count - 1 do  // every item
     begin
       It := ItemAt(Items, I);  // current item
-      if It.Status = isDuplicate then Continue;  // duplicates are done
+      if It.Status = isDuplicate then  // a duplicate keeps its status
+      begin
+        // with "Download duplicates as (1), (2) ..." the planned name already carries the number
+        if S.RenameDuplicates and (FileExistsUTF8(It.DestPath) or (Taken.IndexOf(It.DestPath) >= 0)) then
+          It.DestPath := FreeName(It.DestPath)  // name is taken by a file or by another planned file
+        else
+          Taken.Add(It.DestPath);  // reserve the name for this duplicate
+        Continue;  // duplicates are done
+      end;
       if FileExistsUTF8(It.DestPath) then  // a file with the destination name exists
       begin
         if S.IgnoreSizeCheck or (FileSizeUtf8(It.DestPath) = It.Size) then  // same size (or size check ignored)

@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Photo Downloader
+GenericName=Photo downloader
+Comment=Copy and rename photos from memory cards and folders
+Exec=@EXEC@
+Icon=photodownloader
+Terminal=false
+Categories=Graphics;Photography;Utility;
+StartupWMClass=PhotoDownloader
