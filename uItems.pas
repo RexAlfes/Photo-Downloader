@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Contnrs, Math, StrUtils, DateUtils, Graphics, FPReadJPEG,
-  LazFileUtils, md5, uSettings, uExif, uHeic, uRotate, uTiffRead, uPngFix, uWebP, uVideoThumb;
+  LazFileUtils, md5, uSettings, uExif, uHeic, uRotate, uTiffRead, uPngFix, uWebP, uVideoThumb, uLrPrev;
 
 type
   TItemStatus = (isNew, isDownloaded, isNameClash, isDuplicate);  // state of an image compared with earlier downloads
@@ -107,7 +107,7 @@ const
   AttrSystem = $04;  // attribute bit for system entries
   ImageExts = ';.jpg;.jpeg;.jpe;.png;.gif;.tif;.tiff;.bmp;.nef;.nrw;.cr2;.cr3;.crw;' +  // file types that are scanned (first part)
               '.arw;.srf;.sr2;.dng;.orf;.raf;.rw2;.pef;.srw;.raw;.heic;.heif;.avif;.webp;' +  // file types that are scanned (second part)
-              '.mp4;.mov;.lrv;.mp3;.thm;';
+              '.mp4;.mov;.lrv;.mp3;.thm;.lrprev;';
   VideoExts = ';.mp4;.mov;.lrv;';  // video file types
   AudioExts = ';.mp3;';  // audio file types
   TiffExts = ';.tif;.tiff;.dng;';  // TIFF file types
@@ -256,6 +256,7 @@ end;
 
 var
   LastProgTick: QWord = 0;  // time of the last progress report
+  LoggedMsgs: TStringList = nil;  // messages already written to the log, so that each is written only once
 
 { Scans one folder and its subfolders for image files. }
 procedure ScanDir(const Dir: string; Items: TObjectList; var Cnt: Integer;
@@ -295,23 +296,35 @@ begin
         end;
         It.IsReadOnly := (SR.Attr and faReadOnly) <> 0;  // read-only attribute
         It.CaptureTime := It.FileTime;  // use the file time unless EXIF has a date
-        if Pos(';' + LowerCase(ExtractFileExt(SR.Name)) + ';', ExifExts) > 0 then  // file type may carry EXIF data
-          if ReadExifFromFile(Full, Info) then  // read the EXIF data
-          begin
-            if Info.HasDate then It.CaptureTime := Info.DateTaken;  // capture date
-            It.Camera := Info.Model;  // camera model
-            It.Make := Info.Make;  // camera maker
-            It.Serial := Info.Serial;  // camera serial number
-            It.ISO := Info.ISO;  // ISO speed
-            It.Orientation := Info.Orientation;  // orientation
-            if Info.Owner <> '' then It.Owner := Info.Owner else It.Owner := Info.Artist;  // owner, or the artist when there is none
-          end;
-        if It.IsVideo then  // MP4, MOV or LRV: read the movie header
-          if ReadMovieHeader(Full, MovCreated, MovHasDate, MovLen) then  // creation time and length
-          begin
-            It.Duration := MovLen;  // length for the thumbnail badge
-            if MovHasDate then It.CaptureTime := PickMovieTime(MovCreated, It.FileTime, MovLen);  // capture date
-          end;
+        // A file that opens but cannot be read (a cloud placeholder, a damaged or locked file, a file that
+        // shrank) raises a stream read error. Such a file is still listed, with its file time, and the scan goes on.
+        try
+          if Pos(';' + LowerCase(ExtractFileExt(SR.Name)) + ';', ExifExts) > 0 then  // file type may carry EXIF data
+            if ReadExifFromFile(Full, Info) then  // read the EXIF data
+            begin
+              if Info.HasDate then It.CaptureTime := Info.DateTaken;  // capture date
+              It.Camera := Info.Model;  // camera model
+              It.Make := Info.Make;  // camera maker
+              It.Serial := Info.Serial;  // camera serial number
+              It.ISO := Info.ISO;  // ISO speed
+              It.Orientation := Info.Orientation;  // orientation
+              if Info.Owner <> '' then It.Owner := Info.Owner else It.Owner := Info.Artist;  // owner, or the artist when there is none
+            end;
+        except
+          on E: Exception do  // unreadable metadata: keep the file time and the empty camera fields
+            LogThumb(Full + ': metadata could not be read: ' + E.Message);  // note it in the log
+        end;
+        try
+          if It.IsVideo then  // MP4, MOV or LRV: read the movie header
+            if ReadMovieHeader(Full, MovCreated, MovHasDate, MovLen) then  // creation time and length
+            begin
+              It.Duration := MovLen;  // length for the thumbnail badge
+              if MovHasDate then It.CaptureTime := PickMovieTime(MovCreated, It.FileTime, MovLen);  // capture date
+            end;
+        except
+          on E: Exception do  // unreadable movie header: keep the file time
+            LogThumb(Full + ': movie header could not be read: ' + E.Message);  // note it in the log
+        end;
         Items.Add(It);  // add the item to the list
         Inc(Cnt);  // count the item
         if Assigned(Progress) and (GetTickCount64 - LastProgTick >= 80) then  // report progress at most every 80 ms
@@ -334,6 +347,7 @@ var
   Dcim: string;  // Dcim: path of the DCIM folder
 begin
   Items.Clear;  // empty the list
+  if LoggedMsgs <> nil then LoggedMsgs.Clear;  // a new scan may log each message again
   Cnt := 0;  // nothing found yet
   ScanAbort := False;  // clear the abort flag
   Dcim := IncludeTrailingPathDelimiter(Root) + 'DCIM';  // path of the DCIM folder
@@ -782,6 +796,14 @@ var
   Strm: TFileStream;  // Strm: log file stream
 begin
   if not LogEnabled then Exit;  // logging is off
+  if LoggedMsgs = nil then  // first message of the session
+  begin
+    LoggedMsgs := TStringList.Create;  // list of the messages written so far
+    LoggedMsgs.Sorted := True;  // keep it sorted for fast searching
+    LoggedMsgs.CaseSensitive := True;  // compare exactly
+  end;
+  if LoggedMsgs.IndexOf(Msg) >= 0 then Exit;  // this message was written already
+  if LoggedMsgs.Count < 20000 then LoggedMsgs.Add(Msg);  // remember it (the list is capped)
   try
     FN := ConfigDir + 'thumbnail.log';  // log file in the settings folder
     if FileExistsUTF8(FN) then  // log file exists
@@ -1143,7 +1165,7 @@ begin
       Result := True;  // success
     end
     else
-      LogThumb(Item.FileName + ': WebP picture could not be decoded: ' + Err);  // write the reason to the log
+      LogThumb(Item.FullPath + ': WebP picture could not be decoded: ' + Err);  // write the reason to the log
   finally
     Bmp.Free;  // free the bitmap if it was not used
   end;
@@ -1181,6 +1203,8 @@ var
   VBmp: TBitmap;  // VBmp: frame of a video supplied by the operating system
   VErr, Side: string;  // VErr: reason the system gave no frame; Side: sidecar file next to a video
   IsPng: Boolean;  // IsPng: True when a video cover is a PNG
+  LrInfo: TLrPrevInfo;  // LrInfo: header values of a Lightroom preview file
+  LrErr: string;  // LrErr: reason a Lightroom preview file could not be read
 begin
   W := 0;  // no width yet
   H := 0;  // no height yet
@@ -1221,7 +1245,7 @@ begin
           if LoadHeicPicture(Item.FullPath, Pic, Box * 2, True) then  // decode the HEIC or AVIF file
             G := Pic.Graphic  // take its graphic
           else
-            LogThumb(Item.FileName + ': HEIC/AVIF file with a wrong extension could not be decoded: ' + HeicLastError);  // log the reason
+            LogThumb(Item.FullPath + ': HEIC/AVIF file with a wrong extension could not be decoded: ' + HeicLastError);  // log the reason
         end
         else if Sniff = 1 then
         begin
@@ -1233,7 +1257,7 @@ begin
             Exit;
           end;
           FreeAndNil(Bmp);  // free the bitmap
-          LogThumb(Item.FileName + ': this is a TIFF file with a wrong extension (' + TiffErr + ')');  // log the reason
+          LogThumb(Item.FullPath + ': this is a TIFF file with a wrong extension (' + TiffErr + ')');  // log the reason
         end
         else
         begin
@@ -1276,7 +1300,7 @@ begin
             except
               on E: Exception do
               begin
-                LogThumb(Item.FileName + ': preview #' + IntToStr(Rank) + ' (' + IntToStr(W) +  // log the failure
+                LogThumb(Item.FullPath + ': preview #' + IntToStr(Rank) + ' (' + IntToStr(W) +  // log the failure
                   'x' + IntToStr(H) + ') attempt ' + IntToStr(Attempt) + ' failed: ' +
                   E.ClassName + ' ' + E.Message);
                 FreeAndNil(Jpg);  // free the failed JPEG
@@ -1312,7 +1336,7 @@ begin
           FreeAndNil(Bmp);  // free the bitmap
         end;
         if G = nil then
-          LogThumb(Item.FileName + ': no usable preview or thumbnail image found' +  // log that nothing usable was found
+          LogThumb(Item.FullPath + ': no usable preview or thumbnail image found' +  // log that nothing usable was found
             IfThen(TiffErr <> '', ' (' + TiffErr + ')', ''));  // add the TIFF reason when there is one
       end
       else if (Ext = '.png') or (Ext = '.bmp') or (Ext = '.gif') then
@@ -1329,7 +1353,7 @@ begin
             Exit;
           end;
           FreeAndNil(Bmp);  // free the bitmap
-          LogThumb(Item.FileName + ': this is a TIFF file with a wrong extension (' + TiffErr + ')');  // log the reason
+          LogThumb(Item.FullPath + ': this is a TIFF file with a wrong extension (' + TiffErr + ')');  // log the reason
         end
         else if Sniff = 2 then
         begin
@@ -1355,7 +1379,7 @@ begin
           if LoadHeicPicture(Item.FullPath, Pic, Box * 2, True) then  // decode the HEIC or AVIF file
             G := Pic.Graphic  // take its graphic
           else
-            LogThumb(Item.FileName + ': HEIC/AVIF file with a wrong extension could not be decoded: ' + HeicLastError);  // log the reason
+            LogThumb(Item.FullPath + ': HEIC/AVIF file with a wrong extension could not be decoded: ' + HeicLastError);  // log the reason
         end
         else
         begin
@@ -1394,7 +1418,7 @@ begin
           if VErr <> LastVideoErr then  // log a given reason only once, not for every video
           begin
             LastVideoErr := VErr;  // remember the reason
-            LogThumb(Item.FileName + ': no system thumbnail (' + VErr + '); trying the cover or .thm file');  // log it
+            LogThumb(Item.FullPath + ': no system thumbnail (' + VErr + '); trying the cover or .thm file');  // log it
           end;
           // ... then a cover picture stored in the file, or a .thm file next to it
           Mem := TMemoryStream.Create;  // memory for the cover
@@ -1426,6 +1450,19 @@ begin
           end;
         end;
       end
+      else if Pos(';' + Ext + ';', LrPrevExts) > 0 then
+      begin
+        // Lightroom preview file: the JPEG of its largest level (already upright)
+        Mem := TMemoryStream.Create;  // memory for the JPEG
+        if LrPrevExtract(Item.FullPath, Mem, LrInfo, LrErr) then
+        begin
+          Jpg := TJPEGImage.Create;  // create the JPEG
+          Jpg.LoadFromStream(Mem);  // decode the preview
+          G := Jpg;  // use it as the graphic
+        end
+        else
+          LogThumb(Item.FullPath + ': Lightroom preview could not be read: ' + LrErr);  // log the reason
+      end
       else if Pos(';' + Ext + ';', HeicExts) > 0 then
       begin
         // HEIC / HEIF / AVIF: bundled decoder (see uHeic); the placeholder stays if it cannot decode
@@ -1433,14 +1470,14 @@ begin
         if LoadHeicPicture(Item.FullPath, Pic, Box * 2, True) then  // decode the HEIC or AVIF file
           G := Pic.Graphic  // take its graphic
         else if HeicEnabled then
-          LogThumb(Item.FileName + ': HEIC/AVIF decode failed: ' + HeicLastError)  // log the reason
+          LogThumb(Item.FullPath + ': HEIC/AVIF decode failed: ' + HeicLastError)  // log the reason
         else
-          LogThumb(Item.FileName + ': HEIC preview is not compiled in');  // log the reason
+          LogThumb(Item.FullPath + ': HEIC preview is not compiled in');  // log the reason
       end;
       if G = nil then Exit;  // no graphic: leave the placeholder
       if G.Empty then  // empty picture
       begin
-        LogThumb(Item.FileName + ': the decoder returned an empty picture (file size ' + Item.SizeText + ')');  // log the reason
+        LogThumb(Item.FullPath + ': the decoder returned an empty picture (file size ' + Item.SizeText + ')');  // log the reason
         Exit;
       end;
       W := G.Width;  // picture width
@@ -1464,9 +1501,9 @@ begin
     except
       on E: Exception do
         if (Pos('Wrong image format', E.Message) > 0) and LooksLikeText(Item.FullPath) then  // an unreadable text file
-          LogThumb(Item.FileName + ': not an image (text file)' + HeaderNote(Item.FullPath))  // log that it is a text file
+          LogThumb(Item.FullPath + ': not an image (text file)' + HeaderNote(Item.FullPath))  // log that it is a text file
         else
-          LogThumb(Item.FileName + ': ' + E.ClassName + ' ' + E.Message + HeaderNote(Item.FullPath));  // log the error with the first bytes
+          LogThumb(Item.FullPath + ': ' + E.ClassName + ' ' + E.Message + HeaderNote(Item.FullPath));  // log the error with the first bytes
     end;
   finally
     Bmp.Free;  // free the bitmap
@@ -1507,7 +1544,7 @@ begin
   if Item.Thumb = nil then Exit;  // no thumbnail
   if ThumbLru = nil then ThumbLru := TList.Create;  // create the list on first use
   ThumbLru.Add(Item);  // add the item to the list
-  while ThumbLru.Count > ThumbKeepMax do  // too many thumbnails kept
+  while ThumbLru.Count > Max(300, ThumbKeepMax * 160 div Max(160, Box)) do  // too many thumbnails kept (fewer when they are larger)
   begin
     Old := TImageItem(ThumbLru[0]);  // oldest item
     ReleaseThumb(Old);  // free its thumbnail

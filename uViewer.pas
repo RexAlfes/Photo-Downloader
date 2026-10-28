@@ -10,7 +10,7 @@ interface
 
 uses
   Classes, SysUtils, StrUtils, Math, Forms, Controls, Graphics, ExtCtrls, StdCtrls, Menus, LCLType, LCLIntf, FPImage,
-  uSettings, uItems, uExif, uScale, uDialogs, uHeic, uWebP;
+  uSettings, uItems, uExif, uScale, uDialogs, uHeic, uWebP, uLrPrev;
 
 procedure ShowImageViewer(Items: TList; StartIndex: Integer);
 
@@ -177,6 +177,8 @@ var
   IsTiff: Boolean;  // IsTiff: True for TIFF-based files
   Sniff: Integer;  // Sniff: format found from the first bytes (1 TIFF, 2 JPEG, 3 PNG, 4 BMP, 5 GIF, 6 WebP, 7 HEIC)
   WebPErr: string;  // WebPErr: reason a WebP could not be decoded
+  LrInfo: TLrPrevInfo;  // LrInfo: header values of a Lightroom preview file
+  LrErr: string;  // LrErr: reason a Lightroom preview file could not be read
 begin
   WebPErr := '';  // no error yet
   if (FIndex < 0) or (FIndex >= FItems.Count) then Exit;  // index out of range: nothing to show
@@ -287,6 +289,18 @@ begin
         else
           FSrc := LoadWebPMemImage(It.FullPath, Target, WebPErr);  // decode the WebP picture
       end
+      else if Pos(';' + Ext + ';', LrPrevExts) > 0 then  // Lightroom preview file
+      begin
+        Mem := TMemoryStream.Create;  // stream for the JPEG of the largest level
+        try
+          if LrPrevExtract(It.FullPath, Mem, LrInfo, LrErr) then
+            FSrc := LoadMemImage(Mem, pkJpeg, LrInfo.LevelW, LrInfo.LevelH, Target)  // decode it
+          else
+            WebPErr := LrErr;  // shown in the log below
+        finally
+          Mem.Free;  // free the stream
+        end;
+      end
       else if HeicEnabled and (Pos(';' + Ext + ';', HeicExts) > 0) then  // HEIC, HEIF or AVIF
         FSrc := LoadHeicMemImage(It.FullPath, Target);  // decode it
       // turn the picture upright (HEIC decoders already apply the file's own rotation)
@@ -302,9 +316,9 @@ begin
   if FSrc = nil then  // no picture could be loaded
   begin
     if LooksLikeText(It.FullPath) then  // the file is plain text
-      LogThumb(It.FileName + ': viewer could not open it: not an image (text file)' + HeaderNote(It.FullPath))  // write that to the log
+      LogThumb(It.FullPath + ': viewer could not open it: not an image (text file)' + HeaderNote(It.FullPath))  // write that to the log
     else
-      LogThumb(It.FileName + ': viewer could not open it' +  // write the reason to the log
+      LogThumb(It.FullPath + ': viewer could not open it' +  // write the reason to the log
         IfThen(WebPErr <> '', ': ' + WebPErr, IfThen(LoadMemImageError <> '', ': ' + LoadMemImageError, '')) + HeaderNote(It.FullPath));
     Caption := Caption + ' - cannot be displayed';  // add the problem to the window title
     FMsg.Visible := True;  // show the "cannot open" message

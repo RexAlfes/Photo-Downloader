@@ -10,15 +10,18 @@ Website: <https://rexalfes.github.io/Photo-Downloader/> | Downloads: <https://gi
 
 > **Alpha software.** Keep your original files until you have checked the copies.
 
+## Windows security warning
+Windows may show **Windows protected your PC** (SmartScreen) with **Publisher: Unknown publisher** the first time you run the program, because the free, open source `.exe` is not code-signed. It does not mean the file is damaged. Download only from the [Releases page](https://github.com/RexAlfes/Photo-Downloader/releases), click **More info**, then **Run anyway**. If there is no such button, right-click the downloaded file, choose Properties, tick **Unblock** and click OK. The User Manual (section 1) also covers the browser warning, Smart App Control and antivirus quarantine.
+
 ## Documentation
 - [User Manual](docs/User_Manual.md) – how to use every part of the program.
 
 ## Features
-- Date / job-code list, thumbnail grid (small and large) and list view, image viewer, status line.
+- Date / job-code list, thumbnail grid and list view, image viewer, status line. Thumbnails come in Small (64 px), Medium (160 px), Large (320 px) and **Fit to Window** (the default: cards share the window width), and Ctrl + mouse wheel changes the size continuously. A card shows the file name without its extension; the type and size are on the date line.
 - List view has column headings; click one to sort by it (click again to reverse).
 - Job Code dialog at start-up with history and a live example of the destination path. The job code may be left blank: `{J}` then expands to nothing and the dash or underscore next to it is removed from folder and file names.
 - Token-based folder and file naming (`{T8}`, `{T9}`, `{r}`, sequence numbers, camera and EXIF values), per-camera mapping.
-- Thumbnails and viewer for JPEG, PNG, BMP, GIF, TIFF (including compressed, palette, 1-bit and fax scans), DNG, WebP (lossy, lossless and transparent, decoded by the program itself), HEIC, AVIF and the embedded previews of RAW files (NEF, NRW, CR2, CR3, CRW, ARW and others).
+- Thumbnails and viewer for JPEG, PNG, BMP, GIF, TIFF (including compressed, palette, 1-bit and fax scans), DNG, WebP (lossy, lossless and transparent, decoded by the program itself), HEIC, AVIF and the embedded previews of RAW files (NEF, NRW, CR2, CR3, CRW, ARW and others). Adobe Lightroom preview files (.lrprev) can be listed and viewed (switched off by default).
 - Video (MP4, MOV, LRV) and audio (MP3): capture date and length from the movie header, thumbnails from the system (Windows Shell; `ffmpegthumbnailer` or `ffmpeg` on Linux) with a play-symbol or music-note tile as fallback, double-click plays them in the default player.
 - File type filter (View > File Types..., with MP4, MOV and LRV as separate entries), progress windows with Cancel while a folder loads, and a disk cache for slow thumbnails.
 - Status per image: new file, already downloaded, name clash (the new name is already taken), duplicate (the same picture twice: same size, time and camera), with the reason shown. See the [User Manual](docs/User_Manual.md) for exactly how each status is decided.
@@ -30,9 +33,11 @@ Website: <https://rexalfes.github.io/Photo-Downloader/> | Downloads: <https://gi
 - Single instance by default (switchable in Preferences > General). Nothing is scanned at start-up; the last folder is remembered.
 
 ## Build
-Open `PhotoDownloader.lpi` in Lazarus 4.8 and press F9, or run:
+Open `PhotoDownloader.lpi` in Lazarus 4.8 and press F9. The same project file builds for the system you are on (Windows 64-bit or Linux 64-bit with GTK 3). Or run:
 
-    lazbuild PhotoDownloader.lpi
+    lazbuild PhotoDownloader.lpi                           (add -B for a full rebuild)
+
+Build on the system you want the program for: cross compiling does not work with the current Lazarus and Free Pascal.
 
 Forms are created in code (no `.lfm` files). Required packages: LCL and LazUtils.
 Settings live in the per-user config folder (`PhotoDownloader.ini`, `profiles\`).
@@ -46,7 +51,7 @@ settings. The decoder is the pure-Pascal Xelitan HEIC decoder, bundled in `third
 under Project > Project Inspector > Required Packages, remove it so units are not found twice.
 
 ## File type filter
-Use View > File Types... (or the right-click menu) to choose which kinds of files are listed and downloaded: JPEG, PNG, BMP, GIF, TIFF, RAW by brand, DNG, WebP, HEIC, AVIF, video, audio and THM. All are selected by default except video, audio and THM (switched off until their previews are verified); **Clear all** and **Select all** are provided. The choice is kept in `PhotoDownloader.ini`.
+Use View > File Types... (or the right-click menu) to choose which kinds of files are listed and downloaded: JPEG, PNG, BMP, GIF, TIFF, RAW by brand, DNG, WebP, HEIC, AVIF, video, audio, THM and Lightroom previews. All are selected by default except audio (MP3), THM and Lightroom previews (.lrprev); **Select all**, **Clear all** and **Default** (back to the program's own choice) are provided. The choice is kept in `PhotoDownloader.ini`.
 
 Files that are already downloaded are shown on a gray background; name clashes are red.
 
@@ -67,10 +72,10 @@ There is no fixed limit on the number of images scanned. The source folder and a
 - Each file's details take a few KB. A 160-pixel thumbnail takes about 60-100 KB, so 10,000 pictures need roughly 0.6-1 GB of memory for thumbnails (the program is 64-bit).
 - When a folder loads, the first 300 ordinary thumbnails and every HEIC, AVIF, TIFF and DNG thumbnail are rendered before the grid is shown; the rest are drawn as you scroll. RAW files and JPEGs with embedded previews are fast; HEIC and AVIF files take about a second or more each. HEIC, AVIF, TIFF and DNG thumbnails are cached on disk (`thumbcache` folder), so a second load is much faster.
 - List view is lighter: thumbnails are drawn only for rows you scroll to.
-- Only the most recent 1,200 thumbnails are kept in memory (each one uses a Windows bitmap handle and a program may only own about 10,000). Older ones are drawn again when scrolled into view. Folders with about 6,000 pictures have been tested.
+- Only the most recent 1,200 thumbnails (about 600 at the 320-pixel size) are kept in memory (each one uses a Windows bitmap handle and a program may only own about 10,000). Older ones are drawn again when scrolled into view. Folders with about 6,000 pictures have been tested.
 
 ## Known limitations
-- In development: video and audio files. HEIC previews are supported (bundled decoder).
+- Lightroom preview files (.lrprev) are view-only: they hold small previews (at most 256 pixels) and no original file name, only an id.
 - Windows is the primary platform. Card-reader detection, eject and single-instance handling are Windows only.
 - Not implemented yet: direct USB camera (PTP/MTP) download, GPS geotagging, watch mode,
   embedded IIM/IPTC (XMP is written as a `.xmp` sidecar), download history.

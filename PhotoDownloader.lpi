@@ -18,7 +18,7 @@
       <UseVersionInfo Value="True"/>
       <AutoIncrementBuild Value="True"/>
       <MinorVersionNr Value="1"/>
-      <BuildNr Value="56"/>
+      <BuildNr Value="58"/>
       <StringTable FileDescription="Photo Downloader" ProductName="Photo Downloader"/>
     </VersionInfo>
     <BuildModes>
@@ -105,6 +105,10 @@
       </Unit>
       <Unit>
         <Filename Value="uTiffRead.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="uLrPrev.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>

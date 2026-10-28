@@ -7,7 +7,7 @@ interface
 uses
   Classes, SysUtils, Contnrs, Math, Forms, Controls, Graphics, Dialogs, Menus,
   ExtCtrls, StdCtrls, ComCtrls, LCLType, LCLIntf, LazFileUtils,
-  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uSingle, uRotate, uSafeDel, uSplash;
+  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uSingle, uRotate, uSafeDel, uSplash;
 
 type
   TMainForm = class(TForm)
@@ -28,9 +28,11 @@ type
     FTimer: TTimer;  // timer for the start-up work
     FLastTick: QWord;  // time of the last window update
     FPopup: TPopupMenu;  // pop-up menu of the grid
+    miPopLrJpg: TMenuItem;  // pop-up item: save the selected .lrprev previews as JPG files
+    FLrOutDir: string;  // folder last chosen for the JPG files made from .lrprev previews
     miPopView, miPopLocation, miPopDestLoc, miPopProps, miPopDownload, miPopDelete: TMenuItem;  // pop-up menu items
-    miPopShowDown, miPopShowDup, miPopList, miPopSmall, miPopLarge: TMenuItem;  // pop-up copies of the View menu items
-    miAuto, miEject, miShowDown, miShowDup, miList, miSmall, miLarge, miDateSel, miLogging: TMenuItem;  // menu items that are checked or switched
+    miPopShowDown, miPopShowDup, miPopList, miPopSmall, miPopMedium, miPopLarge, miPopFit: TMenuItem;  // pop-up copies of the View menu items
+    miAuto, miEject, miShowDown, miShowDup, miList, miSmall, miMedium, miLarge, miFit, miDateSel, miLogging: TMenuItem;  // menu items that are checked or switched
     pnlLeft, pnlStatus, pnlButtons: TPanel;  // left panel, status panel and button panel
     lblDate, lblStatus: TLabel;  // labels for the date list and the status
     lstDates: TListBox;  // list of image dates
@@ -49,6 +51,9 @@ type
     procedure SizeForThumbColumns(Cols: Integer);
     procedure FixThumbWidth;
     procedure SetViewMode(M: Integer);
+    procedure SetThumbPreset(Size: Integer);
+    procedure UpdateViewChecks;
+    procedure ThumbSizeChanged(Sender: TObject);
     procedure SetStatus(const S: string);
     procedure UpdateCaption;
     procedure UpdateMenus;
@@ -71,6 +76,7 @@ type
     procedure PopLocationClick(Sender: TObject);
     procedure PopDestLocClick(Sender: TObject);
     procedure PopPropsClick(Sender: TObject);
+    procedure PopLrJpgClick(Sender: TObject);
     procedure OpenItem(Sender: TObject; Index: Integer);
     procedure HeaderClick(Sender: TObject; Col: Integer);
     procedure ViewTrashClick(Sender: TObject);
@@ -122,6 +128,8 @@ type
     procedure ShowDupClick(Sender: TObject);
     procedure ListViewClick(Sender: TObject);
     procedure SmallViewClick(Sender: TObject);
+    procedure MediumViewClick(Sender: TObject);
+    procedure FitViewClick(Sender: TObject);
     procedure LargeViewClick(Sender: TObject);
     procedure DateSelClick(Sender: TObject);
     procedure HelpContentsClick(Sender: TObject);
@@ -148,7 +156,7 @@ var
 implementation
 
 { Returns the number of thumbnail columns wanted for a view mode. }
-function WantedColumns(Mode: TViewMode): Integer; forward;
+function WantedColumns(Mode: TViewMode; Size: Integer): Integer; forward;
 
 { ====================================================================== }
 { construction                                                            }
@@ -179,7 +187,8 @@ begin
   BuildMenu;  // build the menu
   BuildUI;  // build the controls
   ApplyState;  // apply the saved window state
-  SizeForThumbColumns(WantedColumns(FView.Mode));  // size the window for the thumbnail columns
+  if not FS.FitWindow then  // Fit to Window adapts to the window, so the window keeps its size
+    SizeForThumbColumns(WantedColumns(FView.Mode, FView.ThumbSize));  // size the window for the thumbnail columns
   OnClose := @FormClose;  // close handler
   FTimer := TTimer.Create(Self);  // create the start-up timer
   FTimer.Interval := 150;  // fire after 150 ms
@@ -258,10 +267,13 @@ begin
   AddMenu(MView, 'File Types...', @FileTypesClick, 0);  // choose the file types
   AddMenu(MView, '-', nil, 0);  // separator
   miList := AddMenu(MView, 'List View', @ListViewClick, ShortCut(VK_L, [ssCtrl]));  // list view
-  miSmall := AddMenu(MView, 'Thumbnail View (small thumbnails)', @SmallViewClick,  // small thumbnails
+  miSmall := AddMenu(MView, 'Thumbnail View (small thumbnails)', @SmallViewClick,  // small thumbnails (64 pixels)
     ShortCut(VK_T, [ssCtrl]));
-  miLarge := AddMenu(MView, 'Thumbnail View (large thumbnails)', @LargeViewClick,  // large thumbnails
+  miMedium := AddMenu(MView, 'Thumbnail View (medium thumbnails)', @MediumViewClick,  // medium thumbnails (160 pixels)
+    ShortCut(VK_M, [ssCtrl]));
+  miLarge := AddMenu(MView, 'Thumbnail View (large thumbnails)', @LargeViewClick,  // large thumbnails (320 pixels)
     ShortCut(VK_X, [ssCtrl]));
+  miFit := AddMenu(MView, 'Thumbnail View (fit to window)', @FitViewClick, 0);  // cards fill the window width
   AddMenu(MView, '-', nil, 0);  // separator
   miDateSel := AddMenu(MView, 'Image Date Selector', @DateSelClick, ShortCut(VK_TAB, [ssCtrl]));  // show or hide the date list
 
@@ -378,6 +390,7 @@ begin
   FView.OnSelectionChange := @ViewSelChange;  // selection handler
   FView.OnOpenItem := @OpenItem;  // handler for opening an image
   FView.OnHeaderClick := @HeaderClick;  // handler for clicks on the list header
+  FView.OnThumbSizeChange := @ThumbSizeChanged;  // handler for Ctrl + mouse wheel sizing
 
   // right click on an image: act on the selected image(s)
   FPopup := TPopupMenu.Create(Self);  // create the pop-up menu
@@ -387,6 +400,7 @@ begin
   miPopDestLoc := AddMenu(FPopup.Items, 'Show in destination folder', @PopDestLocClick, 0);  // show in destination folder item
   miPopDownload := AddMenu(FPopup.Items, 'Download selected file(s)', @PopDownloadClick, 0);  // download item
   miPopDelete := AddMenu(FPopup.Items, 'Delete selected file(s) from source', @DeleteClick, 0);  // delete item
+  miPopLrJpg := AddMenu(FPopup.Items, 'Save .lrprev preview(s) as JPG...', @PopLrJpgClick, 0);  // shown only when .lrprev files are selected
   miPopProps := AddMenu(FPopup.Items, 'Properties', @PopPropsClick, 0);  // properties item
   AddMenu(FPopup.Items, 'Refresh (rescan the source)', @RefreshClick, 0);  // rescan the source, same as File > Refresh (F5)
   AddMenu(FPopup.Items, '-', nil, 0);  // separator
@@ -397,13 +411,21 @@ begin
   AddMenu(FPopup.Items, '-', nil, 0);  // separator
   miPopList := AddMenu(FPopup.Items, 'List View', @ListViewClick, 0);  // list view
   miPopSmall := AddMenu(FPopup.Items, 'Thumbnail View (small thumbnails)', @SmallViewClick, 0);  // small thumbnails
+  miPopMedium := AddMenu(FPopup.Items, 'Thumbnail View (medium thumbnails)', @MediumViewClick, 0);  // medium thumbnails
   miPopLarge := AddMenu(FPopup.Items, 'Thumbnail View (large thumbnails)', @LargeViewClick, 0);  // large thumbnails
+  miPopFit := AddMenu(FPopup.Items, 'Thumbnail View (fit to window)', @FitViewClick, 0);  // fit to window
+  miPopFit.RadioItem := True;  // round mark
+  miPopFit.GroupIndex := 1;  // same group
+  miPopFit.ShowAlwaysCheckable := True;  // show the empty mark too
   miPopShowDown.ShowAlwaysCheckable := True;  // show the empty check box too (Linux hides it otherwise)
   miPopShowDup.ShowAlwaysCheckable := True;  // show the empty check box too
   miPopList.RadioItem := True;  // the three views exclude each other: round marks
   miPopList.GroupIndex := 1;  // same group as the other two views
   miPopSmall.RadioItem := True;  // round mark
   miPopSmall.GroupIndex := 1;  // same group
+  miPopMedium.RadioItem := True;  // round mark
+  miPopMedium.GroupIndex := 1;  // same group
+  miPopMedium.ShowAlwaysCheckable := True;  // show the empty mark too
   miPopLarge.RadioItem := True;  // round mark
   miPopLarge.GroupIndex := 1;  // same group
   miPopList.ShowAlwaysCheckable := True;  // show the empty mark too
@@ -429,11 +451,46 @@ end;
 { Switches between list view and small or large thumbnails. }
 procedure TMainForm.SetViewMode(M: Integer);
 begin
+  if M <> 0 then M := 1;  // 0 list, otherwise thumbnail cards
   FS.ViewMode := M;  // remember the mode
+  FView.ThumbSize := FS.ThumbSize;  // thumbnail size in pixels
+  FView.FitToWindow := FS.FitWindow;  // Fit to Window
   FView.Mode := TViewMode(M);  // apply it to the grid
-  miList.Checked := M = 0;  // check the list view item
-  miSmall.Checked := M = 1;  // check the small thumbnails item
-  miLarge.Checked := M = 2;  // check the large thumbnails item
+  UpdateViewChecks;  // marks in the View menu
+end;
+
+{ Thumbnail cards at a preset size: 64 small, 160 medium, 320 large pixels. }
+procedure TMainForm.SetThumbPreset(Size: Integer);
+begin
+  FS.ThumbSize := Size;  // remember the size
+  FS.FitWindow := False;  // a fixed size, not Fit to Window
+  SetViewMode(1);  // cards
+end;
+
+{ Ctrl + mouse wheel changed the thumbnail size in the grid. }
+procedure TMainForm.ThumbSizeChanged(Sender: TObject);
+begin
+  FS.ThumbSize := FView.ThumbSize;  // remember the new size
+  FS.FitWindow := FView.FitToWindow;  // the wheel leaves Fit to Window
+  UpdateViewChecks;  // a preset is marked only when the size matches it exactly
+end;
+
+{ Marks the View menu item that matches the current view and thumbnail size. }
+procedure TMainForm.UpdateViewChecks;
+var
+  Cards: Boolean;  // True in the thumbnail view
+begin
+  Cards := FS.ViewMode <> 0;  // thumbnail view
+  miList.Checked := not Cards;  // list view item
+  miSmall.Checked := Cards and not FS.FitWindow and (FS.ThumbSize = 64);  // small thumbnails item
+  miMedium.Checked := Cards and not FS.FitWindow and (FS.ThumbSize = 160);  // medium thumbnails item
+  miLarge.Checked := Cards and not FS.FitWindow and (FS.ThumbSize = 320);  // large thumbnails item
+  miFit.Checked := Cards and FS.FitWindow;  // fit to window item
+  miPopList.Checked := not Cards;  // the same marks in the right-click menu
+  miPopSmall.Checked := Cards and not FS.FitWindow and (FS.ThumbSize = 64);
+  miPopMedium.Checked := Cards and not FS.FitWindow and (FS.ThumbSize = 160);
+  miPopLarge.Checked := Cards and not FS.FitWindow and (FS.ThumbSize = 320);
+  miPopFit.Checked := Cards and FS.FitWindow;
 end;
 
 { Window width (client area) needed for Cols thumbnail columns. The grid loses the width of its
@@ -443,15 +500,13 @@ begin
   Result := Cols * View.CellWidthNow + View.ScrollBarWidth + 2 + PaneW;  // columns, scroll bar, frame and side panes
 end;
 
-{ Columns wanted at start-up: 4 small thumbnails or 3 large ones; the list view needs no sizing. }
-function WantedColumns(Mode: TViewMode): Integer;
+{ Columns wanted at start-up: 4 small, 3 medium or 2 large thumbnails; the list view needs no sizing. }
+function WantedColumns(Mode: TViewMode; Size: Integer): Integer;
 begin
-  case Mode of  // by view mode
-    vmSmall: Result := 4;  // four small thumbnails
-    vmLarge: Result := 3;  // three large thumbnails
-  else
-    Result := 0;  // list view needs no sizing
-  end;
+  if Mode = vmList then Exit(0);  // list view needs no sizing
+  if Size <= 96 then Result := 4  // four small thumbnails
+  else if Size <= 200 then Result := 3  // three medium thumbnails
+  else Result := 2;  // two large thumbnails
 end;
 
 { Sizes the window so that Cols thumbnail columns fit. }
@@ -658,7 +713,7 @@ begin
             [I + 1, FItems.Count, It.FileName]);
           Application.ProcessMessages;  // let the window update
           if FCancel then Break;  // stop when canceled
-          EnsureThumb(It, 160);  // create the thumbnail
+          EnsureThumb(It, FView.DecodeBox);  // create the thumbnail
           // slow HEIC/AVIF/TIFF thumbnails are now in the disk cache; keep the picture only
           // for the first screens so that thousands of files do not use up Windows handles
           if Heavy and (Kept >= PrerenderKeep) then ReleaseThumb(It) else Inc(Kept);  // keep or release the thumbnail
@@ -1046,7 +1101,7 @@ end;
 { Enables the pop-up menu items according to the selection. }
 procedure TMainForm.PopupPopup(Sender: TObject);
 var
-  I, NSel, NDel: Integer;  // I: loop counter; NSel: selected images; NDel: downloaded selected images
+  I, NSel, NDel, NLr: Integer;  // I: loop counter; NSel: selected images; NDel: downloaded selected images; NLr: selected .lrprev files
   L: TList;  // L: files to download
   One: TImageItem;  // One: first selected image
 begin
@@ -1071,9 +1126,7 @@ begin
   miPopProps.Enabled := NSel > 0;  // properties need a selection
   miPopShowDown.Checked := FS.ShowDownloaded;  // check marks follow the current settings
   miPopShowDup.Checked := FS.ShowDuplicates;  // check mark for duplicates
-  miPopList.Checked := FS.ViewMode = 0;  // check mark for list view
-  miPopSmall.Checked := FS.ViewMode = 1;  // check mark for small thumbnails
-  miPopLarge.Checked := FS.ViewMode = 2;  // check mark for large thumbnails
+  UpdateViewChecks;  // check marks for the view items
   L := TList.Create;  // create the list
   try
     GetDownloadList(L);  // get the files to download
@@ -1083,6 +1136,12 @@ begin
     L.Free;  // free the list
   end;
   miPopDelete.Enabled := NDel > 0;  // delete needs downloaded images
+  NLr := 0;  // no selected .lrprev file yet
+  for I := 0 to FVisible.Count - 1 do  // every visible item
+    if TImageItem(FVisible[I]).Selected and (Pos(';' + LowerCase(ExtractFileExt(TImageItem(FVisible[I]).FileName)) + ';', LrPrevExts) > 0) then
+      Inc(NLr);  // count selected .lrprev files
+  miPopLrJpg.Visible := NLr > 0;  // only offered for .lrprev files
+  if NLr > 0 then miPopLrJpg.Caption := Format('Save .lrprev preview(s) as JPG... (%d)', [NLr]);  // show how many
 end;
 
 { Opens the image viewer at the double-clicked image. }
@@ -1136,6 +1195,68 @@ begin
         OpenDocument(ExtractFilePath(P));  // otherwise open its folder
       Exit;  // done
     end;
+end;
+
+{ Saves the largest preview picture of every selected .lrprev file as a JPG file in a folder the user picks.
+  The JPG is the picture stored in the file as it is (not re-encoded); the file keeps the .lrprev name with .jpg. }
+procedure TMainForm.PopLrJpgClick(Sender: TObject);
+var
+  D: TSelectDirectoryDialog;  // D: folder chooser
+  I, NOk, NFail: Integer;  // I: loop counter; NOk: files saved; NFail: files that failed
+  It: TImageItem;  // It: item being saved
+  Mem: TMemoryStream;  // Mem: the JPEG
+  Info: TLrPrevInfo;  // Info: header data of the preview
+  Err, Dest, Msg, Fails: string;  // Err: error text; Dest: output file; Msg: result text; Fails: names that failed
+begin
+  D := TSelectDirectoryDialog.Create(Self);  // create the chooser
+  try
+    D.Title := 'Save .lrprev previews as JPG in folder';  // window title
+    if (FLrOutDir <> '') and DirectoryExistsUTF8(FLrOutDir) then D.InitialDir := FLrOutDir;  // start in the last folder
+    if not D.Execute then Exit;  // cancelled
+    FLrOutDir := D.FileName;  // remember the folder
+  finally
+    D.Free;  // free the chooser
+  end;
+  NOk := 0;  // nothing saved yet
+  NFail := 0;  // nothing failed yet
+  Fails := '';  // no failed names
+  Mem := TMemoryStream.Create;  // buffer for the JPEG
+  Screen.Cursor := crHourGlass;  // wait cursor
+  try
+    for I := 0 to FVisible.Count - 1 do  // every visible item
+    begin
+      It := TImageItem(FVisible[I]);  // the item
+      if not It.Selected then Continue;  // not selected
+      if Pos(';' + LowerCase(ExtractFileExt(It.FileName)) + ';', LrPrevExts) = 0 then Continue;  // only .lrprev files
+      try
+        if LrPrevExtract(It.FullPath, Mem, Info, Err) then  // largest level found
+        begin
+          Dest := IncludeTrailingPathDelimiter(FLrOutDir) + ChangeFileExt(It.FileName, '') + '.jpg';  // output name
+          if FileExistsUTF8(Dest) then Dest := UniqueName(Dest, True);  // never overwrite: add (1), (2) ...
+          Mem.SaveToFile(Dest);  // write the JPEG
+          Inc(NOk);  // count it
+        end
+        else
+        begin
+          Inc(NFail);  // count the failure
+          Fails := Fails + #13#10 + It.FileName + ': ' + Err;  // remember why
+        end;
+      except
+        on E: Exception do
+        begin
+          Inc(NFail);  // count the failure
+          Fails := Fails + #13#10 + It.FileName + ': ' + E.Message;  // remember why
+        end;
+      end;
+    end;
+  finally
+    Screen.Cursor := crDefault;  // normal cursor
+    Mem.Free;  // free the buffer
+  end;
+  Msg := Format('%d JPG file(s) saved in %s', [NOk, FLrOutDir]);  // result text
+  if NFail > 0 then Msg := Msg + #13#10 + Format('%d file(s) could not be saved:', [NFail]) + Fails;  // add the failures
+  SetStatus(Format('%d JPG file(s) saved from .lrprev previews', [NOk]));  // status line
+  MessageDlg('Photo Downloader', Msg, mtInformation, [mbOK], 0);  // tell the user
 end;
 
 { Shows the properties of the first selected image. }
@@ -1266,7 +1387,7 @@ begin
   // lossless turn first, so the owner fields are written into the final file
   if FS.AutoRotate and It.IsJpeg then  // turn JPEGs upright
     if AutoRotateJpegFile(Dest) < 0 then  // log a failure
-      LogThumb(It.FileName + ': could not be turned upright (' + RotateLastError + ')');  // log the reason
+      LogThumb(It.FullPath + ': could not be turned upright (' + RotateLastError + ')');  // log the reason
   if FS.WriteExifOwner and It.IsJpeg then  // add author and copyright
     Result := WriteExifOwnerFields(Dest, FS.ExifAuthor, FS.ExifCopyright);  // remember whether it worked
 
@@ -2141,9 +2262,17 @@ end;
 { Switches to list view. }
 procedure TMainForm.ListViewClick(Sender: TObject);  begin SetViewMode(0); end;
 { Switches to small thumbnails. }
-procedure TMainForm.SmallViewClick(Sender: TObject); begin SetViewMode(1); end;
+procedure TMainForm.SmallViewClick(Sender: TObject); begin SetThumbPreset(64); end;
 { Switches to large thumbnails. }
-procedure TMainForm.LargeViewClick(Sender: TObject); begin SetViewMode(2); end;
+procedure TMainForm.LargeViewClick(Sender: TObject); begin SetThumbPreset(320); end;
+{ Switches to thumbnails that fill the window width (at most 160 pixels). }
+procedure TMainForm.FitViewClick(Sender: TObject);
+begin
+  FS.FitWindow := True;  // Fit to Window
+  SetViewMode(1);  // cards
+end;
+{ Switches to medium thumbnails. }
+procedure TMainForm.MediumViewClick(Sender: TObject); begin SetThumbPreset(160); end;
 
 { Shows or hides the date list. }
 procedure TMainForm.DateSelClick(Sender: TObject);
