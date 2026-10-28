@@ -136,7 +136,7 @@
             <h2>Take Back Control of Your Workflow</h2>
             <p><strong>Photo Downloader</strong> is a local desktop ingest tool licensed under the GNU GPL v3 or later.
                It scans a memory card or folder, shows thumbnails (including RAW previews), renames files from
-               templates built from EXIF data and your own job codes, and copies them into an organised
+               templates built from EXIF data and your own job codes, and copies them into an organized
                folder tree. Nothing is uploaded anywhere and no account is needed.</p>
         </section>
 
@@ -160,8 +160,8 @@
                 </div>
                 <div class="card">
                     <h3>&#128247; JPEG, RAW, TIFF &amp; DNG</h3>
-                    <p>Thumbnails and a viewer for JPEG, PNG, BMP, GIF, TIFF, DNG, HEIC and AVIF, and for the embedded previews in
-                       NEF, NRW, CR2, CRW, ARW, SR2, SRF and other RAW files. Sortable list view with column headings.</p>
+                    <p>Thumbnails and a viewer for JPEG, PNG, BMP, GIF, TIFF, DNG, WebP, HEIC and AVIF, and for the embedded previews in
+                       NEF, NRW, CR2, CRW, ARW, SR2, SRF and other RAW files. Sortable list view with column headings, and thumbnail sizes from small to large, or fitted to the window width (Ctrl + mouse wheel resizes). Adobe Lightroom preview files (.lrprev) can be listed and viewed. MP4, MOV and LRV video and MP3 audio files are listed too, with video frames as thumbnails where the system can make them, and they play in your default player on double-click.</p>
                 </div>
                 <div class="card">
                     <h3>&#128230; Metadata Output</h3>
@@ -193,8 +193,20 @@
                 <li>Windows is the primary platform. The Linux build has been tested on Linux Mint 22.3 (XFCE, GTK 3); other distributions and the Qt widgetset are untested.</li>
                 <li>The single-instance option is Windows only.</li>
                 <li>Direct USB camera (PTP/MTP) download, GPS geotagging, a download history and RAW+JPEG pairing are not implemented yet.</li>
-                <li>Video and audio files are still in development and are switched off by default.</li>
+                <li>Lightroom previews (.lrprev) are view-only: small (at most 256 px) and without an original file name.</li>
+                <li>Video thumbnails depend on the system (Windows Shell codecs; <code>ffmpegthumbnailer</code> or <code>ffmpeg</code> on Linux). MP3 files show a default tile without cover art or length.</li>
             </ul>
+        </section>
+
+        <section id="windows-warning">
+            <h2>Windows says &ldquo;Unknown publisher&rdquo;</h2>
+            <p>Photo Downloader is free and open source, and its program file is not code-signed, so Windows may show
+               <strong>Windows protected your PC</strong> (SmartScreen) with <strong>Publisher: Unknown publisher</strong> the first
+               time you run it. This does not mean the file is damaged. Download only from the
+               <a href="https://github.com/RexAlfes/Photo-Downloader/releases" target="_blank" rel="noopener">releases page</a>, click
+               <strong>More info</strong>, then <strong>Run anyway</strong>. If there is no such button, right-click the downloaded file,
+               choose Properties, tick <strong>Unblock</strong> and click OK. Your browser may also ask you to
+               <strong>Keep</strong> the file. With Windows 11 Smart App Control on, unsigned programs are blocked; the User Manual explains the options.</p>
         </section>
 
         <section id="linux">
