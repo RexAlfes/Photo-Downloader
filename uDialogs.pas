@@ -812,12 +812,21 @@ type
     procedure Store;  // stores the values in the settings
   end;
 
+const
+  TabPad = 15;  // Linux: pixels GTK adds around each tab heading; lower it if the Preferences dialog is too wide, raise it if scroll arrows appear
+
 { Builds the Preferences dialog with all its tabs. }
 constructor TPrefsForm.CreatePrefs(AOwner: TComponent; AS_: TAppSettings; const ACamera: string);
 var
   BtnOK, BtnCancel: TButton;  // BtnOK, BtnCancel: dialog buttons
+  Extra: Integer;  // Extra: pixels the dialog is widened by (Linux: so that all tab headings fit on one row)
+  {$IFDEF UNIX}
+  Bmp: TBitmap;  // Bmp: bitmap whose canvas measures the heading texts
+  NeedW, I: Integer;  // NeedW: width all headings need; I: loop counter
+  {$ENDIF}
 begin
   inherited CreateNew(AOwner);  // create the form without a resource file
+  Extra := 0;  // no extra width yet
   FS := AS_;  // keep the settings
   FCamera := ACamera;  // keep the camera name
   FMaps := TStringList.Create;  // list of mappings
@@ -844,9 +853,28 @@ begin
   PC.Pages[5].Caption := 'Custom Button';  // tab title
   BuildPluginTab(PC.AddTabSheet);  // build the sixth tab
   PC.Pages[6].Caption := 'Plug-ins';  // tab title
-  BtnOK := MkButton(Self, 'OK', 340, 654, 80, mrOK);  // OK button
+  {$IFDEF UNIX}
+  // GTK cannot wrap tab headings onto a second row (it shows scroll arrows instead), so the
+  // dialog is widened until all headings fit on one row
+  Bmp := TBitmap.Create;  // bitmap used only to measure text
+  try
+    Bmp.Canvas.Font.Assign(Font);  // the dialog font
+    NeedW := 16;  // room for the edges
+    for I := 0 to PC.PageCount - 1 do  // every tab
+      Inc(NeedW, Bmp.Canvas.TextWidth(PC.Pages[I].Caption) + TabPad);  // heading text plus the padding GTK adds
+  finally
+    Bmp.Free;  // free the bitmap
+  end;
+  if NeedW > PC.Width then  // the headings do not fit yet
+  begin
+    Extra := Min(NeedW - PC.Width, Max(0, Screen.Width - 40 - ClientWidth));  // widen, but stay on the screen
+    ClientWidth := ClientWidth + Extra;  // wider dialog
+    PC.Width := PC.Width + Extra;  // wider tab control
+  end;
+  {$ENDIF}
+  BtnOK := MkButton(Self, 'OK', 340 + Extra, 654, 80, mrOK);  // OK button
   BtnOK.Default := True;  // OK is the default button
-  BtnCancel := MkButton(Self, 'Cancel', 430, 654, 80, mrCancel);  // Cancel button
+  BtnCancel := MkButton(Self, 'Cancel', 430 + Extra, 654, 80, mrCancel);  // Cancel button
   BtnCancel.Cancel := True;  // Cancel reacts to Esc
   LoadValues;  // fill the controls from the settings
 end;

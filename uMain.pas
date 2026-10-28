@@ -388,6 +388,7 @@ begin
   miPopDownload := AddMenu(FPopup.Items, 'Download selected file(s)', @PopDownloadClick, 0);  // download item
   miPopDelete := AddMenu(FPopup.Items, 'Delete selected file(s) from source', @DeleteClick, 0);  // delete item
   miPopProps := AddMenu(FPopup.Items, 'Properties', @PopPropsClick, 0);  // properties item
+  AddMenu(FPopup.Items, 'Refresh (rescan the source)', @RefreshClick, 0);  // rescan the source, same as File > Refresh (F5)
   AddMenu(FPopup.Items, '-', nil, 0);  // separator
   // the same choices as the View menu (without the Image Date Selector); their check marks are set in PopupPopup
   miPopShowDown := AddMenu(FPopup.Items, 'Show ''Downloaded'' files', @ShowDownClick, 0);  // show or hide downloaded files
@@ -397,6 +398,17 @@ begin
   miPopList := AddMenu(FPopup.Items, 'List View', @ListViewClick, 0);  // list view
   miPopSmall := AddMenu(FPopup.Items, 'Thumbnail View (small thumbnails)', @SmallViewClick, 0);  // small thumbnails
   miPopLarge := AddMenu(FPopup.Items, 'Thumbnail View (large thumbnails)', @LargeViewClick, 0);  // large thumbnails
+  miPopShowDown.ShowAlwaysCheckable := True;  // show the empty check box too (Linux hides it otherwise)
+  miPopShowDup.ShowAlwaysCheckable := True;  // show the empty check box too
+  miPopList.RadioItem := True;  // the three views exclude each other: round marks
+  miPopList.GroupIndex := 1;  // same group as the other two views
+  miPopSmall.RadioItem := True;  // round mark
+  miPopSmall.GroupIndex := 1;  // same group
+  miPopLarge.RadioItem := True;  // round mark
+  miPopLarge.GroupIndex := 1;  // same group
+  miPopList.ShowAlwaysCheckable := True;  // show the empty mark too
+  miPopSmall.ShowAlwaysCheckable := True;  // show the empty mark too
+  miPopLarge.ShowAlwaysCheckable := True;  // show the empty mark too
   FView.PopupMenu := FPopup;  // attach the menu to the grid
 end;
 
@@ -1454,9 +1466,13 @@ begin
           if It.Status = isDuplicate then  // duplicate file (only listed when duplicates are not ignored)
           begin
             if FS.RenameDuplicates then  // rename duplicates
-              Dest := UniqueName(Dest, True)  // add (1), (2) ... to the name
+            begin
+              LogThumb('duplicate ' + It.FullPath + ': ' + Dest + ' exists, renamed');  // log the decision
+              Dest := UniqueName(Dest, True);  // add (1), (2) ... to the name
+            end
             else
             begin
+              LogThumb('duplicate ' + It.FullPath + ' skipped: ' + Dest + ' exists and "Download duplicates as (1), (2) ..." is off');  // log the reason
               Inc(Skipped);  // the name is taken: skip the duplicate
               Continue;  // next file
             end;
