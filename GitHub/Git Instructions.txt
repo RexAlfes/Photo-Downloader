@@ -21,7 +21,7 @@ OPTION 1 - WEBSITE UPLOAD
 2. Drag in the source files and the .github folder. Dragging a folder keeps its structure.
    Do not drag in the zip's docs or GitHub folders.
    Files with the same name replace the old ones. Up to 100 files per upload.
-3. Message example: "Build 55: MP4/MOV/LRV/MP3 support, separate video file types, View menu in the right-click menu, renamed name clashes, status documentation". Commit directly to main.
+3. Message example: "Build 56: new transparent icon, Linux icon and launcher kit, right-click Refresh, duplicate rename display, Linux Preferences tabs, manual updates". Commit directly to main.
 4. The website cannot delete files. To delete: open the file, click the three dots, Delete file.
 5. If a folder starts with a dot (.github) and will not drag in, use Add file > Create new file and type
    ".github/FUNDING.yml" as the name, then paste the contents.
@@ -52,10 +52,10 @@ Build 42 is the baseline. After uploading: git tag baseline-build-42 && git push
 
 RELEASE
 -------
-Releases > Draft a new release. Tag example: Build-55. Paste the matching release notes file.
+Releases > Draft a new release. Tag example: Build-56. Paste the matching release notes file.
 Attach one file per platform and tick "Set as a pre-release":
-  PhotoDownloader.0.1.0.build.55.win64.exe      (Windows 64-bit)
-  PhotoDownloader.0.1.0.build.55.linux64.tar.gz (Linux 64-bit; pack the executable in a tar.gz so it stays executable)
+  PhotoDownloader.0.1.0.build.56.win64.exe      (Windows 64-bit)
+  PhotoDownloader.0.1.0.build.56.linux64.tar.gz (Linux 64-bit; pack the executable in a tar.gz so it stays executable)
 Keep "win" or "linux" in each file name: the website download buttons read the newest release and label each file
 Windows or Linux from its name.
 
