@@ -832,8 +832,10 @@ type
     procedure Store;  // stores the values in the settings
   end;
 
+{$IFDEF UNIX}
 const
   TabPad = 15;  // Linux: pixels GTK adds around each tab heading; lower it if the Preferences dialog is too wide, raise it if scroll arrows appear
+{$ENDIF}
 
 { Builds the Preferences dialog with all its tabs. }
 constructor TPrefsForm.CreatePrefs(AOwner: TComponent; AS_: TAppSettings; const ACamera: string);
