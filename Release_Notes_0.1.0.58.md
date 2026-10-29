@@ -12,7 +12,7 @@ The version is **major.minor.revision.build**. This release is `0.1.0.58` (build
 
 ### Also
 - **Linux (GTK 3): dialogs from the menu.** Menu commands now run just after the menu has closed. Before, the folder chooser opened from File > Open Source Folder could leave the menu stuck and the program frozen.
-- **Linux: start-up windows.** The main window is centered again once it has its real size (GTK placed it shifted to the right and down), and the splash screen is lifted above the main window while it is shown.
+- **Linux: start-up windows.** The main window is centered again once it has its real size (GTK placed it shifted to the right and down). On Linux the splash screen closes as soon as the main window is up instead of waiting five seconds; the waiting loop let menu clicks run inside it and froze GTK 3.
 - **Linux: icon on the program file.** `linux/install-desktop.sh` now also gives the `PhotoDownloader` file itself its icon in file managers that support it (Nemo, Nautilus, Caja). Use `--no-file-icon` to skip it. Run it again after rebuilding the program.
 - **One project file again.** `PhotoDownloader_linux.lpi` is gone; `PhotoDownloader.lpi` no longer names a target system, so it builds for the system you are on (as before build 57). The Linux build keeps its window icon. Build on the system you want the program for (`lazbuild PhotoDownloader.lpi`); cross compiling does not work.
 - The build 57 changes (thumbnail sizes, Fit to Window, cleaner cards, Lightroom previews, File Types Default button) are unchanged; see the build 57 notes.
