@@ -66,6 +66,9 @@ procedure EnsureThumb(Item: TImageItem; Box: Integer);  // Makes sure an item ha
 procedure ReleaseThumb(Item: TImageItem);
 { True for file types that are slow to decode (HEIC, AVIF, TIFF, DNG) }
 function ThumbIsHeavy(const FileName: string): Boolean;
+{ Keeps the thumbnail disk cache below ThumbCacheMaxBytes by deleting the oldest files
+  (called when the program closes) }
+procedure PruneThumbCache;
 { What a file really is, from its first bytes: 1 TIFF, 2 JPEG, 3 PNG, 4 BMP, 5 GIF, 6 WebP,
   7 HEIC/AVIF family, 0 other }
 function SniffFileKind(const FileName: string): Integer;
@@ -956,14 +959,90 @@ end;
 
 const
   { Change when the decoders change so that thumbnails kept from an older version are rebuilt }
-  ThumbCacheVersion = '2';  // version of the thumbnail cache
+  ThumbCacheVersion = '3';  // version of the thumbnail cache (3: all file types, orientation in the key)
+  ThumbCacheMaxBytes = 500 * 1024 * 1024;  // largest size of the thumbnail cache (about 40,000 photos)
 
 { Returns the file name of the cached thumbnail of an item. }
 function ThumbCacheName(Item: TImageItem; Box: Integer): string;
 begin
-  Result := CacheDir + 'thumbcache' + PathDelim + MD5Print(MD5String(  // name from a hash of the version, path, size, date and box
+  // the orientation is part of the key, so a file that was turned upright never shows its old thumbnail
+  Result := CacheDir + 'thumbcache' + PathDelim + MD5Print(MD5String(  // name from a hash of the version, path, size, date, orientation and box
     ThumbCacheVersion + '|' + LowerCase(Item.FullPath) + '|' + IntToStr(Item.Size) + '|' +
-    FloatToStr(Item.FileTime) + '|' + IntToStr(Box))) + '.jpg';
+    FloatToStr(Item.FileTime) + '|' + IntToStr(Item.Orientation) + '|' + IntToStr(Box))) + '.jpg';
+end;
+
+type
+  { One file of the thumbnail cache, for PruneThumbCache }
+  TCacheFile = record
+    Name: string;  // file name
+    Size: Int64;  // size in bytes
+    Time: LongInt;  // modification time (file date format)
+  end;
+
+{ Sort helper for PruneThumbCache: oldest first. }
+procedure SortCacheFiles(var F: array of TCacheFile; Lo, Hi: Integer);
+var
+  I, J: Integer;  // I, J: positions moving toward each other
+  Mid: LongInt;  // Mid: time of the middle element
+  T: TCacheFile;  // T: swap helper
+begin
+  repeat
+    I := Lo;
+    J := Hi;
+    Mid := F[(Lo + Hi) div 2].Time;  // pivot
+    repeat
+      while F[I].Time < Mid do Inc(I);
+      while F[J].Time > Mid do Dec(J);
+      if I <= J then
+      begin
+        T := F[I]; F[I] := F[J]; F[J] := T;  // swap
+        Inc(I);
+        Dec(J);
+      end;
+    until I > J;
+    if Lo < J then SortCacheFiles(F, Lo, J);  // sort the left part
+    Lo := I;  // continue with the right part
+  until I >= Hi;
+end;
+
+procedure PruneThumbCache;
+var
+  Dir: string;  // Dir: cache folder
+  SR: TSearchRec;  // SR: directory entry
+  F: array of TCacheFile;  // F: cache files
+  N, I: Integer;  // N: number of files; I: loop counter
+  Total: Int64;  // Total: bytes in the cache
+begin
+  try
+    Dir := CacheDir + 'thumbcache' + PathDelim;  // cache folder
+    F := nil;
+    N := 0;
+    Total := 0;
+    if FindFirstUTF8(Dir + '*.jpg', faAnyFile, SR) = 0 then  // list the cache files
+    try
+      repeat
+        if (SR.Attr and faDirectory) <> 0 then Continue;  // files only
+        if N >= Length(F) then SetLength(F, Max(1024, N * 2));  // make room
+        F[N].Name := SR.Name;
+        F[N].Size := SR.Size;
+        F[N].Time := SR.Time;
+        Inc(Total, SR.Size);  // add its size
+        Inc(N);
+      until FindNextUTF8(SR) <> 0;
+    finally
+      FindCloseUTF8(SR);
+    end;
+    if Total <= ThumbCacheMaxBytes then Exit;  // small enough
+    SortCacheFiles(F, 0, N - 1);  // oldest first
+    I := 0;
+    while (I < N) and (Total > ThumbCacheMaxBytes div 10 * 8) do  // delete down to 80%, so this does not run every time
+    begin
+      if DeleteFileUTF8(Dir + F[I].Name) then Dec(Total, F[I].Size);  // delete the oldest file
+      Inc(I);
+    end;
+  except
+    // the cache is only a speed-up
+  end;
 end;
 
 { Loads the cached thumbnail of an item; False when there is none. }
@@ -1305,7 +1384,9 @@ begin
   // slow-to-decode types are kept in a small on-disk cache
   Heavy := (Pos(';' + Ext + ';', HeicExts) > 0) or (Pos(';' + Ext + ';', TiffExts) > 0) or  // HEIC, TIFF, DNG and WebP are slow to decode
     (Ext = '.webp') or (Pos(';' + Ext + ';', VideoExts) > 0);  // so is asking the system for a video frame
-  if Heavy and LoadCachedThumb(Item, Box) then Exit;  // use the cache for those
+  // every thumbnail is kept in the disk cache: reading one small file from the cache folder is
+  // much faster than reading the photo again from a hard disk, a memory card or a network share
+  if LoadCachedThumb(Item, Box) then Exit;  // use the cache
   VBmp := nil;  // nothing created yet
   Jpg := nil;  // nothing created yet
   Pic := nil;  // nothing created yet
@@ -1617,7 +1698,7 @@ begin
         OrientBitmap(Bmp, HeicExtraOrientation(Item.FullPath, W, H, Item.Orientation));  // turn it upright after the decoder's own rotation
       Item.Thumb := Bmp;  // give the bitmap to the item
       Bmp := nil;  // do not free it below
-      if Heavy then SaveCachedThumb(Item, Box);  // keep slow thumbnails in the cache
+      SaveCachedThumb(Item, Box);  // keep the thumbnail in the cache
     except
       on E: Exception do
         if (Pos('Wrong image format', E.Message) > 0) and LooksLikeText(Item.FullPath) then  // an unreadable text file

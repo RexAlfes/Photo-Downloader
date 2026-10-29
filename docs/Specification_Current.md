@@ -153,7 +153,7 @@ Re-evaluation runs after changes to destination, patterns, job code, profile or 
 There is no fixed limit on the number of images scanned. The source folder and all its subfolders are read (hidden and system folders are skipped) and every supported file is listed. The practical limits are memory and time:
 
 - Each file's details take a few KB. A 160-pixel thumbnail takes about 60-100 KB, so 10,000 pictures need roughly 0.6-1 GB of memory for thumbnails (the program is 64-bit).
-- When a folder loads, the first 300 ordinary thumbnails and every HEIC, AVIF, TIFF and DNG thumbnail are rendered before the grid is shown (the slow types are cached on disk); the rest are drawn as you scroll. RAW files and JPEGs with embedded previews are fast; HEIC and AVIF files take about a second or more each. HEIC, AVIF, TIFF and DNG thumbnails are cached on disk (`thumbcache` folder), so a second load is much faster.
+- When a folder loads, the first 300 ordinary thumbnails and every HEIC, AVIF, TIFF and DNG thumbnail are rendered before the grid is shown (the slow types are cached on disk); the rest are drawn as you scroll. RAW files and JPEGs with embedded previews are fast; HEIC and AVIF files take about a second or more each. Every thumbnail is cached on disk (`thumbcache` folder, at most 500 MB, oldest removed when the program closes), so a second load is much faster. JPEG thumbnails come from the camera's EXIF thumbnail when it is usable; RAW thumbnails from the smallest embedded preview that is big enough.
 - List view is lighter: thumbnails are drawn only for rows you scroll to.
 - Only the most recent 1,200 thumbnails are kept in memory (each one uses a Windows bitmap handle and a program may only own about 10,000). Older ones are drawn again when scrolled into view. Folders with about 6,000 pictures have been tested.
 
@@ -223,7 +223,7 @@ There is no fixed limit on the number of images scanned. The source folder and a
 | Windows | `%LOCALAPPDATA%\<application name>\PhotoDownloader.ini` (normally `C:\Users\<you>\AppData\Local\...`) |
 | Linux | `~/.config/<application name>/PhotoDownloader.ini` |
 
-The exact path in use is shown in the **Status** dialog (line "Settings file:"). Other files in the same folder: `profiles\` (one `.ini` per saved user profile, same format as the main file) and `thumbnail.log` (diagnostics for pictures that could not be previewed and for copy failures; written when Help > Logging is on) and `thumbcache\` (cached HEIC, AVIF, TIFF and DNG thumbnails).
+The exact path in use is shown in the **Status** dialog (line "Settings file:"). Other files in the same folder: `profiles\` (one `.ini` per saved user profile, same format as the main file) and `thumbnail.log` (diagnostics for pictures that could not be previewed and for copy failures; written when Help > Logging is on) and `thumbcache\` (cached thumbnails, at most 500 MB; the oldest are removed when the program closes).
 
 **Format.** Each key below is read with the shown default when it is missing, so a missing or deleted file simply restores the defaults. True/False values are written as `1` and `0`. Unknown keys are ignored. Delete the file (with the program closed) to reset all settings.
 
