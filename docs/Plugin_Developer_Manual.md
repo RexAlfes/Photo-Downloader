@@ -40,7 +40,7 @@ Build on the system the library is meant for. Each system needs its own build, a
 | Windows | `%LOCALAPPDATA%\Photo Downloader\plugins\`, then `plugins\` next to `PhotoDownloader.exe` |
 | Linux | `~/.config/Photo Downloader/plugins/`, then `plugins/` next to the program |
 
-**Step 3: switch it on.** Start Photo Downloader and open **Preferences > Plug-ins**. The library is listed as **example_plugin (library) - disabled**. Select it, tick **Enable plug-in** and confirm the message that shows its path. The list now shows **Example Plug-in**, and the text below names its tokens.
+**Step 3: switch it on.** Start Photo Downloader and open **File > Plug-ins…** (the Plug-ins tab of Preferences). The library is listed as **example_plugin (library) - disabled**. Select it, tick **Enable plug-in** and confirm the message that shows its path. The list now shows **Example Plug-in**, and the text below names its tokens.
 
 **Step 4: give it a value.** Click **Setup…**. The window shows the field **Site name**, the red reminder and a preview. **OK** stays disabled until a site name is entered.
 

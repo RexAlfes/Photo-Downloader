@@ -34,7 +34,7 @@ type
     FLrOutDir: string;  // folder last chosen for the JPG files made from .lrprev previews
     miPopView, miPopLocation, miPopDestLoc, miPopProps, miPopDownload, miPopDelete: TMenuItem;  // pop-up menu items
     miPopShowDown, miPopShowDup, miPopList, miPopSmall, miPopMedium, miPopLarge, miPopFit: TMenuItem;  // pop-up copies of the View menu items
-    miAuto, miEject, miShowDown, miShowDup, miList, miSmall, miMedium, miLarge, miFit, miDateSel, miLogging: TMenuItem;  // menu items that are checked or switched
+    miAuto, miPlugins, miEject, miShowDown, miShowDup, miList, miSmall, miMedium, miLarge, miFit, miDateSel, miLogging: TMenuItem;  // menu items that are checked or switched
     pnlLeft, pnlStatus, pnlButtons: TPanel;  // left panel, status panel and button panel
     lblDate, lblStatus: TLabel;  // labels for the date list and the status
     lstDates: TListBox;  // list of image dates
@@ -282,6 +282,7 @@ begin
   Cam.Enabled := False;            // direct camera (PTP) control is not supported
   AddMenu(MFile, 'Status', @StatusClick, 0);  // status window
   AddMenu(MFile, 'Preferences', @PrefsClick, ShortCut(VK_P, [ssCtrl]));  // preferences
+  miPlugins := AddMenu(MFile, 'Plug-ins...', @PrefsClick, 0);  // Preferences, opened on the Plug-ins tab
   AddMenu(MFile, 'Export Settings', @ExportClick, 0);  // export the settings
   AddMenu(MFile, 'View Trash', @ViewTrashClick, 0);  // view the trash
   AddMenu(MFile, 'Empty Trash...', @EmptyTrashClick, 0);  // empty the trash
@@ -2242,7 +2243,7 @@ begin
   ShowStatus(S, SettingsFileName);  // show the dialog (the settings file is a clickable link)
 end;
 
-{ Opens the Preferences dialog and rescans when the destination changed. }
+{ Opens the Preferences dialog (on the Plug-ins tab for File > Plug-ins) and rescans when the destination changed. }
 procedure TMainForm.PrefsClick(Sender: TObject);
 var
   OldDir, OldMask: string;  // OldDir, OldMask: destination before the dialog
@@ -2251,7 +2252,7 @@ begin
   OldDir := FS.DownloadDir;  // remember the folder
   OldMask := FS.FileNameMask;  // remember the file name pattern
   OldLrData := FS.ScanLrData;  // remember the Lightroom option
-  if ExecutePreferences(FS, FCamera) then  // show the dialog
+  if ExecutePreferences(FS, FCamera, Sender = miPlugins) then  // show the dialog
   begin
     SaveSettingsNow;  // save the settings
     ApplyState;  // apply the settings

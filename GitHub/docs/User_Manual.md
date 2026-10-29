@@ -273,7 +273,7 @@ If the file cannot be shown, the viewer says so and the log tells you why.
 
 ## 12. Preferences
 
-Open File > Preferences (Ctrl+P). The dialog has seven tabs: Download Path, General, File Handling, Automation, Mapping, Custom Button and Plug-ins.
+Open File > Preferences (Ctrl+P). The dialog has seven tabs: Download Path, General, File Handling, Automation, Mapping, Custom Button and Plug-ins. **File > Plug-ins...** opens it directly on the Plug-ins tab.
 
 ### Download Path
 Destination folder template, file name template, default job code, "Prompt for job code every time Downloader is run", the starting sequence number with Reset, "Show tokens…", the example image, **Verify every copy**, and the **backup folder**.
