@@ -236,7 +236,7 @@ A progress window shows the file being copied and has a **Cancel** button; a can
 
 **Auto-rotate.** Downloaded JPEGs are turned upright according to their EXIF orientation without recompressing them (lossless). Up to 15 rows or columns that do not fill a block may be trimmed at one edge, as the standard tool `jpegtran -trim` does. The thumbnails and viewer always show pictures upright regardless of this option.
 
-**Other options** (Preferences > File Handling): Save files as read-only; Preserve read-only status; Use image capture time for file timestamp; Convert file name to lower case; Lower case file extensions; Rename `.jpe` to `.jpg`; Generate text file containing EXIF shooting data; Add IPTC/XMP data (a `.xmp` sidecar is written; see Edit > IPTC/XMP Data); Add author and copyright to EXIF of downloaded JPEGs (only where those fields are empty).
+**Other options** (Preferences > File Handling): Save files as read-only; Preserve read-only status; Use image capture time for file timestamp; Convert file name to lower case; Lower case file extensions; Rename `.jpe` to `.jpg`; Save Lightroom previews (`.lrprev`) as `.jpg`, optionally keeping both; Generate text file containing EXIF shooting data; Add IPTC/XMP data (a `.xmp` sidecar is written; see Edit > IPTC/XMP Data); Add author and copyright to EXIF of downloaded JPEGs (only where those fields are empty).
 
 **Custom button.** Preferences > Custom button adds a button with your own caption that runs a program. In the command line `%f` is the file and `%d` its directory.
 
@@ -291,6 +291,7 @@ How downloaded files are named, copied and treated.
 - Ignore file size check (for images modified after downloading).
 - Auto-rotate JPEGs after downloading (lossless).
 - Rename `.jpe` files to `.jpg`.
+- **Save Lightroom previews (.lrprev) as .jpg when downloading**: the largest preview picture in the file is saved as a `.jpg` (unchanged, not re-encoded) instead of the `.lrprev` file. **Save both** (only with the option above) keeps the `.lrprev` file and writes the `.jpg` next to it. A `.lrprev` saved as `.jpg` counts as downloaded when the `.jpg` exists (its size never matches the original).
 - Convert file names to lower case; lower case file extensions.
 - Use image capture time for the file timestamp.
 - Generate a text file containing EXIF shooting data.
@@ -331,7 +332,7 @@ View > **File Types…** (or right-click > File Types…) selects which kinds of
 | HEIC, HEIF, AVIF | Yes, with the bundled decoder; no extra software needed. Files that are corrupt show the gray box with a red X. |
 | Video (MP4, MOV, LRV, one option each) | Listed and copied. The capture date and length come from the movie header. The thumbnail is a real frame from the Windows Shell, or on Linux from ffmpegthumbnailer or ffmpeg when installed (`sudo apt install ffmpegthumbnailer`). Otherwise the cover picture inside the file or a `.thm` file with the same name is used, and if there is none, a dark tile with a play symbol. Double-click plays the video in your default player. |
 | Audio (MP3) | Listed and copied. It shows a default music-note tile, and double-click plays it in your default player. |
-| Adobe Lightroom preview (.lrprev) | Listed and copied. The thumbnail and viewer show the largest preview stored in the file, at most 256 pixels, already upright. The file holds no original file name and no EXIF data, so the capture date is the file's own date; the preview cannot be matched to its photo by name. |
+| Adobe Lightroom preview (.lrprev) | Listed and copied. The thumbnail and viewer show the largest preview stored in the file, at most 256 pixels, already upright. The file holds no original file name and no EXIF data, so the capture date is the file's own date; the preview cannot be matched to its photo by name. Preferences > File Handling can save it as a `.jpg` when downloading (or both). |
 
 ## 16. Logging and troubleshooting
 

@@ -770,7 +770,7 @@ type
     // General
     rbAuto, rbCamera, rbCard: TRadioButton;  // image source choices
     edLetters: TEdit;  // drive letters box
-    chkPTP, chkReadOnly, chkPreserveRO, chkProfile, chkAutoRename, chkRenameDup, chkIgnoreDup, chkIgnoreSize, chkRotate, chkJpe,  // general options (first part)
+    chkPTP, chkReadOnly, chkPreserveRO, chkProfile, chkAutoRename, chkRenameDup, chkIgnoreDup, chkIgnoreSize, chkRotate, chkJpe, chkLrJpg, chkLrBoth,  // general options (first part)
     chkLowerName, chkLowerExt, chkStamp, chkSaveJobs, chkExifTxt, chkEject, chkWholeDisk,  // general options (second part)
     chkIptc, chkPromptIptc, chkIIM, chkNef, chkExifOwner, chkLoadLast, chkSingle, chkWinSafe: TCheckBox;  // general options (third part)
     lblLetters: TLabel;  // label of the drive letters box
@@ -795,6 +795,7 @@ type
     procedure BuildGeneralTab(TS: TTabSheet);  // builds the General tab
     procedure BuildFileTab(TS: TTabSheet);  // builds the File Handling tab
     procedure DupChange(Sender: TObject);  // keeps the duplicate options exclusive
+    procedure LrChange(Sender: TObject);  // enables "keep the .lrprev file as well" when .jpg is chosen
     procedure BuildAutomationTab(TS: TTabSheet);  // builds the Automation tab
     procedure BuildCustomTab(TS: TTabSheet);  // builds the Custom button tab
     procedure BuildMappingTab(TS: TTabSheet);  // builds the Mapping tab
@@ -1128,6 +1129,11 @@ begin
   chkIgnoreSize := Row('Ignore file size check to allow for images modified after downloading');  // ignore size option
   chkRotate := Row('Auto-rotate JPEGs after downloading (lossless rotation)');  // auto-rotate option
   chkJpe := Row('Rename files with .jpe extension to .jpg when downloading');  // rename .jpe option
+  chkLrJpg := Row('Save Lightroom previews (.lrprev) as .jpg when downloading');  // .lrprev as .jpg option
+  chkLrBoth := Row('Save both: keep the .lrprev file as well as the .jpg');  // keep both option
+  chkLrBoth.Left := 28;  // indented: belongs to the option above
+  chkLrBoth.Width := 450;  // rest of the tab width
+  chkLrJpg.OnClick := @LrChange;  // the second option needs the first
   chkLowerName := Row('Convert filename to lower case');  // lower case name option
   chkLowerExt := Row('Lower case file extensions');  // lower case extension option
   chkStamp := Row('Use image capture time for file timestamp');  // capture time option
@@ -1138,6 +1144,12 @@ begin
   {$ENDIF}
   chkIgnoreDup.OnClick := @DupChange;  // keep the two duplicate options exclusive
   chkRenameDup.OnClick := @DupChange;  // keep the two duplicate options exclusive
+end;
+
+{ Enables "Save both" only while "Save Lightroom previews as .jpg" is checked. }
+procedure TPrefsForm.LrChange(Sender: TObject);
+begin
+  chkLrBoth.Enabled := chkLrJpg.Checked;  // keeping both only makes sense when a .jpg is made
 end;
 
 { Keeps "Ignore duplicate files" and "Download duplicates as (1), (2)" from being checked together. }
@@ -1585,6 +1597,9 @@ begin
     chkRenameDup.Checked := FS.RenameDuplicates;  // download duplicates renamed
     chkRotate.Checked := FS.AutoRotate;  // auto-rotate JPEGs
     chkJpe.Checked := FS.RenameJpe;  // rename .jpe files
+    chkLrJpg.Checked := FS.LrPrevAsJpg;  // .lrprev files as .jpg
+    chkLrBoth.Checked := FS.LrPrevKeepBoth;  // keep the .lrprev file as well
+    LrChange(nil);  // enable the second option to match
     chkLowerName.Checked := FS.LowerName;  // lower case names
     chkLowerExt.Checked := FS.LowerExt;  // lower case extensions
     chkStamp.Checked := FS.UseCaptureTime;  // use the capture time
@@ -1663,6 +1678,8 @@ begin
   FS.RenameDuplicates := chkRenameDup.Checked;  // download duplicates renamed
   FS.AutoRotate := chkRotate.Checked;  // auto-rotate JPEGs
   FS.RenameJpe := chkJpe.Checked;  // rename .jpe files
+  FS.LrPrevAsJpg := chkLrJpg.Checked;  // .lrprev files as .jpg
+  FS.LrPrevKeepBoth := chkLrBoth.Checked;  // keep the .lrprev file as well
   FS.LowerName := chkLowerName.Checked;  // lower case names
   FS.LowerExt := chkLowerExt.Checked;  // lower case extensions
   FS.UseCaptureTime := chkStamp.Checked;  // use the capture time

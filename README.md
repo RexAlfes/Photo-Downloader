@@ -76,7 +76,7 @@ There is no fixed limit on the number of images scanned. The source folder and a
 - Only the most recent 1,200 thumbnails (about 600 at the 320-pixel size) are kept in memory (each one uses a Windows bitmap handle and a program may only own about 10,000). Older ones are drawn again when scrolled into view. Folders with about 6,000 pictures have been tested.
 
 ## Known limitations
-- Lightroom preview files (.lrprev) are view-only: they hold small previews (at most 256 pixels) and no original file name, only an id.
+- Lightroom preview files (.lrprev) hold small previews (at most 256 pixels) and no original file name, only an id. Preferences > File Handling can save them as .jpg when downloading, or save both the .lrprev and the .jpg.
 - Windows is the primary platform. Card-reader detection, eject and single-instance handling are Windows only.
 - Not implemented yet: direct USB camera (PTP/MTP) download, GPS geotagging, watch mode,
   embedded IIM/IPTC (XMP is written as a `.xmp` sidecar), download history.

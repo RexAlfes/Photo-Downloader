@@ -1586,6 +1586,8 @@ function TMainForm.DoDownload(Silent: Boolean): Boolean;
 var
   L: TList;  // L: files to download
   I, Done, Skipped, Failed, Problems, ExifFail: Integer;  // I: loop counter; Done: files copied; Skipped: files skipped; Failed: files that failed; Problems: problem files; ExifFail: owner field failures
+  JpgFail: Integer;  // JpgFail: .jpg files that could not be made from .lrprev files ("Save both")
+  JDest, JHash, JErr: string;  // JDest, JHash, JErr: destination, MD5 and error text of that .jpg
   TotalKb, DoneKb: Int64;  // TotalKb: total size; DoneKb: size copied
   It: TImageItem;  // It: current item
   Dest, Msg, Hash, Err, BDest, BHash, BErr: string;  // Dest: destination; Msg: message text; Hash: MD5 of the source; Err: error text; BDest, BHash, BErr: the same for the backup copy
@@ -1596,6 +1598,7 @@ var
 begin
   Result := False;  // assume failure
   Done := 0; Skipped := 0; Failed := 0; Problems := 0; ExifFail := 0;  // clear the counters
+  JpgFail := 0;  // no .jpg failed yet
   BackupFail := 0; Verified := 0;  // clear the counters
   UniqueMode := FS.AutoRenameClash;  // rename name clashes automatically when that option is on; otherwise skip problem files by default
   Msg := '';  // no message yet
@@ -1686,7 +1689,10 @@ begin
           if FS.VerifyCopy then
             FProgLbl.Caption := Format('Copying and verifying %d of %d: %s  (%s)',  // progress text
               [I + 1, L.Count, It.FileName, FormatSize(It.Size)]);
-          CR := CopyFileChecked(It.FullPath, Dest, FS.VerifyCopy, Hash, Err);  // copy and verify
+          if LrPrevJpgOnly(FS, It) then  // a Lightroom preview downloaded as a .jpg only
+            CR := SaveLrPrevJpg(It.FullPath, Dest, FS.VerifyCopy, Hash, Err)  // write its preview picture (Dest ends in .jpg)
+          else
+            CR := CopyFileChecked(It.FullPath, Dest, FS.VerifyCopy, Hash, Err);  // copy and verify
           if CR = crOk then Break;  // copy is good
           LogThumb('copy failed (' + IntToStr(Attempt) + '): ' + It.FullPath + ' -> ' + Dest + ': ' + Err);  // log the failure
         until (CR = crCanceled) or (Attempt >= 2);  // try twice unless canceled
@@ -1701,6 +1707,23 @@ begin
           Break;  // stop copying
         end;
         if FS.VerifyCopy then Inc(Verified);  // count the verified copy
+        // "Save both": a .jpg of the Lightroom preview next to the downloaded .lrprev file
+        if FS.LrPrevAsJpg and FS.LrPrevKeepBoth and
+           (Pos(';' + LowerCase(ExtractFileExt(It.FileName)) + ';', LrPrevExts) > 0) then
+        begin
+          JDest := ChangeFileExt(Dest, '.jpg');  // same name with .jpg
+          if FileExistsUTF8(JDest) then JDest := UniqueName(JDest, True);  // never overwrite: add (1), (2) ...
+          if SaveLrPrevJpg(It.FullPath, JDest, FS.VerifyCopy, JHash, JErr) = crOk then  // write the preview picture
+          begin
+            if FS.UseCaptureTime then  // same file time as the .lrprev file
+              FileSetDateUTF8(JDest, DateTimeToFileDate(It.CaptureTime));  // set the file time
+          end
+          else
+          begin
+            Inc(JpgFail);  // count the failure (the .lrprev file itself was downloaded)
+            LogThumb('could not save ' + JDest + ' from ' + It.FullPath + ': ' + JErr);  // log the reason
+          end;
+        end;
         It.NoDelete := False;  // the original may be deleted
         It.BackupPath := '';  // no backup yet
         // second copy, made from the verified download before it is changed by rotation or metadata
@@ -1782,6 +1805,8 @@ begin
       SetStatus(lblStatus.Caption + Format(' %d verified.', [Verified]));  // status text
     if ExifFail > 0 then  // owner fields failed
       SetStatus(lblStatus.Caption + Format(' Author/copyright could not be written to %d file(s).', [ExifFail]));  // status text
+    if JpgFail > 0 then  // .jpg files from .lrprev files failed
+      SetStatus(lblStatus.Caption + Format(' %d .jpg file(s) could not be made from .lrprev previews (see the log).', [JpgFail]));  // status text
     if BackupFail > 0 then  // backup copies failed
     begin
       SetStatus(lblStatus.Caption + Format(' %d backup copy(ies) FAILED.', [BackupFail]));  // status text

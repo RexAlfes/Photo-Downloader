@@ -189,7 +189,7 @@ There is no fixed limit on the number of images scanned. The source folder and a
 | Installer and code signing | Windows SmartScreen warns about unsigned programs |
 | Automated tests | File name tokens, date logic and duplicate rules are pure functions and easy to test |
 | Audio (MP3) | Done – default music-note tile, double-click plays in the default player. MP3 and THM files are off by default |
-| Adobe Lightroom previews (.lrprev) | Build 57, view only, off by default (File Types entry LrPrev): unit `uLrPrev` reads the AgHg blocks, takes the JPEG of the largest level (at most 256 px, already upright); no EXIF and no file name inside; the header time is not used as capture date. Parser checked on 21 sample files; to be tested in the program |
+| Adobe Lightroom previews (.lrprev) | Build 57, view only, off by default (File Types entry LrPrev): unit `uLrPrev` reads the AgHg blocks, takes the JPEG of the largest level (at most 256 px, already upright); no EXIF and no file name inside; the header time is not used as capture date. Parser checked on 21 sample files; to be tested in the program. File Handling options "Save Lightroom previews (.lrprev) as .jpg when downloading" (`LrPrevAsJpg`) and "Save both" (`LrPrevKeepBoth`): the largest preview is written unchanged as .jpg (`uItems.SaveLrPrevJpg`, verified like a copy); with .jpg only the destination name ends in .jpg and an existing .jpg counts as downloaded without the size check. Writer checked on 200 real files; download not yet tested in the program |
 | Direct USB camera download (PTP/MTP) | libgphoto2 on Linux |
 | GPS geotagging, watch mode | Open |
 | Convert forms to .LFM files | Open |
@@ -249,6 +249,8 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 | `[General]` | `WinSafeNames` | True/False | 1 | Replace characters Windows cannot store in file names (Linux only; always on in Windows) |
 | `[General]` | `Logging` | True/False | 1 | Write diagnostics to `thumbnail.log` (Help > Logging) |
 | `[General]` | `RenameJpe` | True/False | 0 | Rename .jpe to .jpg |
+| `[General]` | `LrPrevAsJpg` | True/False | 0 | Save Lightroom previews (.lrprev) as .jpg when downloading |
+| `[General]` | `LrPrevKeepBoth` | True/False | 0 | With LrPrevAsJpg: keep the .lrprev file as well (save both) |
 | `[General]` | `LowerName` | True/False | 0 | Lower-case file names |
 | `[General]` | `LowerExt` | True/False | 0 | Lower-case extensions |
 | `[General]` | `UseCaptureTime` | True/False | 1 | Use the image capture time for the file timestamp |
