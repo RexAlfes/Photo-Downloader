@@ -9,7 +9,7 @@
 | Windows | `%LOCALAPPDATA%\<application name>\PhotoDownloader.ini` (normally `C:\Users\<you>\AppData\Local\...`) |
 | Linux | `~/.config/<application name>/PhotoDownloader.ini` |
 
-The exact path in use is shown in the **Status** dialog (line "Settings file:"). Other files in the same folder: `profiles\` (one `.ini` per saved user profile, same format as the main file) and `thumbnail.log` (diagnostics for pictures that could not be previewed and for copy failures; written when Help > Logging is on) and `thumbcache\` (cached thumbnails, at most 500 MB; the oldest are removed when the program closes).
+The exact path in use is shown in the **Status** dialog (line "Settings file:"). Other files in the same folder: `profiles\` (one `.ini` per saved user profile, same format as the main file) and `thumbnail.log` (diagnostics for pictures that could not be previewed and for copy failures; written when Help > Logging is on) and `thumbcache\` (cached thumbnails, at most 500 MB; the oldest are removed when the program closes) and `exifcache.txt` (the camera, date and orientation read from each scanned file, at most 100,000 files; a file is read again when its size or date changes). Both can be deleted at any time; they are rebuilt.
 
 **Format.** Each key below is read with the shown default when it is missing, so a missing or deleted file simply restores the defaults. True/False values are written as `1` and `0`. Unknown keys are ignored. Delete the file (with the program closed) to reset all settings.
 

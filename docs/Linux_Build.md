@@ -19,7 +19,7 @@ lazbuild -B --ws=gtk2 PhotoDownloader.lpi
 `--ws=gtk2` is recommended and is what the GitHub check builds (lazbuild also uses GTK 2 when no widgetset is given). In the Lazarus IDE the default widgetset on Linux is normally GTK 2 as well. The program is written to `bin/linux/PhotoDownloader`. There is one project file for both systems: it does not name a target system or processor, so it builds for the system you are on. Build on Linux itself: cross compiling from Windows to Linux does not work with the current Lazarus and Free Pascal. Tested on Linux Mint. `cthreads` is already the first unit in the project file under `UNIX`, which the decoder thread needs.
 
 ## Differences from Windows
-- Settings: `~/.config/<application name>/PhotoDownloader.ini`; thumbnail cache in `$XDG_CACHE_HOME` or `~/.cache/PhotoDownloader/thumbcache`.
+- Settings: `~/.config/<application name>/PhotoDownloader.ini`; thumbnail cache in `$XDG_CACHE_HOME` or `~/.cache/PhotoDownloader/thumbcache`, EXIF cache `exifcache.txt` beside it.
 - Card detection: devices mounted under `/media/`, `/run/media/` or `/mnt/` (read from `/proc/mounts`). The card reader drive-letter setting is hidden.
 - Eject: `udisksctl`, then `gio mount -u`, then `umount`.
 - Safe delete: hidden trash folder on removable media; `gio trash` on fixed disks.

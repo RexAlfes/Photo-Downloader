@@ -263,6 +263,195 @@ var
   LastProgTick: QWord = 0;  // time of the last progress report
   LoggedMsgs: TStringList = nil;  // messages already written to the log, so that each is written only once
 
+{ ---- EXIF cache ----
+  The scan keeps the EXIF fields of every file it read in exifcache.txt (in CacheDir), so a folder
+  that is scanned again does not read every file again. A line is used only while the file keeps
+  its path, size and modification time. }
+
+const
+  { Change when ReadExifFromFile changes so that values kept from an older version are read again }
+  ExifCacheVersion = 'PhotoDownloader EXIF cache 1';  // first line of the cache file
+  ExifCacheMax = 100000;  // largest number of files kept in the cache
+
+type
+  { The cached EXIF fields of one file }
+  TExifCacheEntry = class
+    Data: string;  // the fields, separated by tabs
+    Used: Boolean;  // True when the file was seen in this session (kept first when the cache is full)
+  end;
+
+var
+  ExifCache: TStringList = nil;  // key (path, size, time) -> TExifCacheEntry; loaded on the first scan
+  ExifCacheDirty: Boolean = False;  // True when the cache changed since it was saved
+
+{ Returns the name of the EXIF cache file. }
+function ExifCacheFile: string;
+begin
+  Result := CacheDir + 'exifcache.txt';  // next to the thumbnail cache
+end;
+
+{ Returns the cache key of a file: path, size and modification time, separated by tabs. }
+function ExifCacheKey(const FullPath: string; Size: Int64; Time: LongInt): string;
+begin
+  Result := FullPath + #9 + IntToStr(Size) + #9 + IntToStr(Time);  // key fields
+end;
+
+{ Loads the EXIF cache file into ExifCache (an empty cache when there is none or it is from another version). }
+procedure LoadExifCache;
+var
+  L: TStringList;  // L: lines of the file
+  I, P, Tabs: Integer;  // I: line; P: character position; Tabs: tabs counted
+  E: TExifCacheEntry;  // E: new entry
+  Line: string;  // Line: current line
+begin
+  ExifCache := TStringList.Create;  // the cache
+  ExifCache.OwnsObjects := True;  // entries are freed with the list
+  ExifCache.CaseSensitive := True;  // keys compare exactly
+  ExifCache.UseLocale := False;  // compare the bytes, not by language rules
+  L := TStringList.Create;  // lines of the file
+  try
+    try
+      if FileExistsUTF8(ExifCacheFile) then L.LoadFromFile(ExifCacheFile);  // read the file
+    except
+      L.Clear;  // an unreadable cache is ignored
+    end;
+    if (L.Count > 0) and (L[0] = ExifCacheVersion) then  // only a cache of this version is used
+    begin
+      ExifCache.Capacity := L.Count;  // room for every line
+      for I := 1 to L.Count - 1 do  // every line after the version
+      begin
+        Line := L[I];  // current line
+        // the key is the first three fields; the rest is the data
+        Tabs := 0;  // no tab yet
+        P := 1;  // start of the line
+        while (P <= Length(Line)) and (Tabs < 3) do  // find the third tab
+        begin
+          if Line[P] = #9 then Inc(Tabs);  // count the tab
+          Inc(P);  // next character
+        end;
+        if Tabs < 3 then Continue;  // a broken line
+        E := TExifCacheEntry.Create;  // new entry
+        E.Data := Copy(Line, P, MaxInt);  // the data after the key
+        ExifCache.AddObject(Copy(Line, 1, P - 2), E);  // the key without its last tab
+      end;
+    end;
+  finally
+    L.Free;  // free the lines
+  end;
+  ExifCache.Sorted := True;  // sort once after loading (faster than keeping it sorted while adding)
+  ExifCache.Duplicates := dupIgnore;  // a key is kept only once
+  ExifCacheDirty := False;  // same as the file
+end;
+
+{ Writes the EXIF cache file when it changed; files seen in this session are kept first when it is full. }
+procedure SaveExifCache;
+var
+  L: TStringList;  // L: lines of the file
+  I, Pass: Integer;  // I: entry; Pass: 0 = entries seen in this session, 1 = the others
+  E: TExifCacheEntry;  // E: current entry
+begin
+  if (ExifCache = nil) or (not ExifCacheDirty) then Exit;  // nothing to write
+  L := TStringList.Create;  // lines of the file
+  try
+    try
+      L.Add(ExifCacheVersion);  // version line
+      for Pass := 0 to 1 do  // used entries first, then the others while there is room
+        for I := 0 to ExifCache.Count - 1 do  // every entry
+        begin
+          if L.Count > ExifCacheMax then Break;  // the cache is full
+          E := TExifCacheEntry(ExifCache.Objects[I]);  // current entry
+          if E.Used = (Pass = 0) then L.Add(ExifCache[I] + #9 + E.Data);  // key and data
+        end;
+      L.SaveToFile(ExifCacheFile);  // write the file
+      ExifCacheDirty := False;  // same as the file now
+    except
+      // the cache is only a speed-up
+    end;
+  finally
+    L.Free;  // free the lines
+  end;
+end;
+
+{ Turns EXIF fields into the cache data text; False when a text holds a tab or line break. }
+function ExifToData(Res: Boolean; const Info: TExifInfo; out Data: string): Boolean;
+var
+  D: Double;  // D: capture time, so its exact bits can be stored
+  I, Tabs: Integer;  // I: character position; Tabs: tabs counted
+begin
+  D := Info.DateTaken;  // capture time
+  Data := IntToStr(Ord(Res)) + #9 + IntToStr(Ord(Info.Valid)) + #9 + Info.Make + #9 + Info.Model + #9 +  // result and texts
+    Info.Artist + #9 + Info.Owner + #9 + Info.Serial + #9 + IntToStr(Ord(Info.HasDate)) + #9 +
+    IntToHex(PInt64(@D)^, 16) + #9 + IntToStr(Info.ISO) + #9 + IntToStr(Info.Orientation);  // date (exact) and numbers
+  Result := False;  // assume an unusable text
+  Tabs := 0;  // no tab yet
+  for I := 1 to Length(Data) do  // every character
+  begin
+    if Data[I] in [#10, #13] then Exit;  // a line break would split the line
+    if Data[I] = #9 then Inc(Tabs);  // count the separators
+  end;
+  Result := Tabs = 10;  // a tab inside a text would add a field
+end;
+
+{ Turns the cache data text back into EXIF fields; False when it is broken. }
+function DataToExif(const Data: string; out Res: Boolean; out Info: TExifInfo): Boolean;
+var
+  F: TStringArray;  // F: the fields
+  Bits: Int64;  // Bits: stored bits of the capture time
+  D: Double;  // D: capture time
+begin
+  Result := False;  // assume broken data
+  Res := False;  // no EXIF data
+  Info.Valid := False;  // clear the fields
+  Info.Make := ''; Info.Model := ''; Info.Artist := ''; Info.Owner := ''; Info.Serial := '';
+  Info.DateTaken := 0; Info.HasDate := False; Info.ISO := 0; Info.Orientation := 0;
+  F := Data.Split([#9]);  // split into fields
+  if Length(F) <> 11 then Exit;  // wrong number of fields
+  if not TryStrToInt64('$' + F[8], Bits) then Exit;  // broken date
+  D := PDouble(@Bits)^;  // the exact capture time
+  Res := F[0] = '1';  // result of ReadExifFromFile
+  Info.Valid := F[1] = '1';  // valid flag
+  Info.Make := F[2]; Info.Model := F[3]; Info.Artist := F[4]; Info.Owner := F[5]; Info.Serial := F[6];  // texts
+  Info.HasDate := F[7] = '1';  // date flag
+  Info.DateTaken := D;  // capture time
+  Info.ISO := StrToIntDef(F[9], 0);  // ISO speed
+  Info.Orientation := StrToIntDef(F[10], 0);  // orientation
+  Result := True;  // success
+end;
+
+{ ReadExifFromFile through the cache: a file with the same path, size and time is not read again. }
+function CachedExif(const FullPath: string; Size: Int64; Time: LongInt; out Info: TExifInfo): Boolean;
+var
+  Key, Data: string;  // Key: cache key; Data: cached fields
+  I: Integer;  // I: position in the cache
+  E: TExifCacheEntry;  // E: cache entry
+begin
+  if ExifCache = nil then LoadExifCache;  // load the cache on the first scan
+  Key := ExifCacheKey(FullPath, Size, Time);  // key of this file
+  if ExifCache.Find(Key, I) then  // the file was read before
+  begin
+    E := TExifCacheEntry(ExifCache.Objects[I]);  // its entry
+    if DataToExif(E.Data, Result, Info) then  // usable data
+    begin
+      E.Used := True;  // seen in this session
+      Exit;  // done without reading the file
+    end;
+  end;
+  Result := ReadExifFromFile(FullPath, Info);  // read the file (an exception skips the cache)
+  if ExifToData(Result, Info, Data) then  // fields that fit in one line
+  begin
+    if ExifCache.Find(Key, I) then  // replace broken data
+      TExifCacheEntry(ExifCache.Objects[I]).Data := Data
+    else
+    begin
+      E := TExifCacheEntry.Create;  // new entry
+      E.Data := Data;  // its fields
+      E.Used := True;  // seen in this session
+      ExifCache.AddObject(Key, E);  // add it
+    end;
+    ExifCacheDirty := True;  // save it after the scan
+  end;
+end;
+
 { Scans one folder and its subfolders for image files. }
 procedure ScanDir(const Dir: string; Items: TObjectList; var Cnt: Integer;
   Progress: TScanProgress);
@@ -314,7 +503,7 @@ begin
         // shrank) raises a stream read error. Such a file is still listed, with its file time, and the scan goes on.
         try
           if Pos(';' + LowerCase(ExtractFileExt(SR.Name)) + ';', ExifExts) > 0 then  // file type may carry EXIF data
-            if ReadExifFromFile(Full, Info) then  // read the EXIF data
+            if CachedExif(Full, SR.Size, SR.Time, Info) then  // read the EXIF data (from the cache when the file is unchanged)
             begin
               if Info.HasDate then It.CaptureTime := Info.DateTaken;  // capture date
               It.Camera := Info.Model;  // camera model
@@ -360,10 +549,14 @@ begin
   Cnt := 0;  // nothing found yet
   ScanAbort := False;  // clear the abort flag
   Dcim := IncludeTrailingPathDelimiter(Root) + 'DCIM';  // path of the DCIM folder
-  if (not S.ScanWholeDisk) and DirectoryExistsUTF8(Dcim) then  // use DCIM unless the whole disk is to be scanned
-    ScanDir(Dcim, Items, Cnt, Progress)  // scan DCIM
-  else
-    ScanDir(Root, Items, Cnt, Progress);  // scan the whole root
+  try
+    if (not S.ScanWholeDisk) and DirectoryExistsUTF8(Dcim) then  // use DCIM unless the whole disk is to be scanned
+      ScanDir(Dcim, Items, Cnt, Progress)  // scan DCIM
+    else
+      ScanDir(Root, Items, Cnt, Progress);  // scan the whole root
+  finally
+    SaveExifCache;  // keep what was read for the next scan (also after Cancel)
+  end;
   Items.Sort(@CompareItems);  // sort by capture time
   for I := 0 to Items.Count - 1 do  // number the items
     ItemAt(Items, I).Index := I + 1;  // set the grid number
@@ -648,6 +841,45 @@ var
   Dups, Groups, Firsts: TStringList;  // Dups: keys of pictures seen; Groups: destinations with counts; Firsts: first item per destination
   Key: string;  // Key: duplicate key
   Taken: TStringList;  // Taken: destination names already planned for other files
+  DestDirs: TStringList;  // DestDirs: destination folders listed so far; each object is a list of its file names with sizes
+
+  { Returns the size of the file at Path, or -1 when there is none. Each destination folder is listed
+    once, which is much faster than asking for every file (above all on a network drive). }
+  function DestSize(const Path: string): Int64;
+  var
+    Dir: string;  // Dir: folder of the file
+    P, Q: Integer;  // P: position of the folder; Q: position of the file
+    Names: TStringList;  // Names: files in the folder, sizes in the objects
+    SR: TSearchRec;  // SR: directory entry
+  begin
+    Result := -1;  // no such file
+    Dir := ExtractFilePath(Path);  // folder of the file
+    if not DestDirs.Find(Dir, P) then  // folder not listed yet
+    begin
+      Names := TStringList.Create;  // files of the folder
+      Names.OwnsObjects := False;  // the objects are sizes, not objects
+      {$IFDEF WINDOWS}
+      Names.CaseSensitive := False;  // Windows file names ignore case (also for letters such as accented ones)
+      {$ELSE}
+      Names.CaseSensitive := True;  // Linux file names are case-sensitive
+      Names.UseLocale := False;  // compare the bytes, not by language rules
+      {$ENDIF}
+      if FindFirstUTF8(Dir + '*', faAnyFile, SR) = 0 then  // list the folder (nothing when it does not exist)
+      try
+        repeat
+          if (SR.Attr and faDirectory) = 0 then  // files only, like FileExistsUTF8
+            Names.AddObject(SR.Name, TObject(PtrInt(SR.Size)));  // name and size
+        until FindNextUTF8(SR) <> 0;  // next entry
+      finally
+        FindCloseUTF8(SR);  // close the search
+      end;
+      Names.Sorted := True;  // sort once for fast lookups
+      DestDirs.AddObject(Dir, Names);  // remember the folder
+      DestDirs.Find(Dir, P);  // its position in the sorted list
+    end;
+    Names := TStringList(DestDirs.Objects[P]);  // files of the folder
+    if Names.Find(ExtractFileName(Path), Q) then Result := PtrInt(Names.Objects[Q]);  // size of the file
+  end;
 
   { Returns a free "name (1).ext" style name next to Dest: not on disk and not planned for another file. }
   function FreeName(const Dest: string): string;
@@ -661,7 +893,7 @@ var
     repeat
       Result := Base + ' (' + IntToStr(N) + ')' + Ext;  // try the "(1)" style name
       Inc(N);  // next number
-    until (not FileExistsUTF8(Result)) and (Taken.IndexOf(Result) < 0);  // stop at a name nobody uses
+    until (DestSize(Result) < 0) and (Taken.IndexOf(Result) < 0);  // stop at a name nobody uses
     Taken.Add(Result);  // reserve it
   end;
 
@@ -672,6 +904,11 @@ begin
   Taken.CaseSensitive := False;  // ignore case
   Groups := TStringList.Create;  // destinations with counts
   Firsts := TStringList.Create;  // first item per destination
+  DestDirs := TStringList.Create;  // destination folders listed so far
+  DestDirs.OwnsObjects := True;  // the name lists are freed with it
+  DestDirs.CaseSensitive := True;  // folders compare exactly
+  DestDirs.UseLocale := False;  // compare the bytes, not by language rules
+  DestDirs.Sorted := True;  // keep the list sorted
   try
     Dups.Sorted := True;  // keep the list sorted
     Dups.CaseSensitive := False;  // ignore case
@@ -716,15 +953,15 @@ begin
       if It.Status = isDuplicate then  // a duplicate keeps its status
       begin
         // with "Download duplicates as (1), (2) ..." the planned name already carries the number
-        if S.RenameDuplicates and (FileExistsUTF8(It.DestPath) or (Taken.IndexOf(It.DestPath) >= 0)) then
+        if S.RenameDuplicates and ((DestSize(It.DestPath) >= 0) or (Taken.IndexOf(It.DestPath) >= 0)) then
           It.DestPath := FreeName(It.DestPath)  // name is taken by a file or by another planned file
         else
           Taken.Add(It.DestPath);  // reserve the name for this duplicate
         Continue;  // duplicates are done
       end;
-      if FileExistsUTF8(It.DestPath) then  // a file with the destination name exists
+      if DestSize(It.DestPath) >= 0 then  // a file with the destination name exists
       begin
-        if S.IgnoreSizeCheck or (FileSizeUtf8(It.DestPath) = It.Size) then  // same size (or size check ignored)
+        if S.IgnoreSizeCheck or (DestSize(It.DestPath) = It.Size) then  // same size (or size check ignored)
           It.Status := isDownloaded  // already downloaded
         else
           begin
@@ -753,7 +990,7 @@ begin
         It.Status := isNew;  // not a problem: shown as a new file that gets a new name
         J := 0;  // number of the first item with this destination (0 = not a clash between new files)
         P := Firsts.IndexOf(It.DestPath);  // find the destination in the list
-        if (P >= 0) and (not FileExistsUTF8(It.DestPath)) then J := PtrInt(Firsts.Objects[P]);  // clash only between new files
+        if (P >= 0) and (DestSize(It.DestPath) < 0) then J := PtrInt(Firsts.Objects[P]);  // clash only between new files
         if (J > 0) and (J = It.Index) then
           It.ClashInfo := ''  // the first of them keeps its name
         else
@@ -761,6 +998,7 @@ begin
       end;
     end;
   finally
+    DestDirs.Free;  // free the folder lists
     Taken.Free;  // free the list
     Dups.Free;  // free the list
     Groups.Free;  // free the list
@@ -1924,5 +2162,6 @@ end;
 
 finalization
   FreeAndNil(ThumbLru);  // free the thumbnail list
+  FreeAndNil(ExifCache);  // free the EXIF cache
 
 end.
