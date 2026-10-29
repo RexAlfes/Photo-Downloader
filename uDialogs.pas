@@ -12,7 +12,7 @@ function ExecuteJobCode(S: TAppSettings; var Job: string; const CurrentCamera: s
 { As ExecuteJobCode, with an extra 'Source folder' line (used at start-up). Source is the
   folder to load; empty means load nothing. }
 function ExecuteJobCodeSource(S: TAppSettings; var Job, Source: string; const CurrentCamera: string): Boolean;
-function ExecutePreferences(S: TAppSettings; const CurrentCamera: string): Boolean;
+function ExecutePreferences(S: TAppSettings; const CurrentCamera: string; PluginTab: Boolean = False): Boolean;
 { Asks every switched-on plug-in library with prompt fields for its values; False when canceled. }
 function AskPluginValues(S: TAppSettings): Boolean;
 function ExecuteIptc(L: TStringList): Boolean;
@@ -2184,12 +2184,14 @@ begin
 end;
 
 { Shows the Preferences dialog; the settings change only when the user clicked OK. }
-function ExecutePreferences(S: TAppSettings; const CurrentCamera: string): Boolean;
+{ Shows the Preferences dialog; PluginTab opens it on the Plug-ins tab (File > Plug-ins). }
+function ExecutePreferences(S: TAppSettings; const CurrentCamera: string; PluginTab: Boolean = False): Boolean;
 var
   F: TPrefsForm;  // F: the dialog
 begin
   F := TPrefsForm.CreatePrefs(Application, S, CurrentCamera);  // create the dialog
   try
+    if PluginTab then F.PC.PageIndex := F.PC.PageCount - 1;  // the Plug-ins tab is the last one
     Result := F.ShowModal = mrOK;  // True when the user clicked OK
     if Result then F.Store;  // store the values
   finally
