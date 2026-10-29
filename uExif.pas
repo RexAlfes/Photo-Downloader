@@ -84,10 +84,15 @@ type
     Big: Boolean;  // True for big-endian data
   end;
 
+threadvar
+  // set when a read needed bytes past the end of the buffer; ReadExifFromFile then reads more of the file
+  TiffMiss: Boolean;
+
 { Reads a 16-bit value at Ofs, in the byte order of the data. }
 function U16(const T: TTiff; Ofs: Integer): Integer;
 begin
   Result := 0;  // zero when outside the data
+  if Ofs + 2 > Length(T.Buf) then TiffMiss := True;  // past the end of the buffer
   if (Ofs < 0) or (Ofs + 2 > Length(T.Buf)) then Exit;  // outside the data
   if T.Big then
     Result := (T.Buf[Ofs] shl 8) or T.Buf[Ofs + 1]  // big-endian value
@@ -101,6 +106,7 @@ var
   B0, B1, B2, B3: Int64;  // B0..B3: the four bytes
 begin
   Result := 0;  // zero when outside the data
+  if Ofs + 4 > Length(T.Buf) then TiffMiss := True;  // past the end of the buffer
   if (Ofs < 0) or (Ofs + 4 > Length(T.Buf)) then Exit;  // outside the data
   B0 := T.Buf[Ofs]; B1 := T.Buf[Ofs + 1]; B2 := T.Buf[Ofs + 2]; B3 := T.Buf[Ofs + 3];  // read the four bytes
   if T.Big then
@@ -124,14 +130,22 @@ begin
   else
   begin
     Off := U32(T, E + 8);  // offset of the text
-    if Off + T.Base >= Length(T.Buf) then Exit;  // offset outside the data
+    if Off + T.Base >= Length(T.Buf) then  // offset outside the data
+    begin
+      TiffMiss := True;  // the text lies past the end of the buffer
+      Exit;
+    end;
     P := T.Base + Integer(Off);  // position of the text
   end;
   if (P < 0) or (P >= Length(T.Buf)) then Exit;  // position outside the data
   if Cnt > 128 then Cnt := 128;  // limit the length
   for I := 0 to Integer(Cnt) - 1 do  // every character
   begin
-    if P + I >= Length(T.Buf) then Break;  // stop at the end of the data
+    if P + I >= Length(T.Buf) then  // stop at the end of the data
+    begin
+      TiffMiss := True;  // the text goes on past the end of the buffer
+      Break;
+    end;
     B := T.Buf[P + I];  // current byte
     if B = 0 then Break;  // stop at a zero byte
     Result := Result + Chr(B);  // add the character
@@ -168,15 +182,23 @@ var
   DT: TDateTime;  // DT: date read
   S: string;  // S: text read
 begin
-  if (Depth > 3) or (IfdRel <= 0) or (IfdRel > Length(T.Buf)) then Exit;  // limit the nesting depth and check the offset
+  if (Depth > 3) or (IfdRel <= 0) then Exit;  // limit the nesting depth and check the offset
+  if T.Base + IfdRel + 2 > Length(T.Buf) then  // directory outside the data
+  begin
+    TiffMiss := True;  // the directory lies past the end of the buffer
+    Exit;
+  end;
   P := T.Base + Integer(IfdRel);  // position of the directory
-  if P + 2 > Length(T.Buf) then Exit;  // directory outside the data
   N := U16(T, P);  // number of entries
   if N > 300 then Exit;  // reject an implausible count
   for I := 0 to N - 1 do  // every entry
   begin
     E := P + 2 + I * 12;  // position of the entry
-    if E + 12 > Length(T.Buf) then Break;  // entry outside the data
+    if E + 12 > Length(T.Buf) then  // entry outside the data
+    begin
+      TiffMiss := True;  // the directory goes on past the end of the buffer
+      Break;
+    end;
     Tag := U16(T, E);  // tag number
     case Tag of
       $010F: Info.Make := GetStr(T, E);  // camera maker
@@ -1056,83 +1078,125 @@ end;
 
 { Reads the EXIF data of a JPEG, TIFF-based raw, CRW, CR3 or HEIC file. }
 function ReadExifFromFile(const FileName: string; out Info: TExifInfo): Boolean;
+const
+  FirstRead = 65536;  // first read: 64 KB holds the EXIF data of nearly every file
+  MaxRead = 262144;  // when the first read was not enough: at most 256 KB
 var
   FS: TFileStream;  // FS: the open file
-  Len, Pos, Mk, L: Integer;  // Len: bytes read; Pos: position; Mk: marker; L: segment length
+  Len, Old: Integer;  // Len: bytes read; Old: bytes of the first read
+  FileLen: Int64;  // FileLen: file size
   T: TTiff;  // T: TIFF structure
+
+  { clears every field of Info }
+  procedure ClearInfo;
+  begin
+    Info.Valid := False;  // nothing valid yet
+    Info.Make := ''; Info.Model := ''; Info.Artist := ''; Info.Owner := '';  // clear the text fields
+    Info.Serial := ''; Info.DateTaken := 0; Info.HasDate := False;  // clear the other fields
+    Info.ISO := 0; Info.Orientation := 0;  // clear the numbers
+  end;
+
+  { finds the TIFF header in the first Len bytes and reads its directories; sets TiffMiss when they were too few }
+  function ParseBuf: Boolean;
+  var
+    Pos, Mk, L: Integer;  // Pos: position; Mk: marker; L: segment length
+  begin
+    Result := False;  // assume failure
+    TiffMiss := False;  // nothing missed yet
+    T.Base := -1;  // no TIFF header yet
+    if (T.Buf[0] = $FF) and (T.Buf[1] = $D8) then  // JPEG
+    begin
+      Pos := 2;  // first marker
+      while True do  // go through the markers
+      begin
+        if Pos + 10 > Len then  // ran out of data before the Exif segment
+        begin
+          TiffMiss := True;  // a longer read may find it
+          Break;
+        end;
+        if T.Buf[Pos] <> $FF then Break;  // every marker starts with FF
+        Mk := T.Buf[Pos + 1];  // marker code
+        if Mk = $FF then begin Inc(Pos); Continue; end;  // skip fill bytes
+        if (Mk = $D9) or (Mk = $DA) then Break;  // end of image or start of scan
+        L := (T.Buf[Pos + 2] shl 8) or T.Buf[Pos + 3];  // segment length
+        if (Mk = $E1) and (T.Buf[Pos + 4] = Ord('E')) and  // APP1 segment that starts with Exif
+           (T.Buf[Pos + 5] = Ord('x')) and (T.Buf[Pos + 6] = Ord('i')) and
+           (T.Buf[Pos + 7] = Ord('f')) then
+        begin
+          T.Base := Pos + 10;  // TIFF header follows the identifier
+          Break;  // stop searching
+        end;
+        Pos := Pos + 2 + L;  // next segment
+      end;
+    end
+    else if ((T.Buf[0] = $49) and (T.Buf[1] = $49)) or  // TIFF based file
+            ((T.Buf[0] = $4D) and (T.Buf[1] = $4D)) then
+      T.Base := 0;  // header at the start
+
+    if T.Base < 0 then Exit;  // no TIFF header
+    if T.Base + 8 > Len then  // TIFF header cut off
+    begin
+      TiffMiss := True;  // a longer read may hold it
+      Exit;
+    end;
+    T.Big := T.Buf[T.Base] = $4D;  // MM marks big-endian
+    if U16(T, T.Base + 2) <> 42 then Exit;  // 42 is the TIFF version
+    ReadIFD(T, U32(T, T.Base + 4), 0, Info);  // read the first directory
+    Info.Valid := (Info.Make <> '') or (Info.Model <> '') or Info.HasDate;  // valid when a camera or a date was found
+    // a file with only an orientation (no camera or date) still needs to be turned upright
+    Result := Info.Valid or (Info.Orientation <> 0);  // also useful when only the orientation is known
+  end;
+
 begin
   Result := False;  // assume failure
   T.Buf := nil;  // no data yet
   T.Base := -1;  // no TIFF header yet
   T.Big := False;  // little-endian by default
-  Info.Valid := False;  // nothing valid yet
-  Info.Make := ''; Info.Model := ''; Info.Artist := ''; Info.Owner := '';  // clear the text fields
-  Info.Serial := ''; Info.DateTaken := 0; Info.HasDate := False;  // clear the other fields
-  Info.ISO := 0; Info.Orientation := 0;  // clear the numbers
+  ClearInfo;  // nothing found yet
   try
     FS := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);  // open the file
   except
     Exit;  // cannot open
   end;
   try
-    Len := FS.Size;  // file size
-    if Len > 262144 then Len := 262144;  // read at most 256 KB
+    FileLen := FS.Size;  // file size
+    // the scan reads every file: read a small piece first and more only when the EXIF data goes on past it
+    if FileLen > FirstRead then Len := FirstRead else Len := Integer(FileLen);  // size of the first read
     SetLength(T.Buf, Len);  // reserve the buffer
     if Len > 0 then FS.ReadBuffer(T.Buf[0], Len);  // read the start of the file
+    if Len < 12 then Exit;  // too short
+
+    if IsCiff(T.Buf) then  // Canon CRW
+    begin
+      // Canon CRW is not a TIFF file: read make, model and time from its CIFF directories
+      Info.Valid := ReadCiffFromFile(FileName, Info);  // read the CIFF directories
+      Result := Info.Valid;  // return the result
+      Exit;
+    end;
+
+    if (T.Buf[4] = Ord('f')) and (T.Buf[5] = Ord('t')) and (T.Buf[6] = Ord('y')) and  // ftyp box: CR3 or HEIC
+       (T.Buf[7] = Ord('p')) then
+    begin
+      // Canon CR3 and HEIC/HEIF are ISO base media files
+      Info.Valid := ReadBmffFromFile(FileName, Info);  // read the container boxes
+      Result := Info.Valid;  // return the result
+      Exit;
+    end;
+
+    Result := ParseBuf;  // read the EXIF data from the first piece
+    if TiffMiss and (FileLen > Len) then  // the EXIF data goes on past the first piece
+    begin
+      Old := Len;  // bytes already read
+      if FileLen > MaxRead then Len := MaxRead else Len := Integer(FileLen);  // size of the longer read
+      SetLength(T.Buf, Len);  // grow the buffer (keeps the bytes already read)
+      FS.Position := Old;  // continue after the first piece
+      FS.ReadBuffer(T.Buf[Old], Len - Old);  // read the rest
+      ClearInfo;  // start over
+      Result := ParseBuf;  // read the EXIF data again
+    end;
   finally
     FS.Free;  // close the file
   end;
-  if Len < 12 then Exit;  // too short
-
-  if IsCiff(T.Buf) then  // Canon CRW
-  begin
-    // Canon CRW is not a TIFF file: read make, model and time from its CIFF directories
-    Info.Valid := ReadCiffFromFile(FileName, Info);  // read the CIFF directories
-    Result := Info.Valid;  // return the result
-    Exit;
-  end;
-
-  if (T.Buf[4] = Ord('f')) and (T.Buf[5] = Ord('t')) and (T.Buf[6] = Ord('y')) and  // ftyp box: CR3 or HEIC
-     (T.Buf[7] = Ord('p')) then
-  begin
-    // Canon CR3 and HEIC/HEIF are ISO base media files
-    Info.Valid := ReadBmffFromFile(FileName, Info);  // read the container boxes
-    Result := Info.Valid;  // return the result
-    Exit;
-  end;
-
-  T.Base := -1;  // no TIFF header yet
-  if (T.Buf[0] = $FF) and (T.Buf[1] = $D8) then  // JPEG
-  begin
-    Pos := 2;  // first marker
-    while Pos + 4 <= Len do  // go through the markers
-    begin
-      if T.Buf[Pos] <> $FF then Break;  // every marker starts with FF
-      Mk := T.Buf[Pos + 1];  // marker code
-      if Mk = $FF then begin Inc(Pos); Continue; end;  // skip fill bytes
-      if (Mk = $D9) or (Mk = $DA) then Break;  // end of image or start of scan
-      L := (T.Buf[Pos + 2] shl 8) or T.Buf[Pos + 3];  // segment length
-      if (Mk = $E1) and (Pos + 10 <= Len) and (T.Buf[Pos + 4] = Ord('E')) and  // APP1 segment that starts with Exif
-         (T.Buf[Pos + 5] = Ord('x')) and (T.Buf[Pos + 6] = Ord('i')) and
-         (T.Buf[Pos + 7] = Ord('f')) then
-      begin
-        T.Base := Pos + 10;  // TIFF header follows the identifier
-        Break;  // stop searching
-      end;
-      Pos := Pos + 2 + L;  // next segment
-    end;
-  end
-  else if ((T.Buf[0] = $49) and (T.Buf[1] = $49)) or  // TIFF based file
-          ((T.Buf[0] = $4D) and (T.Buf[1] = $4D)) then
-    T.Base := 0;  // header at the start
-
-  if (T.Base < 0) or (T.Base + 8 > Len) then Exit;  // no usable TIFF header
-  T.Big := T.Buf[T.Base] = $4D;  // MM marks big-endian
-  if U16(T, T.Base + 2) <> 42 then Exit;  // 42 is the TIFF version
-  ReadIFD(T, U32(T, T.Base + 4), 0, Info);  // read the first directory
-  Info.Valid := (Info.Make <> '') or (Info.Model <> '') or Info.HasDate;  // valid when a camera or a date was found
-  // a file with only an orientation (no camera or date) still needs to be turned upright
-  Result := Info.Valid or (Info.Orientation <> 0);  // also useful when only the orientation is known
 end;
 
 { ---- JPEG helpers (previews and thumbnails) ---- }
