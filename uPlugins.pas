@@ -38,6 +38,7 @@ type
     Caption: string;  // label shown in front of the control
     Values, Labels: TStringArray;  // list entries: value and the text shown for it
     Default: string;  // value used when none is stored yet
+    Upper: Boolean;  // flag "upper": typed text is shown and kept in capitals
   end;
 
   { A plug-in library found in a plugins folder }
@@ -211,7 +212,7 @@ begin
   for I := 0 to Info.Count - 1 do  // look for Field= lines (there can be several)
     if Info.Names[I] = 'Field' then
     begin
-      Parts := Info.ValueFromIndex[I].Split(['|']);  // key|kind|label|entries|default
+      Parts := Info.ValueFromIndex[I].Split(['|']);  // key|kind|label|entries|default|flags
       if Length(Parts) < 3 then Continue;  // not a usable field
       F := Length(Fields);  // index of the new field
       SetLength(Fields, F + 1);  // add the field
@@ -219,6 +220,7 @@ begin
       Fields[F].Kind := LowerCase(Parts[1]);  // control type
       Fields[F].Caption := Parts[2];  // label
       if Length(Parts) > 4 then Fields[F].Default := Parts[4];  // default value
+      if Length(Parts) > 5 then Fields[F].Upper := Pos('upper', LowerCase(Parts[5])) > 0;  // flags
       Items := nil;  // no entries yet
       if Length(Parts) > 3 then Items := SplitText(Parts[3], ',');  // entries: value or value:label
       SetLength(Fields[F].Values, Length(Items));  // room for the values

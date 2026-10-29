@@ -46,8 +46,8 @@ The key of a library is its file name without `lib` prefix and extension (`folde
 | `Title` | title of the prompt window |
 | `AccentColor` | `RRGGBB`: a color bar under the logo |
 | `FontName` | font of the prompt window (used when it is installed) |
-| `ParseFolder=1` | the window gets a **From folder...** button (see `_parse`) |
-| `Field=key\|kind\|label\|entries\|default` | one row of the prompt window; may appear many times. `kind` is `choice` (list only), `combo` (list or typed text) or `text`. `entries` are separated by `,`; each is `value` or `value:label`. |
+| `ParseFolder=1` | the window gets a **Destination folder...** button: it opens in the destination (the download folder template up to its first token), and the chosen path is sent as `_parse` |
+| `Field=key\|kind\|label\|entries\|default\|flags` | one row of the prompt window; may appear many times. `kind` is `choice` (list only), `combo` (list or typed text) or `text`. `entries` are separated by `,`; each is `value` or `value:label` (the label is shown, the value is stored). `flags` (optional): `upper` = typed text is shown and kept in capitals. |
 
 ## pd_token context
 
@@ -63,7 +63,7 @@ The stored values of the prompt window (`key=value`), plus details of the file:
 
 ## pd_check
 
-Called on every change in the prompt window with the current values, plus `_changed=<key>` (the field changed last) and, after **From folder...**, `_parse=<folder name>`. It returns lines:
+Called on every change in the prompt window with the current values, plus `_changed=<key>` (the field changed last) and, after **Destination folder...**, `_parse=<full path of the chosen folder>`. It returns lines:
 
 | Key | Meaning |
 |---|---|
@@ -71,6 +71,8 @@ Called on every change in the prompt window with the current values, plus `_chan
 | `Error` | text shown in red; while it is not empty, **OK** is disabled |
 | `Set.<key>` | a value the window shows in that field now (for example a district filled in from a county) |
 | `Value.<key>` | the normalized value that is stored on OK (for example `95` stored as `0095`) |
+
+The window is as wide as its longest label and the controls need (at least 600 pixels, and wide enough for the logo).
 
 ## When the program asks
 
