@@ -8,7 +8,7 @@ unit uExif;
 interface
 
 uses
-  Classes, SysUtils, LazFileUtils;
+  Classes, SysUtils, Math, LazFileUtils;
 
 type
   TExifInfo = record  // EXIF data of one picture
@@ -35,6 +35,19 @@ function ExtractEmbeddedJpeg(const FileName: string; Rank: Integer; Deep: Boolea
 
 { Deep = False limits the search to the first 4 MB (used for TIFF and DNG, whose
   files can be huge); Deep = True may scan up to 96 MB (RAW files). }
+
+{ Like ExtractEmbeddedJpeg, but for thumbnails: when MinSide > 0 the order is the smallest
+  preview whose long side is at least MinSide first (much faster to decode), then the larger
+  ones, then the ones that are too small. RefW/RefH are the size of the largest preview,
+  which has the photo's shape (small previews may have black bars). }
+function ExtractEmbeddedJpegEx(const FileName: string; Rank: Integer; Deep: Boolean;
+  MinSide: Integer; Dest: TStream; out W, H, RefW, RefH: Integer): Boolean;
+
+{ Copies the small thumbnail that cameras store in the EXIF data of a JPEG (IFD1, usually
+  160x120 or 320x240, in the first 64 KB) to Dest. W/H are its size; MainW/MainH the size of
+  the photo itself (0 when unknown). False when the file has no such thumbnail. Only the
+  first 128 KB of the file are read. }
+function ExtractExifThumb(const FileName: string; Dest: TStream; out W, H, MainW, MainH: Integer): Boolean;
 
 type
   TInt64Array = array of Int64;  // list of 64-bit values
@@ -1319,16 +1332,26 @@ end;
 function ExtractEmbeddedJpeg(const FileName: string; Rank: Integer; Deep: Boolean;
   Dest: TStream; out W, H: Integer): Boolean;
 var
+  RefW, RefH: Integer;  // RefW, RefH: not needed here
+begin
+  Result := ExtractEmbeddedJpegEx(FileName, Rank, Deep, 0, Dest, W, H, RefW, RefH);  // largest first
+end;
+
+function ExtractEmbeddedJpegEx(const FileName: string; Rank: Integer; Deep: Boolean;
+  MinSide: Integer; Dest: TStream; out W, H, RefW, RefH: Integer): Boolean;
+var
   Buf: TBytes;  // Buf: bytes read from the file
-  Got, I, J: Integer;  // Got: bytes read; I, J: loop counters
+  Got, I, J, K, MinLen: Integer;  // Got: bytes read; I, J, K: loop counters; MinLen: smallest JPEG accepted
   FLen: Int64;  // FLen: file size
-  C: TJpegCands;  // C: embedded JPEGs found
+  C, Ord2: TJpegCands;  // C: embedded JPEGs found; Ord2: the same in thumbnail order
   Tmp: TJpegCand;  // Tmp: swap helper
   BestLen: Integer;  // BestLen: length of the largest JPEG
 begin
   Result := False;  // assume failure
   W := 0;  // no width yet
   H := 0;  // no height yet
+  RefW := 0;  // no reference size yet
+  RefH := 0;
   Buf := nil;  // release any old array
   C := nil;  // release any old array
   Got := ReadPrefix(FileName, 4 * 1024 * 1024, Buf, FLen);  // read the first 4 MB
@@ -1355,11 +1378,99 @@ begin
     end;
     C[J + 1] := Tmp;  // place the entry
   end;
+  if Length(C) > 0 then
+  begin
+    RefW := C[0].W;  // the largest preview has the photo's shape
+    RefH := C[0].H;
+  end;
+  MinLen := 4096;  // ignore tiny JPEGs (false finds)
+  if MinSide > 0 then
+  begin
+    MinLen := 1024;  // a real 160x120 thumbnail can be this small
+    // thumbnail order: big enough ones from small to large, then the too small ones (largest first)
+    Ord2 := nil;
+    SetLength(Ord2, Length(C));
+    K := 0;  // entries placed
+    for I := High(C) downto 0 do  // C is largest first, so this runs from small to large
+      if Max(C[I].W, C[I].H) >= MinSide then
+      begin
+        Ord2[K] := C[I];
+        Inc(K);
+      end;
+    for I := 0 to High(C) do  // then the ones that are too small, largest first
+      if Max(C[I].W, C[I].H) < MinSide then
+      begin
+        Ord2[K] := C[I];
+        Inc(K);
+      end;
+    C := Ord2;  // use the new order
+  end;
   if (Rank < 0) or (Rank > High(C)) then Exit;  // rank out of range
-  if C[Rank].Len < 4096 then Exit;  // ignore tiny JPEGs
+  if C[Rank].Len < MinLen then Exit;  // ignore tiny JPEGs
   Dest.WriteBuffer(Buf[C[Rank].Pos], C[Rank].Len);  // write the JPEG to the destination
   W := C[Rank].W;  // width
   H := C[Rank].H;  // height
+  Result := True;  // success
+end;
+
+{ Copies the EXIF thumbnail (IFD1 JPEGInterchangeFormat) of a JPEG file to Dest. }
+function ExtractExifThumb(const FileName: string; Dest: TStream; out W, H, MainW, MainH: Integer): Boolean;
+var
+  T: TTiff;  // T: the start of the file as a TIFF structure
+  Len, Pos, Mk, L, Comps, N, I, E, Tag: Integer;  // Len: bytes read; Pos: position; Mk: marker; L: segment length; Comps: components; N: entry count; I: loop counter; E: entry position; Tag: tag number
+  FLen, Ifd, Ofs, Cnt: Int64;  // FLen: file size; Ifd: directory position; Ofs, Cnt: thumbnail offset and length
+begin
+  Result := False;  // assume failure
+  W := 0;  // no thumbnail size yet
+  H := 0;
+  MainW := 0;  // no photo size yet
+  MainH := 0;
+  Len := ReadPrefix(FileName, 131072, T.Buf, FLen);  // the EXIF segment is at most 64 KB and comes first
+  if (Len < 12) or (T.Buf[0] <> $FF) or (T.Buf[1] <> $D8) then Exit;  // must be a JPEG
+  JpegDims(T.Buf, 0, Len, MainW, MainH, Comps);  // size of the photo (when its header lies in the prefix)
+  // find the APP1 Exif segment
+  T.Base := -1;  // no TIFF header yet
+  Pos := 2;  // first marker
+  while Pos + 10 <= Len do  // go through the markers
+  begin
+    if T.Buf[Pos] <> $FF then Break;  // every marker starts with FF
+    Mk := T.Buf[Pos + 1];  // marker code
+    if Mk = $FF then begin Inc(Pos); Continue; end;  // skip fill bytes
+    if (Mk = $D9) or (Mk = $DA) then Break;  // end of image or start of scan
+    L := (T.Buf[Pos + 2] shl 8) or T.Buf[Pos + 3];  // segment length
+    if (Mk = $E1) and (T.Buf[Pos + 4] = Ord('E')) and (T.Buf[Pos + 5] = Ord('x')) and  // APP1 segment that starts with Exif
+       (T.Buf[Pos + 6] = Ord('i')) and (T.Buf[Pos + 7] = Ord('f')) then
+    begin
+      T.Base := Pos + 10;  // TIFF header follows the identifier
+      Break;
+    end;
+    Pos := Pos + 2 + L;  // next segment
+  end;
+  if (T.Base < 0) or (T.Base + 8 > Len) then Exit;  // no EXIF data
+  T.Big := T.Buf[T.Base] = $4D;  // MM marks big-endian
+  if U16(T, T.Base + 2) <> 42 then Exit;  // 42 is the TIFF version
+  // IFD0, then its "next directory" link to IFD1, which describes the thumbnail
+  Ifd := T.Base + U32(T, T.Base + 4);  // position of IFD0
+  if (Ifd < 0) or (Ifd + 2 > Len) then Exit;  // outside the data
+  N := U16(T, Ifd);  // entries in IFD0
+  Ifd := T.Base + U32(T, Ifd + 2 + Int64(N) * 12);  // position of IFD1
+  if (Ifd <= T.Base) or (Ifd + 2 > Len) then Exit;  // no IFD1
+  N := U16(T, Ifd);  // entries in IFD1
+  Ofs := 0;  // no thumbnail yet
+  Cnt := 0;
+  for I := 0 to N - 1 do  // every entry
+  begin
+    E := Ifd + 2 + I * 12;  // position of the entry
+    if E + 12 > Len then Break;  // outside the data
+    Tag := U16(T, E);  // tag number
+    if Tag = $0201 then Ofs := U32(T, E + 8)  // JPEGInterchangeFormat: offset of the thumbnail
+    else if Tag = $0202 then Cnt := U32(T, E + 8);  // JPEGInterchangeFormatLength: its length
+  end;
+  if (Ofs <= 0) or (Cnt < 100) or (T.Base + Ofs + Cnt > Len) then Exit;  // no complete thumbnail in the data
+  Pos := T.Base + Integer(Ofs);  // start of the thumbnail
+  if (T.Buf[Pos] <> $FF) or (T.Buf[Pos + 1] <> $D8) then Exit;  // not a JPEG (some cameras store raw pixels)
+  if not JpegDims(T.Buf, Pos, Pos + Integer(Cnt), W, H, Comps) then Exit;  // must have a readable frame header
+  Dest.WriteBuffer(T.Buf[Pos], Cnt);  // copy the thumbnail
   Result := True;  // success
 end;
 
