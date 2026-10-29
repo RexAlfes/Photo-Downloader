@@ -2001,8 +2001,10 @@ begin
     else if Nm = 'DNG Converter' then
       Info := 'Converts raw files to DNG after downloading.'#13#10 +
               '(Not yet implemented in this build.)'
+    else if Nm = 'JPEG resolution' then
+      Info := 'Resizes JPEGs while downloading.'#13#10 + '(Not yet implemented in this build.)'
     else
-      Info := 'Resizes JPEGs while downloading.'#13#10 + '(Not yet implemented in this build.)';
+      Info := 'Plug-in library "' + Nm + '": its file was not found in the plugins folder.';  // not installed (any more)
     lblPluginInfo.Caption := Info;  // show the information
   finally
     FUpdating := False;  // react to changes again
