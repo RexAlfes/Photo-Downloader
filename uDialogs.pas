@@ -579,14 +579,31 @@ end;
 { Generic list chooser (user profiles)                                    }
 { ====================================================================== }
 
-{ Shows a list of choices (user profiles); returns True and the chosen entry when the user clicked OK. }
+type
+  { Helper of the list chooser: a double click chooses the entry. }
+  TChooseHelper = class
+    Form: TForm;  // the dialog
+    List: TListBox;  // the choices
+    procedure ListDblClick(Sender: TObject);  // closes the dialog with OK
+  end;
+
+{ A double click on an entry chooses it (same as OK). }
+procedure TChooseHelper.ListDblClick(Sender: TObject);
+begin
+  if List.ItemIndex >= 0 then Form.ModalResult := mrOK;  // choose the clicked entry
+end;
+
+{ Shows a list of choices (user profiles); returns True and the chosen entry when the user clicked OK
+  or double-clicked an entry. }
 function ChooseFromList(const ATitle, APrompt: string; Items: TStrings; out Choice: string): Boolean;
 var
   F: TForm;  // F: the dialog
   LB: TListBox;  // LB: list of choices
+  H: TChooseHelper;  // H: event helper
 begin
   Choice := '';  // nothing chosen yet
   F := TForm.CreateNew(Application);  // create the form
+  H := TChooseHelper.Create;  // create the helper
   try
     InitDialog(F, ATitle, 340, 290);  // set the common dialog properties
     MkLabel(F, APrompt, 10, 10);  // prompt
@@ -595,11 +612,15 @@ begin
     LB.SetBounds(10, 32, 320, 210);  // position and size it
     LB.Items.Assign(Items);  // fill with the choices
     if LB.Items.Count > 0 then LB.ItemIndex := 0;  // select the first entry
+    H.Form := F;  // the dialog the helper closes
+    H.List := LB;  // the list it watches
+    LB.OnDblClick := @H.ListDblClick;  // a double click chooses the entry
     MkButton(F, 'OK', 160, 254, 80, mrOK).Default := True;  // OK button, also the default button
     MkButton(F, 'Cancel', 250, 254, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
     Result := (F.ShowModal = mrOK) and (LB.ItemIndex >= 0);  // OK with an entry selected
     if Result then Choice := LB.Items[LB.ItemIndex];  // return the chosen entry
   finally
+    H.Free;  // free the helper
     F.Free;  // free the dialog
   end;
 end;
