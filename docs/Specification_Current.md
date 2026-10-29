@@ -110,7 +110,7 @@ Re-evaluation runs after changes to destination, patterns, job code, profile or 
 | Statuses and new names refresh when preferences, job codes or profiles change | Done |
 | Download history file so images are never copied twice | Open – comparison is against the destination only |
 | Duplicate handling skip / overwrite / auto-rename | Partial – skip and auto-rename; overwrite missing |
-| Tokens: {d} {y} {Y} {m} {b} {B} {D} {a} {A} {W} {t} {H} {I} {M} {S} {q} {r} {o} {f} {O} {i} {c} {T} {T1} {T8} {T9} {J} {seq#} {n1}-{n9} | Done – taken from the prototype application images, not the spec's {YYYY} style |
+| Tokens: {d} {y} {Y} {m} {b} {B} {D} {a} {A} {W} {t} {H} {I} {M} {S} {q} {r} {o} {f} {O} {i} {c} {T} {T1} {T8} {T9} {J} {E} {e} {ea} {seq#} {n1}-{n9} | Done – taken from the prototype application images, not the spec's {YYYY} style |
 | {r} image number = longest digit run of the original name, else the whole name | Done – the rule is an assumption |
 
 ### 3.5 Download and delete
@@ -185,6 +185,7 @@ There is no fixed limit on the number of images scanned. The source folder and a
 | Time offset correction | Shift capture times when the camera clock was wrong |
 | RAW+JPEG pairing | Treat a RAW and its JPEG as one unit; optionally download only one of them |
 | Ratings and labels | Read from the camera and write into the XMP sidecar |
+| Plug-in system | Planning draft in `docs/Plugin_Plan.md`: built-in plug-ins as Pascal classes and external-program plug-ins described by a manifest, run at fixed hooks (before download, after each file, after download) in list order. No code yet |
 | Watermark or resize on copy | Optional, mainly for event work |
 | Dry run / preview | Show what would be copied and renamed without changing anything |
 | Installer and code signing | Windows SmartScreen warns about unsigned programs |
