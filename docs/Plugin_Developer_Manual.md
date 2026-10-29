@@ -116,8 +116,10 @@ The stored values of the window (`key=value`), plus details of the file:
 | `IsVideo` | `1` for a video |
 | `Camera`, `Serial` | camera model and serial number |
 | `Date` | capture date `yyyymmdd` |
+| `Path` | full path of the file on the source (empty for the Example line), so a library can read the file itself, for example to tell thermal from color pictures |
+| `Size` | file size in bytes (with `Path` a good key for remembering what was read) |
 
-Tokens are asked for often: for the Example line, for every file after a scan (to find files already downloaded) and for every download. Keep `pd_token` fast and free of file or network access.
+Tokens are asked for often: for the Example line, for every file after a scan (to find files already downloaded) and for every download. Keep `pd_token` fast. If it reads the file (`Path`), read only the start or the header, and remember the answer by path and size, so each file is read once. No network access.
 
 ## 3.5 pd_check
 
