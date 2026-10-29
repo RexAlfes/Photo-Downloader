@@ -785,6 +785,7 @@ type
     procedure ApplyCheck(const Extra: string);  // lets the plug-in check the values and shows the result
     procedure FieldChange(Sender: TObject);  // a field was changed
     procedure FolderClick(Sender: TObject);  // chooses the destination folder to download to
+    procedure ApplyFolderFields;  // adds or removes the folder tokens of check fields at the end of the download path
   public
     constructor CreatePrompt(AOwner: TComponent; P: TLibPlugin; const Values, DestDir: string);  // builds the window
     property DestDir: string read FDestDir;  // the download folder template after the window closed
@@ -853,11 +854,12 @@ begin
   Y := HeadH + 14;  // first row
   LabW := 0;  // widest label so far
   Canvas.Font := Font;  // measure in the window's font
-  for I := 0 to High(P.Fields) do  // every field
-    LabW := Max(LabW, Canvas.TextWidth(P.Fields[I].Caption + ':'));  // width of its label
+  for I := 0 to High(P.Fields) do  // every field (a check box carries its own text)
+    if P.Fields[I].Kind <> 'check' then LabW := Max(LabW, Canvas.TextWidth(P.Fields[I].Caption + ':'));  // width of its label
   CtlX := 12 + LabW + 8;  // controls start here
   for I := 0 to High(P.Fields) do  // labels right-aligned, ending next to their control
   begin
+    if P.Fields[I].Kind = 'check' then Continue;  // a check box carries its own text
     Lab := MkLabel(Self, P.Fields[I].Caption + ':', 12, Y + I * 32 + 3);  // label
     Lab.AutoSize := False;  // keep the width set below
     Lab.Alignment := taRightJustify;  // text against the right edge
@@ -867,7 +869,13 @@ begin
   SetLength(FCtrls, Length(P.Fields));  // one control per field
   for I := 0 to High(P.Fields) do  // every field
   begin
-    if P.Fields[I].Kind = 'text' then  // free text
+    if P.Fields[I].Kind = 'check' then  // on or off
+    begin
+      FCtrls[I] := MkCheck(Self, P.Fields[I].Caption, CtlX, Y + 2);  // check box with its text
+      FCtrls[I].Width := CtlW;  // as wide as the other controls
+      TCheckBox(FCtrls[I]).OnClick := @FieldChange;  // react to every change
+    end
+    else if P.Fields[I].Kind = 'text' then  // free text
     begin
       FCtrls[I] := MkEdit(Self, CtlX, Y, CtlW);  // edit box
       if P.Fields[I].Upper then TEdit(FCtrls[I]).CharCase := ecUppercase;  // capitals only
@@ -915,7 +923,47 @@ begin
   MkButton(Self, 'Cancel', W - 94, Y, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
   InitDialog(Self, P.Info.Values['Title'], W, Y + 40);  // size and title
   if Caption = '' then Caption := P.DisplayName;  // title fallback
+  if P.Info.Values['Version'] <> '' then Caption := Caption + ' - version ' + P.Info.Values['Version'];  // version in the title bar
+  if (Head <> nil) and (P.Info.Values['Version'] <> '') then  // and at the top right of the header
+  begin
+    Lab := MkLabel(Head, 'Version ' + P.Info.Values['Version'], 0, 0);  // version text
+    Lab.Font.Color := clGray;  // quiet
+    Lab.SetBounds(W - Canvas.TextWidth(Lab.Caption) - 18, 18, Lab.Width, Lab.Height);  // top right, inside the clear space
+  end;
+  ApplyFolderFields;  // the download path follows the check boxes
   ApplyCheck('');  // first check: preview and error
+end;
+
+{ Check fields with folder tokens: removes those tokens from the end of the download path and adds the
+  first one again while the box is checked (for example "Organize files by type" adds the folder token UAS.Media at the end). }
+procedure TPluginPromptForm.ApplyFolderFields;
+var
+  I: Integer;  // I: field index
+  S, T: string;  // S: download path without the closing separator; T: one folder token
+  Toks: TStringArray;  // Toks: the folder tokens of a field
+  Found: Boolean;  // Found: a token was removed in this round
+begin
+  for I := 0 to High(FCtrls) do  // every field
+  begin
+    if not (FCtrls[I] is TCheckBox) or (FPlugin.Fields[I].FolderTokens = '') then Continue;  // not a folder check box
+    Toks := FPlugin.Fields[I].FolderTokens.Split([';']);  // its tokens
+    S := FDestDir;  // the download path
+    while (S <> '') and (S[Length(S)] in ['\', '/']) do Delete(S, Length(S), 1);  // without the closing separator
+    repeat
+      Found := False;  // nothing removed yet
+      for T in Toks do  // each token (case matters: {E} and {e} differ)
+        if (T <> '') and (Length(S) > Length(T) + 3) and
+           (Copy(S, Length(S) - Length(T) - 2, Length(T) + 3) = PathDelim + '{' + T + '}') then
+        begin
+          SetLength(S, Length(S) - Length(T) - 3);  // remove the last folder
+          Found := True;  // look again
+        end;
+    until not Found;
+    if TCheckBox(FCtrls[I]).Checked and (Length(Toks) > 0) then
+      S := S + PathDelim + '{' + Toks[0] + '}';  // one folder per type
+    FDestDir := IncludeTrailingPathDelimiter(S);  // the new download path
+  end;
+  if lblDest <> nil then lblDest.Caption := 'Download to: ' + FDestDir;  // show it
 end;
 
 { Value of one field: the listed value of the chosen entry, or the typed text. }
@@ -923,6 +971,7 @@ function TPluginPromptForm.FieldValue(I: Integer): string;
 var
   Cb: TComboBox;  // Cb: the list box
 begin
+  if FCtrls[I] is TCheckBox then Exit(IntToStr(Ord(TCheckBox(FCtrls[I]).Checked)));  // 1 = checked, 0 = not
   if FCtrls[I] is TEdit then Exit(TEdit(FCtrls[I]).Text);  // typed text
   Cb := TComboBox(FCtrls[I]);  // list box
   if (Cb.ItemIndex >= 0) and (Cb.Text = Cb.Items[Cb.ItemIndex]) then  // an entry of the list
@@ -937,6 +986,11 @@ var
   J: Integer;  // J: entry index
   Cb: TComboBox;  // Cb: the list box
 begin
+  if FCtrls[I] is TCheckBox then  // on or off
+  begin
+    TCheckBox(FCtrls[I]).Checked := V = '1';  // 1 = checked
+    Exit;
+  end;
   if FCtrls[I] is TEdit then  // free text
   begin
     TEdit(FCtrls[I]).Text := V;  // show it
@@ -999,6 +1053,7 @@ procedure TPluginPromptForm.FieldChange(Sender: TObject);
 begin
   if FUpdating then Exit;  // change made by the program
   FChanged := FPlugin.Fields[TWinControl(Sender).Tag].Key;  // which field
+  if Sender is TCheckBox then ApplyFolderFields;  // a check box can change the download path
   ApplyCheck('');  // check the values
 end;
 
@@ -1027,7 +1082,7 @@ begin
     if D.Execute then  // a folder was chosen
     begin
       FDestDir := IncludeTrailingPathDelimiter(D.FileName) + Rest;  // the new download folder template
-      lblDest.Caption := 'Download to: ' + FDestDir;  // show it
+      ApplyFolderFields;  // the check boxes decide the last folders (shows the result too)
     end;
   finally
     D.Free;  // free the chooser

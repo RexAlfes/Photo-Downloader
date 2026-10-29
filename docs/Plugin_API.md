@@ -41,7 +41,7 @@ The key of a library is its file name without `lib` prefix and extension (`folde
 
 | Key | Meaning |
 |---|---|
-| `Name`, `Version`, `Description` | shown on the Plug-ins tab |
+| `Name`, `Version`, `Description` | shown on the Plug-ins tab; the version also in the title bar and at the top right of the prompt window |
 | `Tokens` | token names, separated by `;` (for example `UAS;UAS.Dist`). They are used only when no built-in token has the same name. |
 | `Title` | title of the prompt window |
 | `AccentColor` | `RRGGBB`: a color bar under the logo |
@@ -49,7 +49,7 @@ The key of a library is its file name without `lib` prefix and extension (`folde
 | `DestFolder=1` | the window shows the download folder and gets a **Destination folder...** button to choose the folder to download to. The download folder becomes the chosen folder plus the token part of the current template when that uses the library's tokens, otherwise plus `DestTemplate`. On OK the new download folder is saved (and shown on the Download Path tab). |
 | `Note` | a reminder shown in italics under the fields |
 | `DestTemplate` | the folders the library suggests below the chosen destination, for example `{ABC}\{d}-{J}\` |
-| `Field=key\|kind\|label\|entries\|default\|flags` | one row of the prompt window; may appear many times. `kind` is `choice` (list only), `combo` (list or typed text) or `text`. `entries` are separated by `,`; each is `value` or `value:label` (the label is shown, the value is stored). `flags` (optional): `upper` = typed text is shown and kept in capitals. |
+| `Field=key\|kind\|label\|entries\|default\|flags` | one row of the prompt window; may appear many times. `kind` is `choice` (list only), `combo` (list or typed text), `text`, or `check` (a check box; its value is `1` or `0`, the label is its text). `entries` are separated by `,`; each is `value` or `value:label` (the label is shown, the value is stored). `flags` (optional, separated by commas): `upper` = typed text is shown and kept in capitals; `folder=A;B;C` (check fields) = while the box is checked, `{A}` is the last folder of the download path; `{A}`, `{B}`, `{C}` at the end of the path are removed first, so the box replaces an older last folder such as `{E}`. |
 
 ## pd_token context
 
