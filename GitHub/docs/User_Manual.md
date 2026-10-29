@@ -94,7 +94,7 @@ A **job code** is a name for the shoot. It becomes part of the destination folde
 - **File > Refresh (F5)** scans again. With no source chosen, it looks for a removable drive with a `DCIM` folder (Windows).
 - **Preferences > General** can load the last used folder at start-up. Otherwise nothing is scanned until you choose.
 - **Scan whole disk for known image types** is on by default. Turn it off to scan only the `DCIM` folder of a card.
-- A progress window with a **Cancel** button appears while a large folder loads. Thumbnails are drawn a few at a time while you scroll; slow ones (HEIC, TIFF, WebP) are kept in a disk cache so they appear faster next time.
+- A progress window with a **Cancel** button appears while a large folder loads. Thumbnails are drawn a few at a time while you scroll; they are kept in a disk cache (at most 500 MB, the oldest are removed first) so they appear much faster next time.
 - **File > Eject (F6)** safely removes the card or drive after use.
 
 If a picture cannot be shown, its thumbnail is a gray box with the file extension and a **red X**. The file can still be copied. The reason is written to the log if logging is on (see [section 16](#16-logging-and-troubleshooting)).

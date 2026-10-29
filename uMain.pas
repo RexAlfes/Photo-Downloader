@@ -2043,6 +2043,7 @@ procedure TMainForm.FormClose(Sender: TObject; var CloseAction: TCloseAction);
 begin
   if CloseAction = caNone then Exit;     // closing was canceled
   SaveSettingsNow;  // save the settings
+  PruneThumbCache;  // keep the thumbnail cache below its size limit
 end;
 
 { Lets the user choose a source folder and loads it. }

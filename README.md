@@ -23,7 +23,7 @@ Windows may show **Windows protected your PC** (SmartScreen) with **Publisher: U
 - Token-based folder and file naming (`{T8}`, `{T9}`, `{r}`, sequence numbers, camera and EXIF values), per-camera mapping.
 - Thumbnails and viewer for JPEG, PNG, BMP, GIF, TIFF (including compressed, palette, 1-bit and fax scans), DNG, WebP (lossy, lossless and transparent, decoded by the program itself), HEIC, AVIF and the embedded previews of RAW files (NEF, NRW, CR2, CR3, CRW, ARW and others). Adobe Lightroom preview files (.lrprev) can be listed and viewed (switched off by default).
 - Video (MP4, MOV, LRV) and audio (MP3): capture date and length from the movie header, thumbnails from the system (Windows Shell; `ffmpegthumbnailer` or `ffmpeg` on Linux) with a play-symbol or music-note tile as fallback, double-click plays them in the default player.
-- File type filter (View > File Types..., with MP4, MOV and LRV as separate entries), progress windows with Cancel while a folder loads, and a disk cache for slow thumbnails.
+- File type filter (View > File Types..., with MP4, MOV and LRV as separate entries), progress windows with Cancel while a folder loads, and a disk cache for all thumbnails.
 - Status per image: new file, already downloaded, name clash (the new name is already taken), duplicate (the same picture twice: same size, time and camera), with the reason shown. See the [User Manual](docs/User_Manual.md) for exactly how each status is decided.
 - XMP sidecar from IPTC/XMP details; author and copyright written only into JPEG fields that are empty.
 - Verified copy (checksum read-back) and an optional backup folder; files whose backup failed are never offered for deletion.
@@ -57,7 +57,7 @@ Use View > File Types... (or the right-click menu) to choose which kinds of file
 Files that are already downloaded are shown on a gray background; name clashes are red.
 
 ## Logging and troubleshooting
-Help > Logging switches the diagnostic log on or off (on by default). Help > Save log file... copies the log to a folder of your choice so you can email it. HEIC and AVIF thumbnails are cached in the `thumbcache` folder (next to the settings file on Windows, in `~/.cache/PhotoDownloader/` on Linux), so reopening a folder is much faster.
+Help > Logging switches the diagnostic log on or off (on by default). Help > Save log file... copies the log to a folder of your choice so you can email it. Thumbnails are cached in the `thumbcache` folder (at most 500 MB; the oldest are removed when the program closes) (next to the settings file on Windows, in `~/.cache/PhotoDownloader/` on Linux), so reopening a folder is much faster.
 
 ## Verified copy and backup
 Preferences > Download Path has two options. **Verify every copy** (on by default) reads each copy back and compares its checksum with the original; a bad copy is deleted and retried once. **Also save a second copy to a backup folder** writes every file to a second folder, using the same folder and file name patterns, from the verified download and before any rotation or metadata changes. If a backup copy fails, that file is never offered for deletion from the image source.
@@ -71,7 +71,7 @@ The program builds and runs on Linux (tested on Linux Mint 22.3, GTK 2 widgetset
 There is no fixed limit on the number of images scanned. The source folder and all its subfolders are read (hidden and system folders are skipped) and every supported file is listed. The practical limits are memory and time:
 
 - Each file's details take a few KB. A 160-pixel thumbnail takes about 60-100 KB, so 10,000 pictures need roughly 0.6-1 GB of memory for thumbnails (the program is 64-bit).
-- When a folder loads, the first 300 ordinary thumbnails and every HEIC, AVIF, TIFF and DNG thumbnail are rendered before the grid is shown; the rest are drawn as you scroll. RAW files and JPEGs with embedded previews are fast; HEIC and AVIF files take about a second or more each. HEIC, AVIF, TIFF and DNG thumbnails are cached on disk (`thumbcache` folder), so a second load is much faster.
+- When a folder loads, the first 300 ordinary thumbnails and every HEIC, AVIF, TIFF and DNG thumbnail are rendered before the grid is shown; the rest are drawn as you scroll. RAW files and JPEGs with embedded previews are fast; HEIC and AVIF files take about a second or more each. Every thumbnail is cached on disk (`thumbcache` folder, at most 500 MB), so a second load is much faster.
 - List view is lighter: thumbnails are drawn only for rows you scroll to.
 - Only the most recent 1,200 thumbnails (about 600 at the 320-pixel size) are kept in memory (each one uses a Windows bitmap handle and a program may only own about 10,000). Older ones are drawn again when scrolled into view. Folders with about 6,000 pictures have been tested.
 
