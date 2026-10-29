@@ -41,13 +41,12 @@ One-time setup on each computer
 
 The version number file (the one thing to watch)
 ------------------------------------------------
-The Lazarus IDE changes PhotoDownloader.lpi every time you compile (the build number goes up).
-If both computers do that you get conflicts. Rules:
-  * Compile in the Lazarus IDE on ONE computer (Windows). That computer owns the build number.
-  * On Linux compile with:  lazbuild PhotoDownloader.lpi   (lazbuild does not change the number),
-    or in the IDE, and then throw the number change away before pulling:
-        git checkout PhotoDownloader.lpi
-  * Commit PhotoDownloader.lpi only when you make a bundle / release.
+Lazarus (the IDE and lazbuild) changes PhotoDownloader.lpi every time you compile: the build
+number goes up by one on its own. Let it, and commit the file with your other changes. Rules:
+  * Always pull before you compile, and commit and push when you are done, so both computers
+    count on from the same number.
+  * If a pull still reports a conflict in PhotoDownloader.lpi, keep the higher BuildNr value,
+    then:  git add PhotoDownloader.lpi   and   git commit
 
 Branches (optional, later)
 --------------------------
