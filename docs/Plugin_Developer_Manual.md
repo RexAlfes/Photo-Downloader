@@ -142,7 +142,7 @@ Do not send `Set.` for a text field the user is typing in; the cursor would jump
 
 - **Download:** before a download the user started (not with automation), every switched-on library with fields shows its window, in the order of the Plug-ins list. **Cancel** stops the download before anything is copied. When the values or the download path changed, the folder and file names are worked out again first.
 - **Preferences > Plug-ins > Setup…** shows the same window.
-- The values are kept in the settings file, `[PluginOpts]`, as `key=value;key=value` (`%` and `;` written as `%25` and `%3B`).
+- The values are kept in the settings file, `[PluginOpts]`, as `key=value;key=value` (`%` and `;` written as `%25` and `%3B`). User profiles are copies of the settings file, so they keep the values, the on/off state and the order of the plug-ins too.
 
 # 5. Safety
 
