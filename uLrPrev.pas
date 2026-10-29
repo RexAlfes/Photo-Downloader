@@ -104,6 +104,12 @@ var
 begin
   Result := False;
   Err := '';
+  Buf := nil;  // empty arrays to start with
+  Starts := nil;
+  Ends := nil;
+  Blocks := nil;
+  LvlW := nil;
+  LvlH := nil;
   Info.Uuid := '';
   Info.Quality := '';
   Info.CropW := 0;
@@ -131,8 +137,6 @@ begin
     Exit;
   end;
   // blocks: every block starts with AgHg; block 0 is the header text, the others hold one JPEG each
-  SetLength(Starts, 0);
-  SetLength(Blocks, 0);
   I := 0;
   while I >= 0 do
   begin
@@ -161,8 +165,6 @@ begin
   Info.CropW := HeaderInt(Txt, 'croppedWidth');
   Info.CropH := HeaderInt(Txt, 'croppedHeight');
   // sizes of the levels, in the order they are listed: { height = 43, width = 64, }
-  SetLength(LvlW, 0);
-  SetLength(LvlH, 0);
   P := Pos('levels', Txt);
   if P > 0 then
   begin
