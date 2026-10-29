@@ -636,7 +636,7 @@ var
   F: TForm;  // F: the dialog
   H: TTypesHelper;  // H: handler object for the list
   B: TButton;  // B: button being created
-  I: Integer;  // I: loop counter
+  I, RowH, Y: Integer;  // I: loop counter; RowH: height of one list row; Y: top of the buttons
 begin
   F := TForm.CreateNew(Application);  // create the form
   H := TTypesHelper.Create;  // create the helper
@@ -651,14 +651,22 @@ begin
       H.List.Items.Add(FileTypeNames[I]);  // add its name
       H.List.Checked[I] := S.TypeOn[I];  // check it when it is enabled
     end;
-    B := MkButton(F, 'Select all', 10, 372, 100);  // Select all button
+    // make the list tall enough to show every type without scrolling: rows are taller on Linux
+    // and with larger fonts, so one row is measured once the list exists
+    H.List.HandleNeeded;  // create the list so a row can be measured
+    RowH := H.List.ItemRect(0).Bottom - H.List.ItemRect(0).Top;  // height of one row
+    if (RowH < 12) or (RowH > 48) then RowH := 18;  // implausible measurement: use a usual row height
+    H.List.Height := FileTypeCount * RowH + (H.List.Height - H.List.ClientHeight) + 4;  // every row plus the border
+    Y := H.List.Top + H.List.Height + 10;  // buttons below the list
+    F.ClientHeight := Y + 78;  // room for the two button rows
+    B := MkButton(F, 'Select all', 10, Y, 100);  // Select all button
     B.OnClick := @H.AllClick;  // connect its handler
-    B := MkButton(F, 'Clear all', 120, 372, 100);  // Clear all button
+    B := MkButton(F, 'Clear all', 120, Y, 100);  // Clear all button
     B.OnClick := @H.NoneClick;  // connect its handler
-    B := MkButton(F, 'Default', 230, 372, 100);  // Default button
+    B := MkButton(F, 'Default', 230, Y, 100);  // Default button
     B.OnClick := @H.DefaultClick;  // connect its handler
-    MkButton(F, 'OK', 180, 406, 80, mrOK).Default := True;  // OK button, also the default button
-    MkButton(F, 'Cancel', 270, 406, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
+    MkButton(F, 'OK', 180, Y + 34, 80, mrOK).Default := True;  // OK button, also the default button
+    MkButton(F, 'Cancel', 270, Y + 34, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
     Result := F.ShowModal = mrOK;  // True when the user clicked OK
     if Result then
       for I := 0 to FileTypeCount - 1 do S.TypeOn[I] := H.List.Checked[I];  // store the selection
