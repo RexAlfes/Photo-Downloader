@@ -9,7 +9,8 @@ Read `docs/Specification_Current.md` first, then `docs/Continuation_Prompt.txt` 
 - Linux: `lazbuild -B --ws=gtk2 PhotoDownloader.lpi`. Use GTK 2: the GTK 3 widgetset of Lazarus 4.8 raised an Access Violation in the folder chooser and misplaced windows. Packages: `build-essential libgtk2.0-dev`.
 - Cross compiling Windows <-> Linux does not work. Compile on the system you are on, run the program, and report plainly what was and was not tested.
 - GitHub Actions (`.github/workflows/build.yml`) compiles Windows and Linux on every push.
-- `PhotoDownloader.lpi` changes on every compile (AutoIncrementBuild raises the build number). Let it count up on its own and commit it with the other changes; do not revert it or set the number by hand.
+- The build number (`BuildNr` in `PhotoDownloader.lpi`) goes up by one on every compile. The IDE does this itself; `lazbuild` does not, so raise `BuildNr` by one before each `lazbuild` run. Commit the lpi with the other changes and never lower or revert the number.
+- Document and manual titles carry only the version without the build number (for example 0.1.1), never `0.1.1.1` or "build N".
 
 ## Versioning
 `major.minor.revision.build` in `PhotoDownloader.lpi` (Version Info): Major 0, Minor 1. Every bundle raises the Revision by one and resets the Build to 1 (0.1.1.1 -> 0.1.2.1 -> 0.1.3.1 ...). Every compile counts the Build up between bundles. Each bundle also gets a new `Claude Prompt/Claude-Prompt-<version>.txt` (same text as `docs/Continuation_Prompt.txt`).
