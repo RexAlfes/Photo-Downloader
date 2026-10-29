@@ -10,6 +10,10 @@ uses
   uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uLrCat, uSingle, uRotate, uSafeDel, uSplash, uPlugins;
 
 type
+  { Which files a download takes: dsAuto = the selected ones, or all when nothing is selected (automation);
+    dsSelected = only the selected ones (Download Selected); dsAll = all shown files (Download All) }
+  TDownloadScope = (dsAuto, dsSelected, dsAll);
+
   TMainForm = class(TForm)
   private
     FPluginErr: string;  // problems found while loading plug-in libraries (shown after the splash)
@@ -40,7 +44,7 @@ type
     lstDates: TListBox;  // list of image dates
     splLeft: TSplitter;  // splitter between the date list and the grid
     FView: TPhotoView;  // grid or list of images
-    btnDownload, btnDelete, btnClose, btnCustom: TButton;  // main buttons
+    btnDownload, btnDownloadAll, btnDelete, btnClose, btnCustom: TButton;  // main buttons (btnDownload = Download Selected)
     // construction
     function AddMenu(AParent: TMenuItem; const Cap: string; H: TNotifyEvent;
       SC: TShortCut): TMenuItem;
@@ -68,7 +72,7 @@ type
     procedure ReloadPlugins;  // looks for plug-in libraries again and reports problems
     procedure RebuildDates;
     procedure ApplyFilter;
-    procedure GetDownloadList(L: TList);
+    procedure GetDownloadList(L: TList; Scope: TDownloadScope = dsAuto);
     procedure SelectWhere(Mode: Integer);
     function PostProcess(It: TImageItem; const Dest: string): Boolean;
     procedure SyncDateHighlight;
@@ -93,7 +97,7 @@ type
       TwoBars: Boolean = False);
     function ItemVisible(It: TImageItem): Boolean;
     procedure HideProgress;
-    function DoDownload(Silent: Boolean): Boolean;
+    function DoDownload(Silent: Boolean; Scope: TDownloadScope = dsAuto): Boolean;
     procedure DeleteFiles(OnlyDownloaded, Silent: Boolean);
     function DoEject(Silent: Boolean): Boolean;
     procedure RunAutoSequence;
@@ -146,6 +150,7 @@ type
     procedure LoggingClick(Sender: TObject);
     procedure SaveLogClick(Sender: TObject);
     procedure DownloadClick(Sender: TObject);
+    procedure DownloadAllClick(Sender: TObject);
     procedure DeleteClick(Sender: TObject);
     procedure CloseClick(Sender: TObject);
     procedure CustomClick(Sender: TObject);
@@ -392,16 +397,23 @@ begin
   btnDelete.Caption := 'Delete';  // button text
   btnDelete.OnClick := @DeleteClick;  // click handler
   PlaceButton(btnDelete, btnClose, 8);  // attach to the left of Close
-  btnDownload := TButton.Create(Self);  // Download button
+  btnDownload := TButton.Create(Self);  // Download Selected button
   btnDownload.Parent := pnlButtons;  // place it on the button panel
-  btnDownload.Caption := 'Download';  // button text
+  btnDownload.Caption := 'Download Selected';  // button text
   btnDownload.OnClick := @DownloadClick;  // click handler
   PlaceButton(btnDownload, btnDelete, 8);  // attach to the left of Delete
+  btnDownload.Width := 120;  // room for the longer text
+  btnDownloadAll := TButton.Create(Self);  // Download All button
+  btnDownloadAll.Parent := pnlButtons;  // place it on the button panel
+  btnDownloadAll.Caption := 'Download All';  // button text
+  btnDownloadAll.OnClick := @DownloadAllClick;  // click handler
+  PlaceButton(btnDownloadAll, btnDownload, 8);  // attach to the left of Download Selected
+  btnDownloadAll.Width := 100;  // room for the text
   btnCustom := TButton.Create(Self);  // Custom button
   btnCustom.Parent := pnlButtons;  // place it on the button panel
   btnCustom.Caption := 'C&ustom';  // button text
   btnCustom.OnClick := @CustomClick;  // click handler
-  PlaceButton(btnCustom, btnDownload, 8);  // attach to the left of Download
+  PlaceButton(btnCustom, btnDownloadAll, 8);  // attach to the left of Download All
 
   // left: date selector
   pnlLeft := TPanel.Create(Self);  // left panel
@@ -685,6 +697,7 @@ begin
   begin
     SetStatus('No files');  // status text
     btnDownload.Enabled := False;  // nothing to download
+    btnDownloadAll.Enabled := False;  // nothing to download
     btnDelete.Enabled := False;  // nothing to delete
     Exit;  // done
   end;
@@ -712,7 +725,16 @@ begin
       S := S + '.';  // end the sentence
   end;
   SetStatus(S);  // show the text
-  btnDownload.Enabled := N > 0;  // enable the Download button when there are files
+  L := TList.Create;  // count again for each button
+  try
+    GetDownloadList(L, dsSelected);  // selected files to download
+    btnDownload.Enabled := L.Count > 0;  // Download Selected only with selected files to download
+    L.Clear;  // start again
+    GetDownloadList(L, dsAll);  // all shown files to download
+    btnDownloadAll.Enabled := L.Count > 0;  // Download All when there are files to download
+  finally
+    L.Free;  // free the list
+  end;
   btnDelete.Enabled := False;  // Delete only when a downloaded file is visible
   for I := 0 to FVisible.Count - 1 do  // every visible file
     if TImageItem(FVisible[I]).Status = isDownloaded then  // downloaded file
@@ -1020,19 +1042,21 @@ begin
 end;
 
 { Collects the items to download: the selected ones, or all when none is selected. }
-procedure TMainForm.GetDownloadList(L: TList);
+procedure TMainForm.GetDownloadList(L: TList; Scope: TDownloadScope = dsAuto);
 var
   I: Integer;  // I: loop counter
   It: TImageItem;  // It: current item
-  AnySel: Boolean;  // AnySel: True when the user selected something
+  AnySel: Boolean;  // AnySel: True when only selected items are taken
 begin
   AnySel := False;  // nothing selected yet
-  for I := 0 to FVisible.Count - 1 do  // look at all visible items
-    if TImageItem(FVisible[I]).Selected then  // item is selected
-    begin
-      AnySel := True;  // something is selected
-      Break;  // enough
-    end;
+  if Scope <> dsAll then  // Download All ignores the selection
+    for I := 0 to FVisible.Count - 1 do  // look at all visible items
+      if TImageItem(FVisible[I]).Selected then  // item is selected
+      begin
+        AnySel := True;  // something is selected
+        Break;  // enough
+      end;
+  if (Scope = dsSelected) and not AnySel then Exit;  // Download Selected without a selection: nothing
   for I := 0 to FVisible.Count - 1 do  // every visible item
   begin
     It := TImageItem(FVisible[I]);  // current item
@@ -1358,7 +1382,7 @@ end;
 { Downloads the selected files. }
 procedure TMainForm.PopDownloadClick(Sender: TObject);
 begin
-  DoDownload(False);  // download with questions
+  DoDownload(False, dsSelected);  // download the selected files, with questions
 end;
 
 { Updates the status and the date highlight after the selection changed. }
@@ -1600,7 +1624,7 @@ begin
 end;
 
 { Copies the files to download; returns True when all were copied and nothing was canceled. }
-function TMainForm.DoDownload(Silent: Boolean): Boolean;
+function TMainForm.DoDownload(Silent: Boolean; Scope: TDownloadScope = dsAuto): Boolean;
 var
   L: TList;  // L: files to download
   I, Done, Skipped, Failed, Problems, ExifFail: Integer;  // I: loop counter; Done: files copied; Skipped: files skipped; Failed: files that failed; Problems: problem files; ExifFail: owner field failures
@@ -1633,11 +1657,16 @@ begin
   end;
   L := TList.Create;  // create the list
   try
-    GetDownloadList(L);  // get the files to download
+    GetDownloadList(L, Scope);  // get the files to download
     if L.Count = 0 then  // nothing to download
     begin
-      if not Silent then  // tell the user unless silent
-        MessageDlg(AppTitle, 'There are no files to download.', mtInformation, [mbOK], 0);
+      if Silent then
+        // nothing to say
+      else if Scope = dsSelected then  // nothing selected, or only files already downloaded
+        MessageDlg(AppTitle, 'No selected files to download. Select the files to download, or click Download All.',
+          mtInformation, [mbOK], 0)
+      else
+        MessageDlg(AppTitle, 'There are no files to download.', mtInformation, [mbOK], 0);  // tell the user
       Exit;  // nothing to do
     end;
     for I := 0 to L.Count - 1 do  // every file
@@ -2567,7 +2596,13 @@ end;
 { Downloads the selected files. }
 procedure TMainForm.DownloadClick(Sender: TObject);
 begin
-  DoDownload(False);  // download with questions
+  DoDownload(False, dsSelected);  // download the selected files, with questions
+end;
+
+{ Downloads all shown files, whatever is selected. }
+procedure TMainForm.DownloadAllClick(Sender: TObject);
+begin
+  DoDownload(False, dsAll);  // download all shown files, with questions
 end;
 
 { Deletes the downloaded source files. }

@@ -144,6 +144,7 @@ Re-evaluation runs after changes to destination, patterns, job code, profile or 
 | GPS Settings | Open – message only |
 | Preferences tabs: Download Path, General, File Handling, Automation, Mapping, Custom Button, Plug-ins | Done |
 | File > Plug-ins... opens Preferences on the Plug-ins tab | Done |
+| Main buttons **Download Selected** (only selected files; enabled when a selected file needs downloading) and **Download All** (all shown files); automation keeps "selected, or all when nothing is selected" | Done |
 | Camera mapping ({T8}/{T9} per camera) | Done |
 | Automation (download, delete, eject, launch, exit; prompt) | Done |
 | Help: Contents and Getting Started (short text) | Partial |
