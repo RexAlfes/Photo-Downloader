@@ -106,12 +106,17 @@ procedure CloseSplash;
 begin
   if Splash = nil then Exit;  // no splash: nothing to do
   try
+    {$IFNDEF UNIX}
+    // Windows: keep the splash for at least MinShowMs
     while (not Clicked) and (GetTickCount64 - StartTick < MinShowMs) do  // wait until clicked or the minimum time has passed
     begin
       Application.ProcessMessages;  // keep the screen responsive while waiting
       if Application.Terminated then Break;  // program is closing: stop waiting
       Sleep(20);  // short pause to avoid using the processor
     end;
+    {$ENDIF}
+    // Linux: no waiting. A waiting loop inside the start-up timer lets menu clicks run inside the
+    // loop, which froze GTK 3; the splash simply closes when the main window is up.
     Splash.Hide;  // hide the window
     Splash.Free;  // free it
   except
