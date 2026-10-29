@@ -1186,6 +1186,85 @@ begin
   else if FileExistsUTF8(Base + '.THM') then Result := Base + '.THM';  // upper case extension (Linux is case sensitive)
 end;
 
+{ True when the row (Horiz) or column of B at position At is close to black (sampled). }
+function LineIsDark(B: TBitmap; At: Integer; Horiz: Boolean): Boolean;
+var
+  I, N, X, Y, Sum: Integer;  // I: sample; N: samples; X, Y: pixel; Sum: brightness total
+  C: TColor;  // C: pixel color
+begin
+  N := 16;  // samples along the line
+  Sum := 0;
+  for I := 0 to N - 1 do
+  begin
+    if Horiz then
+    begin
+      X := (B.Width - 1) * I div (N - 1);  // spread along the row
+      Y := At;
+    end
+    else
+    begin
+      X := At;
+      Y := (B.Height - 1) * I div (N - 1);  // spread along the column
+    end;
+    C := ColorToRGB(B.Canvas.Pixels[X, Y]);  // pixel color
+    Sum := Sum + Red(C) + Green(C) + Blue(C);  // add its brightness
+  end;
+  Result := Sum < N * 3 * 24;  // average channel below 24: black bar
+end;
+
+{ Makes a bitmap from a small embedded thumbnail (EXIF thumbnail, small RAW preview). Some
+  cameras store it in a fixed shape (160x120) and add black bars when the photo (RefW x RefH)
+  has another shape: those bars are cut off. nil when it cannot be used: smaller than Box, or
+  of another shape without bars (cropped or squeezed by the camera). }
+function SmallThumbBitmap(Src: TGraphic; RefW, RefH, Box: Integer): TBitmap;
+var
+  B, Cut: TBitmap;  // B: the whole thumbnail; Cut: without bars
+  W, H, CW, CH, Off: Integer;  // W, H: thumbnail size; CW, CH: size without bars; Off: bar thickness
+begin
+  Result := nil;
+  W := Src.Width;
+  H := Src.Height;
+  if (W <= 0) or (H <= 0) or (Max(W, H) < Box) then Exit;  // too small for the box
+  B := TBitmap.Create;
+  try
+    B.PixelFormat := pf24bit;  // plain RGB
+    B.SetSize(W, H);
+    B.Canvas.Draw(0, 0, Src);  // decode into the bitmap
+    CW := W;  // assume no bars
+    CH := H;
+    if (RefW > 0) and (RefH > 0) and (Abs(Int64(W) * RefH - Int64(H) * RefW) * 50 > Int64(W) * RefH) then  // shapes differ by more than 2%
+    begin
+      if Int64(RefW) * H > Int64(RefH) * W then  // the photo is wider: bars at top and bottom
+      begin
+        CH := Max(1, Round(W * RefH / RefW));  // picture height inside the bars
+        Off := (H - CH) div 2;  // bar thickness
+        if (Off >= 2) and not (LineIsDark(B, Off div 2, True) and LineIsDark(B, H - 1 - Off div 2, True)) then Exit;  // no bars: shape changed some other way
+      end
+      else
+      begin
+        CW := Max(1, Round(H * RefW / RefH));  // picture width inside the bars
+        Off := (W - CW) div 2;  // bar thickness
+        if (Off >= 2) and not (LineIsDark(B, Off div 2, False) and LineIsDark(B, W - 1 - Off div 2, False)) then Exit;  // no bars
+      end;
+      if Off >= 2 then  // cut the bars off
+      begin
+        if Max(CW, CH) < Box then Exit;  // too small without the bars
+        Cut := TBitmap.Create;
+        Cut.PixelFormat := pf24bit;
+        Cut.SetSize(CW, CH);
+        Cut.Canvas.CopyRect(Rect(0, 0, CW, CH), B.Canvas,
+          Rect((W - CW) div 2, (H - CH) div 2, (W - CW) div 2 + CW, (H - CH) div 2 + CH));  // the middle part
+        Result := Cut;
+        Exit;
+      end;
+    end;
+    Result := B;  // use the whole thumbnail
+    B := nil;  // do not free it below
+  finally
+    B.Free;
+  end;
+end;
+
 procedure EnsureThumbCore(Item: TImageItem; Box: Integer);
 var
   Heavy: Boolean;  // Heavy: True for types that are slow to decode
@@ -1205,7 +1284,11 @@ var
   IsPng: Boolean;  // IsPng: True when a video cover is a PNG
   LrInfo: TLrPrevInfo;  // LrInfo: header values of a Lightroom preview file
   LrErr: string;  // LrErr: reason a Lightroom preview file could not be read
+  Small: TBitmap;  // Small: bitmap made from a small embedded thumbnail
+  RefW, RefH: Integer;  // RefW, RefH: size of the photo (or its largest preview), for the shape check
+  K: Integer;  // K: smallest preview side wanted
 begin
+  Small := nil;  // nothing created yet
   W := 0;  // no width yet
   H := 0;  // no height yet
   Deep := True;  // search the whole file
@@ -1261,14 +1344,35 @@ begin
         end
         else
         begin
-          Jpg := TJPEGImage.Create;  // create the JPEG
-          if ReadJpegDims(Item.FullPath, W, H) then  // read the picture size
-            Jpg.Scale := PickScale(W, H, Box)  // choose the decoding scale
+          // fast path: the small thumbnail the camera stored in the EXIF data (first 64 KB of
+          // the file, about 15 times faster than decoding the photo, more from a memory card)
+          Mem := TMemoryStream.Create;  // memory for the EXIF thumbnail
+          if ExtractExifThumb(Item.FullPath, Mem, W, H, RefW, RefH) then
+          begin
+            Jpg := TJPEGImage.Create;  // create the JPEG
+            try
+              Mem.Position := 0;  // rewind
+              Jpg.LoadFromStream(Mem);  // decode the thumbnail
+              Small := SmallThumbBitmap(Jpg, RefW, RefH, Box);  // check its size and shape, cut black bars
+            except
+              FreeAndNil(Small);  // a broken thumbnail: decode the photo below
+            end;
+            FreeAndNil(Jpg);  // done with the JPEG
+          end;
+          if Small <> nil then
+            G := Small  // use the EXIF thumbnail
           else
-            Jpg.Scale := jsQuarter;  // quarter size when the size is unknown
-          Jpg.Performance := jpBestSpeed;  // fastest decoding
-          Jpg.LoadFromFile(Item.FullPath);  // load the file
-          G := Jpg;  // use it as the graphic
+          begin
+            // the photo itself, decoded at reduced size
+            Jpg := TJPEGImage.Create;  // create the JPEG
+            if ReadJpegDims(Item.FullPath, W, H) then  // read the picture size
+              Jpg.Scale := PickScale(W, H, Box)  // choose the decoding scale
+            else
+              Jpg.Scale := jsQuarter;  // quarter size when the size is unknown
+            Jpg.Performance := jpBestSpeed;  // fastest decoding
+            Jpg.LoadFromFile(Item.FullPath);  // load the file
+            G := Jpg;  // use it as the graphic
+          end;
         end;
       end
       else if (Pos(';' + Ext + ';', RawExts) > 0) or (Pos(';' + Ext + ';', TiffExts) > 0) then
@@ -1280,7 +1384,11 @@ begin
         for Rank := 0 to 2 do  // try up to three previews
         begin
           Mem.Clear;  // empty the memory
-          if not ExtractEmbeddedJpeg(Item.FullPath, Rank, Deep, Mem, W, H) then Break;  // extract the next preview
+          // RAW: the smallest preview that is big enough comes first (a 160 to 1600 pixel preview
+          // decodes far faster than a full-size one). TIFF/DNG keep the largest first, because
+          // TiffRgbIsLarger compares it with the plain picture in the file.
+          if Deep then K := Box else K := 0;  // smallest long side wanted
+          if not ExtractEmbeddedJpegEx(Item.FullPath, Rank, Deep, K, Mem, W, H, RefW, RefH) then Break;  // extract the next preview
           // the plain image in the file is bigger than this preview: build the thumbnail from it
           if (not Deep) and TiffRgbIsLarger(Item.FullPath, W, H) then Break;  // use the plain picture instead of a smaller preview
           // attempt 0: reduced-size fast decode; attempt 1: decoder defaults
@@ -1306,6 +1414,12 @@ begin
                 FreeAndNil(Jpg);  // free the failed JPEG
               end;
             end;
+          end;
+          if (G <> nil) and Deep and (Max(W, H) < Max(RefW, RefH)) then  // a smaller preview than the largest one
+          begin
+            Small := SmallThumbBitmap(Jpg, RefW, RefH, Box);  // check its size and shape, cut black bars
+            FreeAndNil(Jpg);  // done with the JPEG
+            G := Small;  // nil: try the next preview
           end;
           if G <> nil then Break;  // stop when a preview worked
         end;
@@ -1511,6 +1625,7 @@ begin
     Jpg.Free;  // free the JPEG
     Pic.Free;  // free the picture
     Mem.Free;  // free the preview memory
+    Small.Free;  // free the small thumbnail bitmap
   end;
 end;
 
