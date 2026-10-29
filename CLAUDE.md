@@ -29,4 +29,4 @@ Every document except README.md is kept in three formats, `.md` (source), `.docx
 - Windows exe is unsigned: keep the "Unknown publisher" help (README, manual section 1, website, release notes, launch materials).
 
 ## Git
-Small commits with a clear message, pull before starting, push when done. Keep line endings as set by `.gitattributes`. I am new to Git: explain commands briefly and do not force-push.
+Small commits with a clear message, pull before starting, push when done. Subfolders of `Private/` (git-ignored here) can be separate private repositories with their own README: commit and push there separately, and never copy their content into this public repository. Keep line endings as set by `.gitattributes`. I am new to Git: explain commands briefly and do not force-push.
