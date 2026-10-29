@@ -1,7 +1,7 @@
 Photo Downloader Launch Materials
 ===================================
 
-Version: 0.1.1.1-alpha
+Version: 0.1.2-alpha
 Date: 28 Oct 2026
 License: GNU GPL v3 or later
 
@@ -9,14 +9,14 @@ License: GNU GPL v3 or later
 1. Landing Page / GitHub README.md Copy
 --------------------------------------------------------------------------------
 
-# Photo Downloader v0.1.1.1-alpha
+# Photo Downloader v0.1.2-alpha
 A lightning-fast, native desktop application for automated media ingestion, renaming, and organization.
 
 Photo Downloader is an open-source tool built from the ground up for speed, reliability, and local data control. Developed natively in Lazarus / Free Pascal, it features a zero-bloat, high-performance engine that automates the tedious parts of your photography workflow without tracking, cloud dependencies, or subscription fees. 
 
 It serves as a modern, GPL-licensed alternative to paid, subscription-based and pay-for-upgrade ingestion software.
 
-Key Features (Available in version 0.1.1.1)
+Key Features (Available in version 0.1.2)
 --------------------------------------
 * High-Performance Scanning: Fast recursive scanning of source folders, local drives, or network locations, with an option to isolate just the DCIM directory.
 * Extensive Format Support: Ingestion, thumbnails and camera data for JPEG, PNG, BMP, TIFF (including compressed, palette and fax scans), GIF, DNG and RAW files with embedded previews (NEF, NRW, CR2, CR3, CRW, ARW and others). HEIC (camera data, renaming and picture previews all work out of the box). Adobe Lightroom preview files (.lrprev) can be viewed and downloaded as .jpg; when the Lightroom catalog is next to them, the original file name, capture date and camera are read from it (needs the SQLite library, see Tech Stack). Video (MP4, MOV, LRV; each its own filter) and audio (MP3) files are listed, dated from the movie header and copied, with real video thumbnails from the system when available, a play-symbol or music-note tile otherwise, and double-click to play in your default player.
@@ -52,9 +52,9 @@ Like a lot of high-volume photographers, I’ve been frustrated by the lack of f
 
 To solve this, I've spent the last few months building Photo Downloader—a native desktop ingestion and renaming tool built using Lazarus 4.8 and FPC 3.2.2. It is fully licensed under the GNU GPL v3. 
 
-It is currently in Alpha (version 0.1.1.1), and I’m looking for photographers shooting various camera systems to put the file-parsing engine through its paces.
+It is currently in Alpha (version 0.1.2), and I’m looking for photographers shooting various camera systems to put the file-parsing engine through its paces.
 
-What it does right now (version 0.1.1.1):
+What it does right now (version 0.1.2):
 * Lightning-Fast Card Scanning: Point it at a card reader or folder tree (or let it auto-detect a Windows DCIM drive). It handles everything from standard JPEGs to complex RAWs (CR3, ARW, NEF, etc.). HEIC previews work out of the box; video (MP4, MOV, LRV) and MP3 audio files are supported too, with real video thumbnails where your system can make them.
 * Advanced Token Renaming: Uses dynamic metadata tokens to reconstruct file names on the fly based on shot time, camera body mapping, job codes, file extensions, and sequence counters, for folder and file names alike.
 * Smart Duplication Handling: Before copying, it flags items as New, Already Downloaded, Name Clash, or Duplicate based on a matrix of file size, timestamp, and camera signatures.
@@ -78,4 +78,4 @@ If you want to escape subscription-based workflows and play with a highly portab
 3. The 45-Second Pitch
 --------------------------------------------------------------------------------
 
-"I’m currently running an alpha test for Photo Downloader, a native, open-source desktop app built in Lazarus and Free Pascal that serves as a lightweight, free alternative to paid, subscription-based ingest software. Designed specifically for high-volume photographers, it bypasses heavy modern app frameworks to offer instant, local execution. Version 0.1.1.1 automatically scans card readers, detects duplicates by comparing file size and camera signatures, handles token-based metadata renaming, and automatically generates XMP sidecars. It’s completely free, licensed under the GNU GPL v3, and I'm actively looking for alpha testers to help stress-test our native RAW preview and metadata engine."
+"I’m currently running an alpha test for Photo Downloader, a native, open-source desktop app built in Lazarus and Free Pascal that serves as a lightweight, free alternative to paid, subscription-based ingest software. Designed specifically for high-volume photographers, it bypasses heavy modern app frameworks to offer instant, local execution. Version 0.1.2 automatically scans card readers, detects duplicates by comparing file size and camera signatures, handles token-based metadata renaming, and automatically generates XMP sidecars. It’s completely free, licensed under the GNU GPL v3, and I'm actively looking for alpha testers to help stress-test our native RAW preview and metadata engine."

@@ -1,6 +1,6 @@
 # Photo Downloader – User Manual
 
-**Version:** 0.1.1 · **License:** GNU GPL v3 or later · **Platforms:** Windows 64-bit (primary), Linux 64-bit (GTK 2, tested on Linux Mint 22.3)
+**Version:** 0.1.2 · **License:** GNU GPL v3 or later · **Platforms:** Windows 64-bit (primary), Linux 64-bit (GTK 2, tested on Linux Mint 22.3)
 
 Photo Downloader copies photos from a memory card, card reader or folder to your computer. It renames them from templates, files them into folders by date and job code, and checks every copy. This manual explains each part of the program in the order you will meet it.
 
