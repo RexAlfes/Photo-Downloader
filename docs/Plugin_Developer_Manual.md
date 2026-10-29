@@ -103,7 +103,7 @@ EXPORT int pd_logo(unsigned char *buf, int bufLen);
 | `default` | value used before anything is stored |
 | `flags` | optional, separated by `,`: `upper` = typed text is shown and kept in capitals; `folder=A;B;C` (check boxes only) = while checked, `{A}` is the last folder of the download path. `{A}`, `{B}`, `{C}` at the end of the path are removed first, so the box replaces an older last folder (for example `{E}`). |
 
-**Destination folder:** after the user chooses a folder, the download path becomes that folder plus the token part of the current path when it already uses the library's tokens (so the user's own layout is kept), otherwise plus `DestTemplate`. Then the check boxes with `folder=` add or remove their last folder. On **OK** the new path is saved and shown on the Download Path tab.
+**Destination folder:** after the user chooses a folder, the download path becomes that folder plus the token part of the current path when that still holds the first token of `DestTemplate` (so the user's own layout is kept), otherwise plus `DestTemplate`. When the window opens, a download path without that token is put back to the destination plus `DestTemplate`. Then the check boxes with `folder=` add or remove their last folder. On **OK** the new path is saved and shown on the Download Path tab.
 
 ## 3.4 pd_token context
 
@@ -140,7 +140,7 @@ Do not send `Set.` for a text field the user is typing in; the cursor would jump
 
 # 4. When the program asks for values
 
-- **Download:** before a download the user started (not with automation), every switched-on library with fields shows its window, in the order of the Plug-ins list. **Cancel** stops the download before anything is copied. When the values or the download path changed, the folder and file names are worked out again first.
+- **Download:** before a download the user started with **Download Selected** or **Download All** (not with automation), every switched-on library with fields shows its window, in the order of the Plug-ins list. **Cancel** stops the download before anything is copied. When the values or the download path changed, the folder and file names are worked out again first.
 - **Preferences > Plug-ins > Setup…** shows the same window.
 - The values are kept in the settings file, `[PluginOpts]`, as `key=value;key=value` (`%` and `;` written as `%25` and `%3B`). User profiles are copies of the settings file, so they keep the values, the on/off state and the order of the plug-ins too.
 

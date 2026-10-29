@@ -868,6 +868,8 @@ type
     procedure FieldChange(Sender: TObject);  // a field was changed
     procedure FolderClick(Sender: TObject);  // chooses the destination folder to download to
     procedure ApplyFolderFields;  // adds or removes the folder tokens of check fields at the end of the download path
+    function DestTemplate: string;  // the plug-in's suggested folders, with this system's separators
+    function UsesLayout(const Rest: string): Boolean;  // True when the token part keeps the plug-in's main folder token
   public
     constructor CreatePrompt(AOwner: TComponent; P: TLibPlugin; const Values, DestDir: string);  // builds the window
     property DestDir: string read FDestDir;  // the download folder template after the window closed
@@ -1014,6 +1016,10 @@ begin
     Lab.Font.Color := clGray;  // quiet
     Lab.SetBounds(W - Canvas.TextWidth(Lab.Caption) - 18, 18, Lab.Width, Lab.Height);  // top right, inside the clear space
   end;
+  // a download path without the plug-in's layout (for example only ...\{UAS.Media}\) gets it back
+  if (P.Info.Values['DestFolder'] = '1') and (FDestDir <> '') and
+     not UsesLayout(Copy(FDestDir, Length(DestRootOf(FDestDir)) + 1, MaxInt)) then
+    FDestDir := IncludeTrailingPathDelimiter(DestRootOf(FDestDir)) + DestTemplate;  // destination + plug-in folders
   ApplyFolderFields;  // the download path follows the check boxes
   ApplyCheck('');  // first check: preview and error
 end;
@@ -1141,6 +1147,29 @@ begin
   ApplyCheck('');  // check the values
 end;
 
+{ The plug-in's suggested folders below the destination (DestTemplate), with this system's separators. }
+function TPluginPromptForm.DestTemplate: string;
+begin
+  Result := StringReplace(StringReplace(FPlugin.Info.Values['DestTemplate'], '\', PathDelim, [rfReplaceAll]),
+    '/', PathDelim, [rfReplaceAll]);  // both separators to this system's one
+end;
+
+{ True when the token part of a download path keeps the plug-in's layout: it holds the first token of
+  DestTemplate (for example the project folder token UAS). A path that only holds a type folder such as
+  the token UAS.Media does not count, so the plug-in's layout is used again. }
+function TPluginPromptForm.UsesLayout(const Rest: string): Boolean;
+var
+  T: string;  // T: the main token of DestTemplate, with braces
+  I, J: Integer;  // I, J: positions of its braces
+begin
+  T := DestTemplate;  // the suggested folders
+  I := Pos('{', T);  // first token
+  J := Pos('}', T);  // its end
+  if (I = 0) or (J < I) then Exit(True);  // no token to look for: keep the user's layout
+  T := LowerCase(Copy(T, I, J - I + 1));  // for example {uas}
+  Result := Pos(T, LowerCase(Rest)) > 0;  // the layout holds it
+end;
+
 { Chooses the destination folder to download to. The download folder template becomes the chosen
   folder plus the token part of the current template when that uses the plug-in's tokens, otherwise
   plus the plug-in's suggested folder template (DestTemplate). }
@@ -1148,17 +1177,10 @@ procedure TPluginPromptForm.FolderClick(Sender: TObject);
 var
   D: TSelectDirectoryDialog;  // D: folder chooser
   Root, Rest: string;  // Root: current destination folder; Rest: token part of the template
-  I: Integer;  // I: token index
-  HasTok: Boolean;  // HasTok: the token part uses a token of the plug-in
 begin
   Root := DestRootOf(FDestDir);  // current destination folder
   Rest := Copy(FDestDir, Length(Root) + 1, MaxInt);  // folders built from tokens
-  HasTok := False;  // no plug-in token found yet
-  for I := 0 to FPlugin.Tokens.Count - 1 do  // look for the plug-in's tokens
-    if Pos('{' + LowerCase(FPlugin.Tokens[I]) + '}', LowerCase(Rest)) > 0 then HasTok := True;
-  if not HasTok then  // use the folder template the plug-in suggests
-    Rest := StringReplace(StringReplace(FPlugin.Info.Values['DestTemplate'], '\', PathDelim, [rfReplaceAll]),
-      '/', PathDelim, [rfReplaceAll]);
+  if not UsesLayout(Rest) then Rest := DestTemplate;  // use the folder template the plug-in suggests
   D := TSelectDirectoryDialog.Create(Self);  // create the chooser
   try
     D.Title := 'Choose the destination folder to download to';  // window title

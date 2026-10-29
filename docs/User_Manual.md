@@ -60,7 +60,7 @@ Photo Downloader copies photos from a memory card, card reader or folder to your
 | **Date – Job code list** (left) | One line per capture date found on the card, with its job code. Also called the *Image Date Selector*. |
 | **Picture area** (right) | The pictures as thumbnail cards (Small, Medium, Large or Fit to Window) or as a list. |
 | **Status line** (bottom) | How many files will be downloaded, how many have problems, and the result of the last copy. |
-| **Buttons** | **Close**, **Delete**, **Download**, and an optional **Custom** button. |
+| **Buttons** | **Close**, **Delete**, **Download Selected**, **Download All**, and an optional **Custom** button. |
 
 Each picture card shows its number, file name and size, the date and time it was taken, its status, the camera model and the new name it will get.
 
@@ -76,7 +76,7 @@ Each picture card shows its number, file name and size, the date and time it was
 2. If you did not enter a folder, choose File > Open Source Folder (Ctrl+O) and select the card or folder. A progress window shows the files being read; you can cancel it.
 3. Check the thumbnails. The status line says how many files are ready.
 4. Choose the pictures you want (Ctrl+A selects all) or leave everything selected.
-5. Click **Download**. Each file is copied, then read back and compared with the original. The status line reports the result.
+5. Click **Download All** (or select files and click **Download Selected**). Each file is copied, then read back and compared with the original. The status line reports the result.
 6. Open your Pictures folder. The default location is `Pictures\Photo Downloader\<year>\<year>-<month>-<day>-<job code>\`.
 
 That is all you need to start. The rest of this manual explains how to change the folders, the names and the checks.
@@ -161,7 +161,7 @@ If you turn on **Rename name clashes as (1), (2) …** (Preferences > File Handl
 
 - **Names do not matter for the duplicate check.** Two files are duplicates when their size, capture time and camera match, even if their file names differ (for example `IMG_0001.jpg` and `IMG_0001 copy.jpg`).
 - **A number is added only when the name is taken.** With **Download duplicates as (1), (2) …**, a duplicate becomes `name (1).jpg` only if its new destination name is already used, by a file in the destination folder or by another picture in the same download. If its new name is different, it is downloaded under that name with no number. Several duplicates that share a name are numbered `(1)`, `(2)`, `(3)` in turn. The card shows the planned name, number included.
-- **The amber color does not depend on the options.** It shows the status. The options only decide what **Download** does with those files (skip them, download them numbered, or download them only when the name is free).
+- **The amber color does not depend on the options.** It shows the status. The options only decide what a download does with those files (skip them, download them numbered, or download them only when the name is free).
 - **A downloaded duplicate stays amber.** After a download the original shows as *Already downloaded*, but a duplicate is never compared with the destination, so it keeps the status *Duplicate file*. If you download the same card again with **Download duplicates as (1), (2) …** on, another numbered copy is made each time. Use **Ignore duplicate files on download** to avoid that.
 - With logging on, the log records for every duplicate whether it was renamed or skipped and why.
 
@@ -228,7 +228,11 @@ Default file name template: `{o}` (the original name)
 
 ## 9. Downloading
 
-Click **Download** (or right-click > Download selected file(s)). For each file the program:
+- **Download Selected** (or right-click > Download selected file(s)) downloads only the selected files. It is available when at least one selected file still needs downloading.
+- **Download All** downloads every file shown in the window, whatever is selected (files hidden by View > File Types or the Show options are not included).
+- Automation (Preferences > Automation) downloads the selected files, or all files when nothing is selected.
+
+For each file the program:
 
 1. creates the destination folder if needed,
 2. copies the file,
@@ -323,7 +327,7 @@ Lists the built-in plug-ins and any plug-in libraries found. **Directory Maker**
 
 The next time the program starts, the library appears in the list as **name (library) - disabled**. Nothing of it runs yet. Select it and tick **Enable plug-in**: a message shows the full path of the file. Click **OK** only when you trust where the file came from, because a library runs with your rights. If a library cannot be loaded (for example a 32-bit or a Linux file on Windows), the program says why and switches it off. To remove a plug-in, delete its file from the `plugins` folder: at the next start it leaves the list. Its values are kept, so they are back if you install it again.
 
-Once it is switched on, the list shows the library's own name, the information below the list names its tokens, and its logo (if it has one) is shown. **Setup...** opens the library's window for its values. The same window opens each time you click **Download**, filled with the last values; check them and click **OK**. **Cancel** stops the download before anything is copied. **OK** is only available when the values are valid. If the library offers a **Destination folder...** button, use it to choose the folder to download to. The download folder on the Download Path tab is set to that folder plus the library's folder layout (for example a project folder named from the values, then a folder per day and job code); the window shows the result as **Download to:**. A library can also offer check boxes that change the last folder of the download path, for example one folder per type of file; the **Download to:** line follows the box. The library's version is shown in the window's title bar. Use the library's tokens in the templates on the Download Path tab like any other token; the **Example image** line shows the result. A token whose value is missing stays in the name as written (for example `{ABC}`), so you can see it.
+Once it is switched on, the list shows the library's own name, the information below the list names its tokens, and its logo (if it has one) is shown. **Setup...** opens the library's window for its values. The same window opens each time you start a download (**Download Selected** or **Download All**), filled with the last values; check them and click **OK**. **Cancel** stops the download before anything is copied. **OK** is only available when the values are valid. If the library offers a **Destination folder...** button, use it to choose the folder to download to. The download folder on the Download Path tab is set to that folder plus the library's folder layout (for example a project folder named from the values, then a folder per day and job code); the window shows the result as **Download to:**. A library can also offer check boxes that change the last folder of the download path, for example one folder per type of file; the **Download to:** line follows the box. The library's version is shown in the window's title bar. Use the library's tokens in the templates on the Download Path tab like any other token; the **Example image** line shows the result. A token whose value is missing stays in the name as written (for example `{ABC}`), so you can see it.
 
 The interface for writing libraries is described in `docs/Plugin_Developer_Manual.md`.
 
