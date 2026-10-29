@@ -93,6 +93,9 @@ var
   CopyPump: TThreadMethod = nil;
   { Set to True from CopyPump to stop the running copy }
   CopyAbort: Boolean = False;
+  { Gives the value of a token from a plug-in library; set by uPlugins (nil = no plug-ins).
+    Only asked when no built-in token has the name, so plug-ins cannot change built-in tokens. }
+  PluginTokenHook: function(const Tok: string; Item: TImageItem; out Value: string): Boolean = nil;
 { Copies Src to Dst. The MD5 of the source is computed while it is read. With Verify the copy is
   read back and compared. On any failure the incomplete or wrong copy is deleted. }
 function CopyFileChecked(const Src, Dst: string; Verify: Boolean; out Hash: string;
@@ -731,6 +734,8 @@ begin
       Result := IntToStr(SeqSess);  // sequence number as text
       while Length(Result) < W do Result := '0' + Result;  // pad with zeros
     end
+    else if Assigned(PluginTokenHook) and PluginTokenHook(Tok, Item, Result) then  // a plug-in token
+      Known := True  // the plug-in gave a value
     else
     begin
       Known := False;  // unknown token

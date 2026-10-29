@@ -6,13 +6,15 @@ interface
 
 uses
   Classes, SysUtils, Math, Types, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
-  ComCtrls, CheckLst, Spin, Clipbrd, LCLType, LCLIntf, uSettings, uItems, uExif, uDrives, uVersion, uSafeDel;
+  ComCtrls, CheckLst, Spin, Clipbrd, LCLType, LCLIntf, uSettings, uItems, uExif, uDrives, uVersion, uSafeDel, uPlugins;
 
 function ExecuteJobCode(S: TAppSettings; var Job: string; const CurrentCamera: string): Boolean;
 { As ExecuteJobCode, with an extra 'Source folder' line (used at start-up). Source is the
   folder to load; empty means load nothing. }
 function ExecuteJobCodeSource(S: TAppSettings; var Job, Source: string; const CurrentCamera: string): Boolean;
 function ExecutePreferences(S: TAppSettings; const CurrentCamera: string): Boolean;
+{ Asks every switched-on plug-in library with prompt fields for its values; False when canceled. }
+function AskPluginValues(S: TAppSettings): Boolean;
 function ExecuteIptc(L: TStringList): Boolean;
 function ExecuteFileTypes(S: TAppSettings): Boolean;
 function ChooseFromList(const ATitle, APrompt: string; Items: TStrings; out Choice: string): Boolean;
@@ -751,6 +753,265 @@ begin
 end;
 
 { ====================================================================== }
+{ Plug-in prompt window                                                   }
+{ ====================================================================== }
+
+type
+  { Window that asks for the values of a plug-in library. It is drawn from the library's field list;
+    the library checks the values (pd_check) and returns a preview, an error text and values to set. }
+  TPluginPromptForm = class(TForm)
+  private
+    FPlugin: TLibPlugin;  // the plug-in
+    FCtrls: array of TWinControl;  // one control per field (TComboBox or TEdit)
+    FUpdating: Boolean;  // True while the program changes the controls
+    FChanged: string;  // key of the field changed last
+    FNormal: string;  // normalized values from the last check (Value.<key>= lines)
+    lblPreview, lblError: TLabel;  // preview and error text
+    BtnOK: TButton;  // OK button (only enabled when the values are valid)
+    function FieldValue(I: Integer): string;  // value of one field
+    procedure SetFieldValue(I: Integer; const V: string);  // shows a value in one field
+    procedure ApplyCheck(const Extra: string);  // lets the plug-in check the values and shows the result
+    procedure FieldChange(Sender: TObject);  // a field was changed
+    procedure FolderClick(Sender: TObject);  // fills the fields from an existing folder name
+  public
+    constructor CreatePrompt(AOwner: TComponent; P: TLibPlugin; const Values: string);  // builds the window
+    function Values: string;  // the values as key=value lines (normalized by the plug-in)
+  end;
+
+{ Builds the window: logo header, accent bar, one row per field, preview, error and buttons. }
+constructor TPluginPromptForm.CreatePrompt(AOwner: TComponent; P: TLibPlugin; const Values: string);
+var
+  Head: TPanel;  // Head: white header with the logo
+  Bar: TPanel;  // Bar: accent color bar under the header
+  Img: TImage;  // Img: the logo
+  Png: TPortableNetworkGraphic;  // Png: the logo picture
+  I, J, Y, HeadH: Integer;  // I, J: loop counters; Y: row position; HeadH: header height
+  Cb: TComboBox;  // Cb: a list field
+  V, Fnt, Acc: string;  // V: stored value; Fnt: font name; Acc: accent color (hex RRGGBB)
+begin
+  inherited CreateNew(AOwner);  // create the form without a resource file
+  FPlugin := P;  // remember the plug-in
+  Fnt := P.Info.Values['FontName'];  // font asked for by the plug-in
+  if (Fnt <> '') and (Screen.Fonts.IndexOf(Fnt) >= 0) then Font.Name := Fnt;  // use it when it is installed
+  HeadH := 0;  // no header yet
+  if P.Logo <> nil then  // the plug-in has a logo
+  begin
+    Head := TPanel.Create(Self);  // create the header
+    Head.Parent := Self;  // place it on the form
+    Head.BevelOuter := bvNone;  // flat
+    Head.Color := clWhite;  // logos go on a plain white background
+    Head.ParentBackground := False;  // keep the white color
+    Png := TPortableNetworkGraphic.Create;  // create the picture
+    try
+      P.Logo.Position := 0;  // read from the start
+      Png.LoadFromStream(P.Logo);  // load the PNG
+      Img := TImage.Create(Self);  // create the image control
+      Img.Parent := Head;  // place it on the header
+      Img.Picture.Assign(Png);  // show the logo at its own size (never stretched)
+      Img.SetBounds(18, 18, Png.Width, Png.Height);  // 18 px clear space around it
+      HeadH := Png.Height + 36;  // header height with the clear space
+    except
+      HeadH := 0;  // a broken logo is left out
+    end;
+    Png.Free;  // free the picture
+    Head.SetBounds(0, 0, 470, HeadH);  // full width
+    Head.Visible := HeadH > 0;  // hide it without a logo
+  end;
+  Acc := P.Info.Values['AccentColor'];  // accent color as RRGGBB
+  if Length(Acc) = 6 then  // a color is given
+  begin
+    Bar := TPanel.Create(Self);  // create the bar
+    Bar.Parent := Self;  // place it on the form
+    Bar.BevelOuter := bvNone;  // flat
+    Bar.ParentBackground := False;  // keep the color
+    Bar.Color := RGBToColor(StrToIntDef('$' + Copy(Acc, 1, 2), 0), StrToIntDef('$' + Copy(Acc, 3, 2), 0),
+      StrToIntDef('$' + Copy(Acc, 5, 2), 0));  // RRGGBB to a color
+    Bar.SetBounds(0, HeadH, 470, 6);  // under the header
+    Inc(HeadH, 6);  // rows start below the bar
+  end;
+  Y := HeadH + 14;  // first row
+  SetLength(FCtrls, Length(P.Fields));  // one control per field
+  for I := 0 to High(P.Fields) do  // every field
+  begin
+    MkLabel(Self, P.Fields[I].Caption + ':', 12, Y + 3);  // label
+    if P.Fields[I].Kind = 'text' then  // free text
+    begin
+      FCtrls[I] := MkEdit(Self, 230, Y, 226);  // edit box
+      TEdit(FCtrls[I]).OnChange := @FieldChange;  // check on every change
+    end
+    else
+    begin
+      Cb := MkCombo(Self, 230, Y, 226);  // list box
+      if P.Fields[I].Kind = 'choice' then Cb.Style := csDropDownList;  // only the listed values
+      Cb.DropDownCount := 20;  // show many entries
+      for J := 0 to High(P.Fields[I].Labels) do Cb.Items.Add(P.Fields[I].Labels[J]);  // the entries
+      Cb.OnChange := @FieldChange;  // check on every change
+      FCtrls[I] := Cb;  // remember it
+    end;
+    FCtrls[I].Tag := I;  // field index
+    V := LineValue(Values, P.Fields[I].Key);  // stored value
+    if V = '' then V := P.Fields[I].Default;  // or the default
+    FUpdating := True;  // no checks while filling
+    SetFieldValue(I, V);  // show it
+    FUpdating := False;  // react to changes again
+    Inc(Y, 32);  // next row
+  end;
+  lblPreview := MkLabel(Self, '', 12, Y + 6);  // preview of the result
+  lblPreview.Font.Style := [fsBold];  // bold
+  lblError := MkWrap(Self, '', 12, Y + 28, 444, 36);  // error text
+  lblError.Font.Color := clRed;  // red
+  Inc(Y, 72);  // room for preview and error
+  if P.Info.Values['ParseFolder'] = '1' then  // the plug-in can read an existing folder name
+    MkButton(Self, 'From folder...', 12, Y, 110).OnClick := @FolderClick;  // fill the fields from a folder
+  BtnOK := MkButton(Self, 'OK', 286, Y, 80, mrOK);  // OK button
+  BtnOK.Default := True;  // reacts to Enter
+  MkButton(Self, 'Cancel', 376, Y, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
+  InitDialog(Self, P.Info.Values['Title'], 470, Y + 40);  // size and title
+  if Caption = '' then Caption := P.DisplayName;  // title fallback
+  ApplyCheck('');  // first check: preview and error
+end;
+
+{ Value of one field: the listed value of the chosen entry, or the typed text. }
+function TPluginPromptForm.FieldValue(I: Integer): string;
+var
+  Cb: TComboBox;  // Cb: the list box
+begin
+  if FCtrls[I] is TEdit then Exit(TEdit(FCtrls[I]).Text);  // typed text
+  Cb := TComboBox(FCtrls[I]);  // list box
+  if (Cb.ItemIndex >= 0) and (Cb.Text = Cb.Items[Cb.ItemIndex]) then  // an entry of the list
+    Result := FPlugin.Fields[I].Values[Cb.ItemIndex]  // its value
+  else
+    Result := Cb.Text;  // typed text (combo fields)
+end;
+
+{ Shows a value in one field: selects the entry with that value, or shows the text. }
+procedure TPluginPromptForm.SetFieldValue(I: Integer; const V: string);
+var
+  J: Integer;  // J: entry index
+  Cb: TComboBox;  // Cb: the list box
+begin
+  if FCtrls[I] is TEdit then  // free text
+  begin
+    TEdit(FCtrls[I]).Text := V;  // show it
+    Exit;
+  end;
+  Cb := TComboBox(FCtrls[I]);  // list box
+  for J := 0 to High(FPlugin.Fields[I].Values) do  // look for the value
+    if SameText(FPlugin.Fields[I].Values[J], V) then
+    begin
+      Cb.ItemIndex := J;  // select it
+      Exit;
+    end;
+  Cb.ItemIndex := -1;  // not listed
+  if Cb.Style <> csDropDownList then Cb.Text := V;  // combo fields show the text
+end;
+
+{ The field values as key=value lines. }
+function TPluginPromptForm.Values: string;
+var
+  I: Integer;  // I: field index
+  V: string;  // V: value
+begin
+  Result := '';  // nothing yet
+  for I := 0 to High(FCtrls) do  // every field
+  begin
+    V := LineValue(FNormal, 'Value.' + FPlugin.Fields[I].Key);  // the plug-in's normalized value
+    if V = '' then V := FieldValue(I);  // or the value as entered
+    Result := Result + FPlugin.Fields[I].Key + '=' + V + LineEnding;  // add the line
+  end;
+end;
+
+{ Lets the plug-in check the values; shows the preview and error and applies Set.<key>= lines. }
+procedure TPluginPromptForm.ApplyCheck(const Extra: string);
+var
+  I: Integer;  // I: field index
+  Cur, Res, V: string;  // Cur: current values; Res: result lines; V: a value to set
+begin
+  Cur := '';  // nothing yet
+  for I := 0 to High(FCtrls) do Cur := Cur + FPlugin.Fields[I].Key + '=' + FieldValue(I) + LineEnding;  // current values
+  Cur := Cur + '_changed=' + FChanged + LineEnding + Extra;  // which field changed, and extra lines
+  Res := FPlugin.Check(Cur);  // ask the plug-in
+  FUpdating := True;  // no checks while setting values
+  try
+    for I := 0 to High(FCtrls) do  // values the plug-in sets (for example the district of a county)
+    begin
+      V := LineValue(Res, 'Set.' + FPlugin.Fields[I].Key);  // value to set
+      if V <> '' then SetFieldValue(I, V);  // show it
+    end;
+  finally
+    FUpdating := False;  // react to changes again
+  end;
+  FNormal := Res;  // keep the normalized values
+  lblPreview.Caption := LineValue(Res, 'Preview');  // preview of the result
+  lblError.Caption := LineValue(Res, 'Error');  // error text
+  BtnOK.Enabled := lblError.Caption = '';  // OK only for valid values
+end;
+
+{ A field was changed: check again. }
+procedure TPluginPromptForm.FieldChange(Sender: TObject);
+begin
+  if FUpdating then Exit;  // change made by the program
+  FChanged := FPlugin.Fields[TWinControl(Sender).Tag].Key;  // which field
+  ApplyCheck('');  // check the values
+end;
+
+{ Fills the fields from the name of an existing folder (the plug-in reads the name). }
+procedure TPluginPromptForm.FolderClick(Sender: TObject);
+var
+  D: TSelectDirectoryDialog;  // D: folder chooser
+begin
+  D := TSelectDirectoryDialog.Create(Self);  // create the chooser
+  try
+    D.Title := 'Choose an existing project folder';  // window title
+    if D.Execute then  // a folder was chosen
+    begin
+      FChanged := '';  // not a single field
+      ApplyCheck('_parse=' + ExtractFileName(ExcludeTrailingPathDelimiter(D.FileName)) + LineEnding);  // let the plug-in read the name
+    end;
+  finally
+    D.Free;  // free the chooser
+  end;
+end;
+
+{ Shows the prompt window of one plug-in; Values (key=value lines) is updated on OK. }
+function ExecutePluginPrompt(P: TLibPlugin; var Values: string): Boolean;
+var
+  F: TPluginPromptForm;  // F: the window
+begin
+  F := TPluginPromptForm.CreatePrompt(Application, P, Values);  // build the window
+  try
+    Result := F.ShowModal = mrOK;  // True when the user clicked OK
+    if Result then Values := F.Values;  // return the values
+  finally
+    F.Free;  // free the window
+  end;
+end;
+
+{ Asks every switched-on plug-in with prompt fields for its values (before a download);
+  False when the user canceled. The values are stored in S.PluginOpts. }
+function AskPluginValues(S: TAppSettings): Boolean;
+var
+  L: TList;  // L: plug-ins with prompt fields
+  I: Integer;  // I: list index
+  P: TLibPlugin;  // P: one plug-in
+  V: string;  // V: its values
+begin
+  Result := True;  // nothing canceled yet
+  L := PromptPlugins(S);  // plug-ins that ask for values
+  try
+    for I := 0 to L.Count - 1 do  // every one of them
+    begin
+      P := TLibPlugin(L[I]);  // the plug-in
+      V := PluginValues(S.PluginOpts, P.Key);  // stored values
+      if not ExecutePluginPrompt(P, V) then Exit(False);  // canceled
+      SetPluginValues(S.PluginOpts, P.Key, V);  // store the new values
+    end;
+  finally
+    L.Free;  // free the list
+  end;
+end;
+
+{ ====================================================================== }
 { Preferences dialog                                                      }
 { ====================================================================== }
 
@@ -797,6 +1058,7 @@ type
     lbPlugins: TListBox;  // list of plug-ins
     chkPlugin: TCheckBox;  // plug-in on or off
     lblPluginInfo: TLabel;  // plug-in information label
+    imgPluginLogo: TImage;  // logo of a plug-in library
     procedure BuildPathTab(TS: TTabSheet);  // builds the Download Path tab
     procedure BuildGeneralTab(TS: TTabSheet);  // builds the General tab
     procedure BuildFileTab(TS: TTabSheet);  // builds the File Handling tab
@@ -1458,7 +1720,10 @@ begin
   chkPlugin.Width := 130;  // make room for the setup button
   chkPlugin.OnClick := @PluginToggle;  // toggle the plug-in when changed
   MkButton(TS, 'Setup...', 150, 218, 100).OnClick := @PluginSetupClick;  // setup button
-  lblPluginInfo := MkWrap(TS, '', 8, 258, 478, 80);  // information label
+  lblPluginInfo := MkWrap(TS, '', 8, 258, 478, 96);  // information label
+  imgPluginLogo := TImage.Create(TS);  // logo of a plug-in library
+  imgPluginLogo.Parent := TS;  // place it on the tab
+  imgPluginLogo.SetBounds(8, 362, 300, 80);  // below the information
 end;
 
 { Fills the plug-in list and selects entry Sel. }
@@ -1468,7 +1733,14 @@ var
 begin
   lbPlugins.Items.Clear;  // clear the list
   for I := 0 to FPlugins.Count - 1 do  // every plug-in
-    if FPlugins.ValueFromIndex[I] = '1' then  // enabled plug-in
+    if FindLibPlugin(FPlugins.Names[I]) <> nil then  // a plug-in library: show its own name
+    begin
+      if FPlugins.ValueFromIndex[I] = '1' then
+        lbPlugins.Items.Add(FindLibPlugin(FPlugins.Names[I]).DisplayName + ' - enabled')  // add the name with its state
+      else
+        lbPlugins.Items.Add(FindLibPlugin(FPlugins.Names[I]).DisplayName + ' - disabled');  // add the name with its state
+    end
+    else if FPlugins.ValueFromIndex[I] = '1' then  // enabled plug-in
       lbPlugins.Items.Add(FPlugins.Names[I] + ' - enabled')  // add the name with its state
     else
       lbPlugins.Items.Add(FPlugins.Names[I] + ' - disabled');  // add the name with its state
@@ -1481,10 +1753,13 @@ procedure TPrefsForm.PluginSelect(Sender: TObject);
 var
   I: Integer;  // I: selected entry
   Nm, Info: string;  // Nm: plug-in name; Info: information text
+  P: TLibPlugin;  // P: the plug-in library (nil for a built-in plug-in)
+  Png: TPortableNetworkGraphic;  // Png: logo of the library
 begin
   I := lbPlugins.ItemIndex;  // selected entry
   FUpdating := True;  // do not react to the check box change
   try
+    imgPluginLogo.Picture.Clear;  // no logo yet
     if I < 0 then
     begin
       chkPlugin.Checked := False;  // no entry selected
@@ -1493,7 +1768,24 @@ begin
     end;
     Nm := FPlugins.Names[I];  // plug-in name
     chkPlugin.Checked := FPlugins.ValueFromIndex[I] = '1';  // enabled state
-    if Nm = 'JPEG auto profile' then  // text for each known plug-in
+    P := FindLibPlugin(Nm);  // plug-in library with this key
+    if P <> nil then  // a plug-in library
+    begin
+      Info := P.Description;  // its own description
+      if P.Loaded and (P.Logo <> nil) and chkPlugin.Checked then  // the logo is shown when the plug-in is on
+      begin
+        Png := TPortableNetworkGraphic.Create;  // create the picture
+        try
+          P.Logo.Position := 0;  // read from the start
+          Png.LoadFromStream(P.Logo);  // load the PNG
+          imgPluginLogo.Picture.Assign(Png);  // show it at its own size
+        except
+          imgPluginLogo.Picture.Clear;  // a broken logo is left out
+        end;
+        Png.Free;  // free the picture
+      end;
+    end
+    else if Nm = 'JPEG auto profile' then  // text for each known plug-in
       Info := 'Automatically embeds color profiles in JPEGs.'#13#10 +
               'Different color profiles can be defined for each camera model.'#13#10 +
               '(Not yet implemented in this build.)'
@@ -1510,14 +1802,34 @@ begin
   end;
 end;
 
-{ Turns the selected plug-in on or off. }
+{ Turns the selected plug-in on or off; a plug-in library is loaded (after a confirmation) when switched on. }
 procedure TPrefsForm.PluginToggle(Sender: TObject);
 var
   I: Integer;  // I: selected entry
+  P: TLibPlugin;  // P: the plug-in library (nil for a built-in plug-in)
+  Err: string;  // Err: why a library cannot be loaded
 begin
   if FUpdating then Exit;  // ignore changes made by the program
   I := lbPlugins.ItemIndex;  // selected entry
   if I < 0 then Exit;  // nothing selected
+  P := FindLibPlugin(FPlugins.Names[I]);  // plug-in library (nil for a built-in plug-in)
+  if chkPlugin.Checked and (P <> nil) and (FPlugins.ValueFromIndex[I] <> '1') then  // a library is switched on
+  begin
+    // a library runs with the user's rights: load it only after the user agreed
+    if MessageDlg('Plug-in library',
+      'Switching this plug-in on loads and runs the program library'#13#10#13#10 + P.FileName + #13#10#13#10 +
+      'Only switch it on when you trust where it came from.', mtConfirmation, [mbOK, mbCancel], 0) <> mrOK then
+    begin
+      RefreshPlugins(I);  // put the check box back
+      Exit;
+    end;
+    if not P.Load(Err) then  // it cannot be used
+    begin
+      MessageDlg('Plug-in library', 'The plug-in cannot be used: ' + Err + '.'#13#10 + P.FileName, mtError, [mbOK], 0);
+      RefreshPlugins(I);  // put the check box back
+      Exit;
+    end;
+  end;
   if chkPlugin.Checked then  // check box is on
     FPlugins[I] := FPlugins.Names[I] + '=1'  // store enabled
   else
@@ -1556,11 +1868,25 @@ procedure TPrefsForm.PluginSetupClick(Sender: TObject);
 var
   I: Integer;  // I: selected entry
   Nm, V: string;  // Nm: plug-in name; V: option value
+  P: TLibPlugin;  // P: the plug-in library (nil for a built-in plug-in)
 begin
   I := lbPlugins.ItemIndex;  // selected entry
   if I < 0 then Exit;  // nothing selected
   Nm := FPlugins.Names[I];  // plug-in name
-  if Nm = 'Directory Maker' then
+  P := FindLibPlugin(Nm);  // plug-in library with this key
+  if P <> nil then  // a plug-in library: its prompt window
+  begin
+    if not P.Loaded then
+      ShowMessage('Switch the plug-in on first; it is loaded then.')  // fields are known only after loading
+    else if Length(P.Fields) = 0 then
+      ShowMessage('The "' + P.DisplayName + '" plug-in has no options.')  // nothing to set
+    else
+    begin
+      V := PluginValues(FPluginOpts, Nm);  // stored values
+      if ExecutePluginPrompt(P, V) then SetPluginValues(FPluginOpts, Nm, V);  // ask and store
+    end;
+  end
+  else if Nm = 'Directory Maker' then
   begin
     V := FPluginOpts.Values['Directory Maker'];  // current option value
     if InputQuery('Directory Maker', 'Folders to create (comma separated):', V) then  // ask for the folders
