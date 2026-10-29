@@ -3,11 +3,15 @@ unit uSplash;
 {$mode objfpc}{$H+}
 
 { Start-up splash window. ShowSplash is called first thing in the project file, so something
-  appears at once on slow computers; CloseSplash is called when the main window is up. }
+  appears at once on slow computers. Nothing waits in a loop: the main window's start-up timer
+  keeps firing while SplashWaiting is True (at most MinShowMs, less when the splash is clicked)
+  and then calls CloseSplash. A waiting loop let menu clicks run inside it and froze GTK 3. }
 
 interface
 
 procedure ShowSplash;
+{ True while the splash should stay: shown, not clicked, and MinShowMs not reached yet. }
+function SplashWaiting: Boolean;
 procedure CloseSplash;
 
 implementation
@@ -21,7 +25,6 @@ const
 type
   TSplashHandler = class  // small helper class so a method can be used as a click handler
     procedure Click(Sender: TObject);
-    procedure TimerDone(Sender: TObject);  // Linux: the minimum time has passed
   end;
 
 var
@@ -29,19 +32,12 @@ var
   Handler: TSplashHandler = nil;  // object that owns the click handler
   Clicked: Boolean = False;  // True once the user clicked the splash
   StartTick: QWord = 0;  // time (ms) when the splash was shown
-  CloseTimer: TTimer = nil;  // Linux: closes the splash when the minimum time has passed (nil when not waiting)
 
-{ Linux: closes the splash without waiting in a loop. Release and ReleaseComponent free the
-  window and the timer later, so this is safe inside their own click and timer events. }
+{ Hides the splash and frees it. Release frees the window later, so this is safe inside its own
+  click event. }
 procedure ReleaseSplash;
 begin
   try
-    if CloseTimer <> nil then
-    begin
-      CloseTimer.Enabled := False;  // no second call
-      Application.ReleaseComponent(CloseTimer);  // free the timer once its event has ended
-      CloseTimer := nil;  // forget it
-    end;
     if Splash <> nil then
     begin
       Splash.Hide;  // hide the window now
@@ -53,19 +49,11 @@ begin
   Splash := nil;  // forget the window
 end;
 
-{ Click handler: remember that the user wants the splash closed. }
+{ Click handler: the user wants the splash closed now. }
 procedure TSplashHandler.Click(Sender: TObject);
 begin
-  Clicked := True;  // let CloseSplash stop waiting
-  {$IFDEF UNIX}
-  if CloseTimer <> nil then ReleaseSplash;  // Linux: already waiting for the timer, so close now
-  {$ENDIF}
-end;
-
-{ Timer handler (Linux): the minimum time has passed, close the splash. }
-procedure TSplashHandler.TimerDone(Sender: TObject);
-begin
-  ReleaseSplash;  // close it
+  Clicked := True;  // SplashWaiting is False from now on
+  ReleaseSplash;  // close it at once
 end;
 
 { Builds and shows the splash window with title, version and a moving progress bar. }
@@ -133,52 +121,21 @@ begin
   end;
 end;
 
-{ Called when the main window is up. The splash is kept for MinShowMs from its start (the
-  main window shows behind it meanwhile) unless it is clicked. }
-procedure CloseSplash;
-{$IFDEF UNIX}
-var
-  Remaining: Int64;  // ms left until MinShowMs is reached
-{$ENDIF}
+{ True while the splash should stay on screen. The caller checks it from a timer, so the program
+  keeps running normally meanwhile (no waiting loop). }
+function SplashWaiting: Boolean;
 begin
-  if Splash = nil then Exit;  // no splash: nothing to do
-  {$IFDEF UNIX}
-  // Linux: a timer instead of a waiting loop. A loop inside the start-up timer lets menu clicks
-  // run inside it, which froze GTK 3; the timer returns at once and the program runs normally.
-  Remaining := MinShowMs - Int64(GetTickCount64 - StartTick);  // time still to show
-  if (not Clicked) and (Remaining > 0) and (CloseTimer = nil) then
-  begin
-    try
-      CloseTimer := TTimer.Create(nil);  // own timer, freed in ReleaseSplash
-      CloseTimer.Interval := Remaining;  // fire when the minimum time is reached
-      CloseTimer.OnTimer := @Handler.TimerDone;  // then close the splash
-      CloseTimer.Enabled := True;  // start it
-      Exit;  // the timer (or a click) closes the splash
-    except
-      FreeAndNil(CloseTimer);  // no timer: close at once below
-    end;
-  end;
-  ReleaseSplash;  // clicked, time is up, or no timer: close now
-  {$ELSE}
-  try
-    // Windows: keep the splash for at least MinShowMs
-    while (not Clicked) and (GetTickCount64 - StartTick < MinShowMs) do  // wait until clicked or the minimum time has passed
-    begin
-      Application.ProcessMessages;  // keep the screen responsive while waiting
-      if Application.Terminated then Break;  // program is closing: stop waiting
-      Sleep(20);  // short pause to avoid using the processor
-    end;
-    Splash.Hide;  // hide the window
-    Splash.Free;  // free it
-  except
-    // ignore
-  end;
-  Splash := nil;  // forget the window
-  FreeAndNil(Handler);  // free the click handler
-  {$ENDIF}
+  Result := (Splash <> nil) and (not Clicked) and (GetTickCount64 - StartTick < MinShowMs);  // shown, not clicked, time not up
+end;
+
+{ Closes the splash now. Called by the start-up timer once SplashWaiting is False. }
+procedure CloseSplash;
+begin
+  ReleaseSplash;  // hide and free the window (nothing happens when it is already gone)
+  FreeAndNil(Handler);  // free the click handler; no splash events can come any more
 end;
 
 finalization
-  FreeAndNil(Handler);  // Linux keeps the click handler until the end (the timer may still use it)
+  FreeAndNil(Handler);  // in case CloseSplash was never called
 
 end.
