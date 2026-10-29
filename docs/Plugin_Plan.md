@@ -1,6 +1,6 @@
 # Plug-in system: plan
 
-Status: **plug-in libraries (DLL / .so) with tokens and a prompt window are built** (interface: `docs/Plugin_API.md`). Hooks that run code after each file or after the download, the move of Directory Maker and external-program plug-ins are still open. The decisions from the first review are in section 2. The first library is a private, organization-specific folder-naming plug-in; it is not part of this repository.
+Status: **plug-in libraries (DLL / .so) with tokens and a prompt window are built** (interface: `docs/Plugin_Developer_Manual.md`). Hooks that run code after each file or after the download, the move of Directory Maker and external-program plug-ins are still open. The decisions from the first review are in section 2. The first library is a private, organization-specific folder-naming plug-in; it is not part of this repository.
 
 ## 1. Where things stand
 
@@ -145,7 +145,7 @@ TimeoutSec=300
 |---|---|---|
 | 0 | Backup plug-in removed (done). | Old settings files load without it. |
 | 1 | **Done:** plug-in tokens and the host-drawn prompt (`uPlugins.pas`, `TPluginPromptForm`). **Open:** registry for built-in plug-ins and run hooks; move Directory Maker into `uPluginDirMaker.pas` (`AfterDownload`). Fill the Plug-ins tab from the registry. Failure rules of decision 1. | Directory Maker makes the same folders as today; order and on/off survive a restart; a test plug-in that fails is switched off and its files are not offered for deletion. |
-| 2 | **Done (Windows tested, Linux not tested yet):** native library loader (section 7, details in `docs/Plugin_API.md`). Open: a small public example library. | Example library loads, gives a token, fails on request; a library with a newer interface version is refused. |
+| 2 | **Done (Windows tested, Linux not tested yet):** native library loader (section 7, details in `docs/Plugin_Developer_Manual.md`). Open: a small public example library. | Example library loads, gives a token, fails on request; a library with a newer interface version is refused. |
 | 3 | First library: a private folder-naming plug-in (kept outside this repository). | Done on Windows: its test program passes; Linux build untested. |
 | 4 | External-program plug-ins (section 8); DNG Converter manifest as the example. | DNG next to the raw file; failing exit code; timeout. |
 | later | JPEG auto profile (built-in; APP2 ICC segment without re-encoding). JPEG resolution is deferred. | |
