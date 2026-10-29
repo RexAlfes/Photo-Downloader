@@ -1968,6 +1968,11 @@ var
   Choice, Job, Src: string;  // Choice: chosen profile; Job: job code; Src: source folder
   Picked, Asked: Boolean;  // Picked: source folder chosen; Asked: job code dialog shown
 begin
+  if SplashWaiting then  // splash still within its minimum time and not clicked
+  begin
+    FTimer.Interval := 50;  // look again shortly; the program keeps running meanwhile (no waiting loop)
+    Exit;  // the start-up work (and its dialogs) comes after the splash
+  end;
   FTimer.Enabled := False;  // run only once
   CloseSplash;                 // the main window is up
   FixThumbWidth;  // correct the window width
