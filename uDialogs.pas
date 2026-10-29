@@ -766,34 +766,43 @@ type
     FUpdating: Boolean;  // True while the program changes the controls
     FChanged: string;  // key of the field changed last
     FNormal: string;  // normalized values from the last check (Value.<key>= lines)
+    FDestRoot: string;  // destination folder (the fixed part of the download folder template)
     lblPreview, lblError: TLabel;  // preview and error text
     BtnOK: TButton;  // OK button (only enabled when the values are valid)
     function FieldValue(I: Integer): string;  // value of one field
     procedure SetFieldValue(I: Integer; const V: string);  // shows a value in one field
     procedure ApplyCheck(const Extra: string);  // lets the plug-in check the values and shows the result
     procedure FieldChange(Sender: TObject);  // a field was changed
-    procedure FolderClick(Sender: TObject);  // fills the fields from an existing folder name
+    procedure FolderClick(Sender: TObject);  // fills the fields from an existing destination folder
   public
-    constructor CreatePrompt(AOwner: TComponent; P: TLibPlugin; const Values: string);  // builds the window
+    constructor CreatePrompt(AOwner: TComponent; P: TLibPlugin; const Values, DestRoot: string);  // builds the window
     function Values: string;  // the values as key=value lines (normalized by the plug-in)
   end;
 
-{ Builds the window: logo header, accent bar, one row per field, preview, error and buttons. }
-constructor TPluginPromptForm.CreatePrompt(AOwner: TComponent; P: TLibPlugin; const Values: string);
+{ Builds the window: logo header, accent bar, one row per field, preview, error and buttons.
+  The window is as wide as the longest label and the controls need (at least 600 pixels). }
+constructor TPluginPromptForm.CreatePrompt(AOwner: TComponent; P: TLibPlugin; const Values, DestRoot: string);
+const
+  CtlW = 320;  // width of the controls
 var
   Head: TPanel;  // Head: white header with the logo
   Bar: TPanel;  // Bar: accent color bar under the header
   Img: TImage;  // Img: the logo
   Png: TPortableNetworkGraphic;  // Png: the logo picture
-  I, J, Y, HeadH: Integer;  // I, J: loop counters; Y: row position; HeadH: header height
+  Lab: TLabel;  // Lab: a field label
+  I, J, Y, HeadH, LabW, CtlX, W: Integer;  // I, J: loop counters; Y: row position; HeadH: header height; LabW: widest label; CtlX: left edge of the controls; W: window width
   Cb: TComboBox;  // Cb: a list field
   V, Fnt, Acc: string;  // V: stored value; Fnt: font name; Acc: accent color (hex RRGGBB)
 begin
   inherited CreateNew(AOwner);  // create the form without a resource file
   FPlugin := P;  // remember the plug-in
+  FDestRoot := DestRoot;  // where the destination folders are
+  Head := nil;  // no header yet
+  Bar := nil;  // no bar yet
   Fnt := P.Info.Values['FontName'];  // font asked for by the plug-in
   if (Fnt <> '') and (Screen.Fonts.IndexOf(Fnt) >= 0) then Font.Name := Fnt;  // use it when it is installed
   HeadH := 0;  // no header yet
+  W := 600;  // smallest window width
   if P.Logo <> nil then  // the plug-in has a logo
   begin
     Head := TPanel.Create(Self);  // create the header
@@ -810,11 +819,11 @@ begin
       Img.Picture.Assign(Png);  // show the logo at its own size (never stretched)
       Img.SetBounds(18, 18, Png.Width, Png.Height);  // 18 px clear space around it
       HeadH := Png.Height + 36;  // header height with the clear space
+      W := Max(W, Png.Width + 36);  // room for the logo
     except
       HeadH := 0;  // a broken logo is left out
     end;
     Png.Free;  // free the picture
-    Head.SetBounds(0, 0, 470, HeadH);  // full width
     Head.Visible := HeadH > 0;  // hide it without a logo
   end;
   Acc := P.Info.Values['AccentColor'];  // accent color as RRGGBB
@@ -826,23 +835,33 @@ begin
     Bar.ParentBackground := False;  // keep the color
     Bar.Color := RGBToColor(StrToIntDef('$' + Copy(Acc, 1, 2), 0), StrToIntDef('$' + Copy(Acc, 3, 2), 0),
       StrToIntDef('$' + Copy(Acc, 5, 2), 0));  // RRGGBB to a color
-    Bar.SetBounds(0, HeadH, 470, 6);  // under the header
     Inc(HeadH, 6);  // rows start below the bar
   end;
+  // labels first, so the controls can start right of the widest one (measured in the window's font)
   Y := HeadH + 14;  // first row
+  LabW := 0;  // widest label so far
+  Canvas.Font := Font;  // measure in the window's font
+  for I := 0 to High(P.Fields) do  // every field
+  begin
+    Lab := MkLabel(Self, P.Fields[I].Caption + ':', 12, Y + I * 32 + 3);  // label
+    LabW := Max(LabW, Canvas.TextWidth(Lab.Caption));  // its width
+  end;
+  CtlX := 12 + LabW + 16;  // controls start here
+  W := Max(W, CtlX + CtlW + 14);  // window width
   SetLength(FCtrls, Length(P.Fields));  // one control per field
   for I := 0 to High(P.Fields) do  // every field
   begin
-    MkLabel(Self, P.Fields[I].Caption + ':', 12, Y + 3);  // label
     if P.Fields[I].Kind = 'text' then  // free text
     begin
-      FCtrls[I] := MkEdit(Self, 230, Y, 226);  // edit box
+      FCtrls[I] := MkEdit(Self, CtlX, Y, CtlW);  // edit box
+      if P.Fields[I].Upper then TEdit(FCtrls[I]).CharCase := ecUppercase;  // capitals only
       TEdit(FCtrls[I]).OnChange := @FieldChange;  // check on every change
     end
     else
     begin
-      Cb := MkCombo(Self, 230, Y, 226);  // list box
+      Cb := MkCombo(Self, CtlX, Y, CtlW);  // list box
       if P.Fields[I].Kind = 'choice' then Cb.Style := csDropDownList;  // only the listed values
+      if P.Fields[I].Upper then Cb.CharCase := ecUppercase;  // capitals only
       Cb.DropDownCount := 20;  // show many entries
       for J := 0 to High(P.Fields[I].Labels) do Cb.Items.Add(P.Fields[I].Labels[J]);  // the entries
       Cb.OnChange := @FieldChange;  // check on every change
@@ -856,17 +875,19 @@ begin
     FUpdating := False;  // react to changes again
     Inc(Y, 32);  // next row
   end;
+  if Head <> nil then Head.SetBounds(0, 0, W, HeadH - Ord(Bar <> nil) * 6);  // header over the full width
+  if Bar <> nil then Bar.SetBounds(0, HeadH - 6, W, 6);  // bar over the full width, under the header
   lblPreview := MkLabel(Self, '', 12, Y + 6);  // preview of the result
   lblPreview.Font.Style := [fsBold];  // bold
-  lblError := MkWrap(Self, '', 12, Y + 28, 444, 36);  // error text
+  lblError := MkWrap(Self, '', 12, Y + 28, W - 24, 36);  // error text
   lblError.Font.Color := clRed;  // red
   Inc(Y, 72);  // room for preview and error
-  if P.Info.Values['ParseFolder'] = '1' then  // the plug-in can read an existing folder name
-    MkButton(Self, 'From folder...', 12, Y, 110).OnClick := @FolderClick;  // fill the fields from a folder
-  BtnOK := MkButton(Self, 'OK', 286, Y, 80, mrOK);  // OK button
+  if P.Info.Values['ParseFolder'] = '1' then  // the plug-in can read an existing destination folder name
+    MkButton(Self, 'Destination folder...', 12, Y, 150).OnClick := @FolderClick;  // fill the fields from a destination folder
+  BtnOK := MkButton(Self, 'OK', W - 184, Y, 80, mrOK);  // OK button
   BtnOK.Default := True;  // reacts to Enter
-  MkButton(Self, 'Cancel', 376, Y, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
-  InitDialog(Self, P.Info.Values['Title'], 470, Y + 40);  // size and title
+  MkButton(Self, 'Cancel', W - 94, Y, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
+  InitDialog(Self, P.Info.Values['Title'], W, Y + 40);  // size and title
   if Caption = '' then Caption := P.DisplayName;  // title fallback
   ApplyCheck('');  // first check: preview and error
 end;
@@ -955,30 +976,43 @@ begin
   ApplyCheck('');  // check the values
 end;
 
-{ Fills the fields from the name of an existing folder (the plug-in reads the name). }
+{ Fills the fields from an existing destination folder (the plug-in reads its path). The chooser
+  opens in the destination: the download folder up to its first token. }
 procedure TPluginPromptForm.FolderClick(Sender: TObject);
 var
   D: TSelectDirectoryDialog;  // D: folder chooser
 begin
   D := TSelectDirectoryDialog.Create(Self);  // create the chooser
   try
-    D.Title := 'Choose an existing project folder';  // window title
+    D.Title := 'Choose an existing project folder in the destination';  // window title
+    if (FDestRoot <> '') and DirectoryExists(FDestRoot) then D.InitialDir := FDestRoot;  // start in the destination
     if D.Execute then  // a folder was chosen
     begin
       FChanged := '';  // not a single field
-      ApplyCheck('_parse=' + ExtractFileName(ExcludeTrailingPathDelimiter(D.FileName)) + LineEnding);  // let the plug-in read the name
+      ApplyCheck('_parse=' + ExcludeTrailingPathDelimiter(D.FileName) + LineEnding);  // let the plug-in read the path
     end;
   finally
     D.Free;  // free the chooser
   end;
 end;
 
-{ Shows the prompt window of one plug-in; Values (key=value lines) is updated on OK. }
-function ExecutePluginPrompt(P: TLibPlugin; var Values: string): Boolean;
+{ The fixed start of a download folder template: the folders before the first token. }
+function DestRootOf(const DirMask: string): string;
+var
+  I: Integer;  // I: position of the first token
+begin
+  Result := DirMask;  // the whole template
+  I := Pos('{', Result);  // first token
+  if I > 0 then Result := ExtractFilePath(Copy(Result, 1, I - 1));  // the folders before it
+end;
+
+{ Shows the prompt window of one plug-in; Values (key=value lines) is updated on OK.
+  DestRoot: the destination folder that "Destination folder..." opens in. }
+function ExecutePluginPrompt(P: TLibPlugin; var Values: string; const DestRoot: string): Boolean;
 var
   F: TPluginPromptForm;  // F: the window
 begin
-  F := TPluginPromptForm.CreatePrompt(Application, P, Values);  // build the window
+  F := TPluginPromptForm.CreatePrompt(Application, P, Values, DestRoot);  // build the window
   try
     Result := F.ShowModal = mrOK;  // True when the user clicked OK
     if Result then Values := F.Values;  // return the values
@@ -1003,7 +1037,7 @@ begin
     begin
       P := TLibPlugin(L[I]);  // the plug-in
       V := PluginValues(S.PluginOpts, P.Key);  // stored values
-      if not ExecutePluginPrompt(P, V) then Exit(False);  // canceled
+      if not ExecutePluginPrompt(P, V, DestRootOf(S.DownloadDir)) then Exit(False);  // canceled
       SetPluginValues(S.PluginOpts, P.Key, V);  // store the new values
     end;
   finally
@@ -1883,7 +1917,7 @@ begin
     else
     begin
       V := PluginValues(FPluginOpts, Nm);  // stored values
-      if ExecutePluginPrompt(P, V) then SetPluginValues(FPluginOpts, Nm, V);  // ask and store
+      if ExecutePluginPrompt(P, V, DestRootOf(cbDir.Text)) then SetPluginValues(FPluginOpts, Nm, V);  // ask and store
     end;
   end
   else if Nm = 'Directory Maker' then
