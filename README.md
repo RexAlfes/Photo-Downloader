@@ -33,9 +33,10 @@ Windows may show **Windows protected your PC** (SmartScreen) with **Publisher: U
 - Single instance by default (switchable in Preferences > General). Nothing is scanned at start-up; the last folder is remembered.
 
 ## Build
-Open `PhotoDownloader.lpi` in Lazarus 4.8 and press F9. The same project file builds for the system you are on (Windows 64-bit or Linux 64-bit with GTK 3). Or run:
+Open `PhotoDownloader.lpi` in Lazarus 4.8 and press F9. The same project file builds for the system you are on (Windows 64-bit or Linux 64-bit with GTK 2). Or run:
 
-    lazbuild PhotoDownloader.lpi                           (add -B for a full rebuild)
+    lazbuild PhotoDownloader.lpi                           (Windows; add -B for a full rebuild)
+    lazbuild --ws=gtk2 PhotoDownloader.lpi                 (Linux: GTK 2 is the tested widgetset)
 
 Build on the system you want the program for: cross compiling does not work with the current Lazarus and Free Pascal.
 
@@ -64,7 +65,7 @@ Preferences > Download Path has two options. **Verify every copy** (on by defaul
 **Cancel and resume.** Cancel stops inside the current file and deletes the partial copy. Downloading again continues with the canceled file and skips files that are already downloaded.
 
 ## Linux
-The program builds and runs on Linux (tested on Linux Mint 22.3, XFCE, GTK 3). Card detection uses `/proc/mounts`, eject uses udisksctl, safe delete uses `gio trash`, settings are in `~/.config` and the cache in `~/.cache`; see `docs/Linux_Build.md` (including `linux/install-desktop.sh`, which adds the menu entry and icon). Single-instance handling and USB camera download are not available on Linux.
+The program builds and runs on Linux (tested on Linux Mint 22.3, GTK 2 widgetset; the GTK 3 widgetset is experimental and has known problems). Card detection uses `/proc/mounts`, eject uses udisksctl, safe delete uses `gio trash`, settings are in `~/.config` and the cache in `~/.cache`; see `docs/Linux_Build.md` (including `linux/install-desktop.sh`, which adds the menu entry and icon). Single-instance handling and USB camera download are not available on Linux.
 
 ## Number of images
 There is no fixed limit on the number of images scanned. The source folder and all its subfolders are read (hidden and system folders are skipped) and every supported file is listed. The practical limits are memory and time:

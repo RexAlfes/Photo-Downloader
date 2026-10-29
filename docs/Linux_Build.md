@@ -1,23 +1,22 @@
 # Building Photo Downloader on Linux (groundwork)
 
-Status: built and tested on Linux Mint 22.3 (XFCE 4.18, GTK 3.24, 64-bit). Card detection, eject, safe delete, View/Empty Trash, settings, cache and the thumbnail grid work. Other distributions and widgetsets (Qt) are untested.
+Status: built and tested on Linux Mint 22.3 (64-bit) with the LCL GTK 2 widgetset. The GTK 3 widgetset of Lazarus 4.8 is experimental here: with it the folder chooser raises an Access Violation, windows open in the wrong place and menus can lock up. Use GTK 2. Card detection, eject, safe delete, View/Empty Trash, settings, cache and the thumbnail grid work. Other distributions and widgetsets (Qt) are untested.
 
 ## Requirements
-- Lazarus 4.8 and Free Pascal 3.2.2 (64-bit), the same versions as on Windows, with the LCL GTK3 (or GTK2) widgetset (Qt5 later)
-- Packages for the GTK 3 widgetset (Debian/Ubuntu/Mint names): `sudo apt install build-essential libgtk-3-dev`. `libgtk-3-dev` pulls in the GDK-Pixbuf, Cairo, Pango, ATK and GLib development files the LCL needs. `build-essential` supplies the linker (`ld`) that Free Pascal calls. Lazarus and Free Pascal themselves come from the Lazarus project downloads (`fpc-laz`, `fpc-src`, `lazarus-project`) or from your distribution.
-- For GTK 2 instead: `libgtk2.0-dev` (with `libgdk-pixbuf2.0-dev` and `libcairo2-dev`).
+- Lazarus 4.8 and Free Pascal 3.2.2 (64-bit), the same versions as on Windows, with the LCL GTK2 widgetset (GTK3 is experimental and not recommended; Qt5 later)
+- Packages (Debian/Ubuntu/Mint names): `sudo apt install build-essential libgtk2.0-dev`. `libgtk2.0-dev` pulls in the GDK-Pixbuf, Cairo, Pango, ATK and GLib development files the LCL needs. `build-essential` supplies the linker (`ld`) that Free Pascal calls. Lazarus and Free Pascal themselves come from the Lazarus project downloads (`fpc-laz`, `fpc-src`, `lazarus-project`) or from your distribution.
 - Runtime helpers: `udisks2` (eject), `libglib2.0-bin` (`gio`, for the trash), `xdg-utils` (`xdg-open`)
 - Optional, for video thumbnails: `ffmpegthumbnailer` (or `ffmpeg`). Without them videos show a play-symbol tile.
 
 ## Build
 ```
-lazbuild PhotoDownloader.lpi
+lazbuild --ws=gtk2 PhotoDownloader.lpi
 ```
 or, to force a full rebuild:
 ```
-lazbuild -B PhotoDownloader.lpi
+lazbuild -B --ws=gtk2 PhotoDownloader.lpi
 ```
-or open `PhotoDownloader.lpi` in Lazarus and choose Run > Build. There is one project file for both systems: it does not name a target system or processor, so it builds for the system you are on (on Linux the program is written to `bin/linux/PhotoDownloader` and uses the default widgetset, GTK 3 when Lazarus is installed with it). Add `--widgetset=gtk3` (or `gtk2`) if you want to choose the widgetset explicitly. Build on Linux itself: cross compiling from Windows to Linux does not work with the current Lazarus and Free Pascal. Tested on Linux Mint. `cthreads` is already the first unit in the project file under `UNIX`, which the decoder thread needs.
+`--ws=gtk2` is recommended and is what the GitHub check builds (lazbuild also uses GTK 2 when no widgetset is given). In the Lazarus IDE the default widgetset on Linux is normally GTK 2 as well. The program is written to `bin/linux/PhotoDownloader`. There is one project file for both systems: it does not name a target system or processor, so it builds for the system you are on. Build on Linux itself: cross compiling from Windows to Linux does not work with the current Lazarus and Free Pascal. Tested on Linux Mint. `cthreads` is already the first unit in the project file under `UNIX`, which the decoder thread needs.
 
 ## Differences from Windows
 - Settings: `~/.config/<application name>/PhotoDownloader.ini`; thumbnail cache in `$XDG_CACHE_HOME` or `~/.cache/PhotoDownloader/thumbcache`.
