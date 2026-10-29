@@ -901,7 +901,9 @@ begin
   end;
   if P.Info.Values['Note'] <> '' then  // a reminder from the plug-in
   begin
-    MkWrap(Self, P.Info.Values['Note'], 12, Y + 4, W - 24, 48).Font.Style := [fsItalic];  // shown in italics under the fields
+    Lab := MkWrap(Self, P.Info.Values['Note'], 12, Y + 4, W - 24, 48);  // the reminder under the fields
+    Lab.Alignment := taCenter;  // centered
+    Lab.Font.Color := clRed;  // in red, so it is noticed
     Inc(Y, 54);  // room for it
   end;
   if Head <> nil then Head.SetBounds(0, 0, W, HeadH - Ord(Bar <> nil) * 6);  // header over the full width

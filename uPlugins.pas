@@ -8,7 +8,7 @@ unit uPlugins;
   A library adds tokens to the folder and file name templates and can ask for values in a window
   that the program draws from the library's field list (so a library needs no window code).
   The interface uses plain C types only (cdecl, UTF-8 text, key=value lines, buffers owned by the
-  program), so libraries can be written in any language. See docs/Plugin_API.md.
+  program), so libraries can be written in any language. See docs/Plugin_Developer_Manual.md.
 
   Each library is listed on the Plug-ins tab under the key "<file name>" without "lib" prefix and
   extension. A new library is switched off and is not loaded at all until the user switches it on
