@@ -47,6 +47,7 @@ The key of a library is its file name without `lib` prefix and extension (`folde
 | `AccentColor` | `RRGGBB`: a color bar under the logo |
 | `FontName` | font of the prompt window (used when it is installed) |
 | `DestFolder=1` | the window shows the download folder and gets a **Destination folder...** button to choose the folder to download to. The download folder becomes the chosen folder plus the token part of the current template when that uses the library's tokens, otherwise plus `DestTemplate`. On OK the new download folder is saved (and shown on the Download Path tab). |
+| `Note` | a reminder shown in italics under the fields |
 | `DestTemplate` | the folders the library suggests below the chosen destination, for example `{ABC}\{d}-{J}\` |
 | `Field=key\|kind\|label\|entries\|default\|flags` | one row of the prompt window; may appear many times. `kind` is `choice` (list only), `combo` (list or typed text) or `text`. `entries` are separated by `,`; each is `value` or `value:label` (the label is shown, the value is stored). `flags` (optional): `upper` = typed text is shown and kept in capitals. |
 
