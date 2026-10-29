@@ -51,6 +51,9 @@ const
     '{T} or {T1} - camera model'#13#10 +
     '{T8}, {T9} - custom tokens defined on the Mapping tab'#13#10 +
     '{J} - Job code'#13#10 +
+    '{E} - file extension in upper case (JPG)'#13#10 +
+    '{e} - file extension in lower case (jpg)'#13#10 +
+    '{ea} - file extension as it is'#13#10 +
     '{seq#} - download sequence number'#13#10 +
     '{n1} ... {n9} - download sequence number for this session, zero padded to 1-9 digits';
 
@@ -156,7 +159,7 @@ var
   Sz: TSize;  // Sz: wanted icon size
 begin
   inherited CreateNew(AOwner);  // create the form without a resource file
-  InitDialog(Self, 'About ' + AppTitle, 470, 210);  // set the common dialog properties
+  InitDialog(Self, 'About ' + AppTitle, 470, 250);  // set the common dialog properties
   FIcon := TIcon.Create;  // create the icon copy
   try
     if not Application.Icon.Empty then  // the application icon is loaded
@@ -174,13 +177,15 @@ begin
   FBox.SetBounds(16, 16, 96, 96);  // position and size it
   FBox.OnPaint := @BoxPaint;  // draw the icon
   Lb := MkWrap(Self, AppTitle + ' ' + AppVersionString + #13#10#13#10 +  // program name and version
-    'Downloads images from a card reader or folder, renames them using ' +  // description of the program
-    'tokens, and organizes them into job-code folders.' + #13#10#13#10 +  // description of the program
+    'Downloads images from a card reader or folder. Tokens such as date, ' +  // description of the program
+    'camera, job code, original name and file extension build both the ' +  // description of the program
+    'folder structure and the file names, so images are renamed and ' +  // description of the program
+    'organized in one step.' + #13#10#13#10 +  // description of the program
     'Licensed under the GNU General Public License (see Help > Register).' + #13#10 +  // license note
     WebsiteURL + #13#10 +  // web address
-    'Built with Lazarus / Free Pascal.', 128, 16, 326, 140);  // build information (position and size)
+    'Built with Lazarus / Free Pascal.', 128, 16, 326, 180);  // build information (position and size)
   Lb.Font.Style := [];  // normal text
-  MkButton(Self, 'OK', 374, 170, 80, mrOK).Default := True;  // OK button, also the default button
+  MkButton(Self, 'OK', 374, 210, 80, mrOK).Default := True;  // OK button, also the default button
 end;
 
 { Frees the icon copy. }
@@ -969,6 +974,7 @@ begin
   MkWrap(TS, Col2, 168, 204, 150, 125);  // token help, second column
   MkWrap(TS, Col3, 330, 204, 150, 125);  // token help, third column
   MkLabel(TS, '{seq#} - download sequence', 8, 332);  // token label
+  MkLabel(TS, '{E} {e} {ea} - extension (upper, lower, as is)', 200, 332);  // token label
   MkLabel(TS, '{n4} - download sequence number (this session)', 8, 350);  // token label
   MkButton(TS, 'Show tokens...', 380, 346, 100).OnClick := @TokensClick;  // button that shows all tokens
 

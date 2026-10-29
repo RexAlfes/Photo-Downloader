@@ -184,7 +184,7 @@ Only **New file** pictures and name clashes are downloaded; downloaded files are
 
 ## 8. Naming files and folders (tokens)
 
-The destination folder and the file name are built from a template. Words in braces are **tokens** that are replaced by details of each picture. Set the templates in **Preferences > Download Path**; the **Example image** line shows the result as you type, and **Show tokens…** (or F1) lists all tokens.
+The destination folder and the file name are built from a template. Words in braces are **tokens** that are replaced by details of each picture. Every token works in both templates, so the tokens that name a file can also build the folder structure (for example one folder per file type with `{E}`). Set the templates in **Preferences > Download Path**; the **Example image** line shows the result as you type, and **Show tokens…** (or F1) lists all tokens.
 
 Default folder template: `Pictures\Photo Downloader\{Y}\{Y}-{m}-{D}-{J}\`
 Default file name template: `{o}` (the original name)
@@ -211,6 +211,7 @@ Default file name template: `{o}` (the original name)
 | `{T}` or `{T1}` | camera model |
 | `{T8}`, `{T9}` | custom tokens set per camera (Mapping tab) |
 | `{J}` | job code |
+| `{E}` / `{e}` / `{ea}` | file extension in upper case / lower case / as it is, without the dot |
 | `{seq#}` | download sequence number |
 | `{n1}` … `{n9}` | sequence number for this session, padded to 1–9 digits |
 
@@ -219,6 +220,9 @@ Default file name template: `{o}` (the original name)
 - `{Y}-{m}-{D}-{J}` → folder `2026-10-27-Smith`
 - `{d}_{t}_{o}` → `20261027_140500_DSC_1234.NEF`
 - `{J}_{n4}` → `Smith_0001.NEF`, `Smith_0002.NEF` …
+- `{Y}\{E}\` → folder `2026\NEF`, so RAW and JPEG files land in separate folders
+
+**Extension tokens.** `{E}`, `{e}` and `{ea}` give the extension of the saved file: a `.jpe` file renamed to `.jpg`, or a Lightroom preview saved as a .jpg, gives `JPG` / `jpg`. The option "Convert filename to lower case" also lowers `{E}` when it is used in the file name.
 
 **Sequence numbers.** `{seq#}` continues from download to download. Set the starting number in Preferences > Download Path; **Reset** sets it back.
 

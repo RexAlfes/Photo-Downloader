@@ -20,7 +20,7 @@ Key Features (Available in version 0.1.1.1)
 --------------------------------------
 * High-Performance Scanning: Fast recursive scanning of source folders, local drives, or network locations, with an option to isolate just the DCIM directory.
 * Extensive Format Support: Ingestion, thumbnails and camera data for JPEG, PNG, BMP, TIFF (including compressed, palette and fax scans), GIF, DNG and RAW files with embedded previews (NEF, NRW, CR2, CR3, CRW, ARW and others). HEIC (camera data, renaming and picture previews all work out of the box). Adobe Lightroom preview files (.lrprev) can be viewed and downloaded as .jpg; when the Lightroom catalog is next to them, the original file name, capture date and camera are read from it (needs the SQLite library, see Tech Stack). Video (MP4, MOV, LRV; each its own filter) and audio (MP3) files are listed, dated from the movie header and copied, with real video thumbnails from the system when available, a play-symbol or music-note tile otherwise, and double-click to play in your default player.
-* Advanced Token-Based Renaming: Dynamically rename files using a highly customizable token engine based on precise EXIF temporal data, camera models, and sequential counters.
+* Advanced Token-Based Renaming: Dynamically rename files using a highly customizable token engine based on precise EXIF temporal data, camera models, file extensions, and sequential counters; the same tokens build both the folder structure and the file names.
 * Intelligent Status Detection: Automatically identifies and labels files on import as "New file", "Already downloaded", "Name clash", or "Duplicate file" (analyzing size, time, and camera metadata to protect your archives).
 * Automated Organization: Builds structured "Date - Job Code" directory trees automatically.
 * Smart Metadata & Sidecars: Writes author and copyright directly to empty fields in JPEG EXIF data on download, and automatically generates XMP sidecars from IPTC data.
@@ -56,7 +56,7 @@ It is currently in Alpha (version 0.1.1.1), and I’m looking for photographers 
 
 What it does right now (version 0.1.1.1):
 * Lightning-Fast Card Scanning: Point it at a card reader or folder tree (or let it auto-detect a Windows DCIM drive). It handles everything from standard JPEGs to complex RAWs (CR3, ARW, NEF, etc.). HEIC previews work out of the box; video (MP4, MOV, LRV) and MP3 audio files are supported too, with real video thumbnails where your system can make them.
-* Advanced Token Renaming: Uses dynamic metadata tokens to reconstruct file names on the fly based on shot time, camera body mapping, job codes, and sequence counters.
+* Advanced Token Renaming: Uses dynamic metadata tokens to reconstruct file names on the fly based on shot time, camera body mapping, job codes, file extensions, and sequence counters, for folder and file names alike.
 * Smart Duplication Handling: Before copying, it flags items as New, Already Downloaded, Name Clash, or Duplicate based on a matrix of file size, timestamp, and camera signatures.
 * Metadata Injector & Sidecars: Automatically injects author/copyright data into blank JPEG EXIF fields and generates XMP sidecars during ingestion.
 * Fast Previews: Leverages the largest embedded JPEGs inside RAW files to populate a fast-scrolling thumbnail grid. Thumbnails can be sized from small to large, or fitted to the window. 
