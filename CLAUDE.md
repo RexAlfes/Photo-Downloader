@@ -6,6 +6,7 @@ Read `docs/Specification_Current.md` first, then `docs/Continuation_Prompt.txt` 
 
 ## Building and testing
 - Windows: `lazbuild PhotoDownloader.lpi` (or the Lazarus IDE; both count the build number up).
+- Build modes: *Default* has debug information (about 30 MB, `bin/<os>/`); *Release* has none and strips symbols (about 4 MB, `bin/<os>-release/`): `lazbuild -B --build-mode=Release PhotoDownloader.lpi` (add `--ws=gtk2` on Linux). Published release files are built with Release.
 - Linux: `lazbuild -B --ws=gtk2 PhotoDownloader.lpi`. Use GTK 2: the GTK 3 widgetset of Lazarus 4.8 raised an Access Violation in the folder chooser and misplaced windows. Packages: `build-essential libgtk2.0-dev`.
 - Cross compiling Windows <-> Linux does not work. Compile on the system you are on, run the program, and report plainly what was and was not tested.
 - GitHub Actions (`.github/workflows/build.yml`) compiles Windows and Linux on every push.

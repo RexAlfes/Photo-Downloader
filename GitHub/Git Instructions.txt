@@ -63,6 +63,9 @@ Build 42 is the baseline. After uploading: git tag baseline-build-42 && git push
 RELEASE
 -------
 Releases > Draft a new release. Tag example: v0.1.2.1. Paste the matching release notes file.
+Build the published programs with the Release build mode (no debug information, about 4 MB instead of 30 MB):
+  Windows: lazbuild -B --build-mode=Release PhotoDownloader.lpi            -> bin\win64-release\PhotoDownloader.exe
+  Linux:   lazbuild -B --build-mode=Release --ws=gtk2 PhotoDownloader.lpi  -> bin/linux-release/PhotoDownloader
 Attach these files and tick "Set as a pre-release":
   PhotoDownloader.0.1.2.1.Win64.exe      (Windows 64-bit, single file)
   PhotoDownloader.0.1.2.1.Win64.zip      (Windows 64-bit, zipped copy of the exe)
