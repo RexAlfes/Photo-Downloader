@@ -47,6 +47,7 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 | `[General]` | `WriteExifText` | True/False | 0 | Generate a text file with the EXIF shooting data |
 | `[General]` | `AutoEject` | True/False | 1 | Automatically eject card reader media when disconnecting |
 | `[General]` | `ScanWholeDisk` | True/False | 1 | Scan the whole disk for known image types |
+| `[General]` | `ScanLrData` | True/False | 0 | Scan Lightroom preview folders (.lrdata) for .lrprev files; an older settings file without the key takes the `[FileTypes] LrPrev` value |
 | `[General]` | `AddIptc` | True/False | 0 | Add IPTC/XMP data to downloaded images (written as an XMP sidecar) |
 | `[General]` | `PromptIptc` | True/False | 0 | Prompt for IPTC/XMP data every time the program is run |
 | `[General]` | `WriteIptcIIM` | True/False | 0 | Also write legacy IPTC IIM data (not implemented yet) |

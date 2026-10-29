@@ -114,6 +114,10 @@
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
+        <Filename Value="uLrCat.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
         <Filename Value="uWebP.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>

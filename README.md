@@ -21,7 +21,7 @@ Windows may show **Windows protected your PC** (SmartScreen) with **Publisher: U
 - List view has column headings; click one to sort by it (click again to reverse).
 - Job Code dialog at start-up with history and a live example of the destination path. The job code may be left blank: `{J}` then expands to nothing and the dash or underscore next to it is removed from folder and file names.
 - Token-based folder and file naming (`{T8}`, `{T9}`, `{r}`, sequence numbers, camera and EXIF values), per-camera mapping.
-- Thumbnails and viewer for JPEG, PNG, BMP, GIF, TIFF (including compressed, palette, 1-bit and fax scans), DNG, WebP (lossy, lossless and transparent, decoded by the program itself), HEIC, AVIF and the embedded previews of RAW files (NEF, NRW, CR2, CR3, CRW, ARW and others). Adobe Lightroom preview files (.lrprev) can be listed and viewed (switched off by default).
+- Thumbnails and viewer for JPEG, PNG, BMP, GIF, TIFF (including compressed, palette, 1-bit and fax scans), DNG, WebP (lossy, lossless and transparent, decoded by the program itself), HEIC, AVIF and the embedded previews of RAW files (NEF, NRW, CR2, CR3, CRW, ARW and others). Adobe Lightroom preview files (.lrprev) can be listed and viewed (switched off by default); when the Lightroom catalog is found, the photo's file name, capture date, camera and ISO are read from it (needs the SQLite library, see below).
 - Video (MP4, MOV, LRV) and audio (MP3): capture date and length from the movie header, thumbnails from the system (Windows Shell; `ffmpegthumbnailer` or `ffmpeg` on Linux) with a play-symbol or music-note tile as fallback, double-click plays them in the default player.
 - File type filter (View > File Types..., with MP4, MOV and LRV as separate entries), progress windows with Cancel while a folder loads, and a disk cache for all thumbnails.
 - Status per image: new file, already downloaded, name clash (the new name is already taken), duplicate (the same picture twice: same size, time and camera), with the reason shown. See the [User Manual](docs/User_Manual.md) for exactly how each status is decided.
@@ -51,6 +51,18 @@ settings. The decoder is the pure-Pascal Xelitan HEIC decoder, bundled in `third
 (see `THIRD_PARTY_NOTICES.md`). The project does **not** need the `XelImageFormats` package; if you added it
 under Project > Project Inspector > Required Packages, remove it so units are not found twice.
 
+## External library: SQLite (optional)
+Photo Downloader is a single program file, with one exception: to read a Lightroom catalog (`.lrcat`) for `.lrprev`
+preview files it uses the SQLite library of the system, loaded only when a `.lrprev` file is scanned:
+
+- **Windows 10 and 11:** `winsqlite3.dll` is part of Windows, so there is nothing to install. On older Windows, or to use
+  a newer SQLite, put the 64-bit `sqlite3.dll` from [sqlite.org](https://www.sqlite.org/download.html) next to
+  `PhotoDownloader.exe`; a `sqlite3.dll` there is used first.
+- **Linux:** `libsqlite3` (Debian/Ubuntu/Mint package `libsqlite3-0`), which nearly every system already has.
+
+Without the library everything else works; `.lrprev` files then simply show no file name, date or camera from the
+catalog. Help > Status shows which library is in use. The catalog and `previews.db` are opened read-only and never changed.
+
 ## File type filter
 Use View > File Types... (or the right-click menu) to choose which kinds of files are listed and downloaded: JPEG, PNG, BMP, GIF, TIFF, RAW by brand, DNG, WebP, HEIC, AVIF, video, audio, THM and Lightroom previews. All are selected by default except audio (MP3), THM and Lightroom previews (.lrprev); **Select all**, **Clear all** and **Default** (back to the program's own choice) are provided. The choice is kept in `PhotoDownloader.ini`.
 
@@ -76,7 +88,7 @@ There is no fixed limit on the number of images scanned. The source folder and a
 - Only the most recent 1,200 thumbnails (about 600 at the 320-pixel size) are kept in memory (each one uses a Windows bitmap handle and a program may only own about 10,000). Older ones are drawn again when scrolled into view. Folders with about 6,000 pictures have been tested.
 
 ## Known limitations
-- Lightroom preview files (.lrprev) hold small previews (at most 256 pixels) and no original file name, only an id. Preferences > File Handling can save them as .jpg when downloading, or save both the .lrprev and the .jpg.
+- Lightroom preview files (.lrprev) hold small previews (at most 256 pixels) and no original file name, only an id. Preferences > File Handling can save them as .jpg when downloading, or save both the .lrprev and the .jpg. When the catalog is found (`<catalog> Previews.lrdata` next to `<catalog>.lrcat`, Lightroom Classic), the photo's name, date, camera and ISO come from it and the downloaded file is named after the photo. Lightroom preview folders are only scanned when Preferences > General > "Scan Lightroom preview folders (.lrdata) for .lrprev files" is on.
 - Windows is the primary platform. Card-reader detection, eject and single-instance handling are Windows only.
 - Not implemented yet: direct USB camera (PTP/MTP) download, GPS geotagging, watch mode,
   embedded IIM/IPTC (XMP is written as a `.xmp` sidecar), download history.

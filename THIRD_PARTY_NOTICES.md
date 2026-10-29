@@ -13,6 +13,12 @@ Source: Xelitan XelImageFormats (pure Pascal; no external libraries). Bundled fi
 
 The licenses of these files have not been legally reviewed; check them before redistributing builds.
 
+## SQLite (not bundled; used from the system)
+To read Lightroom catalogs, the program loads the SQLite library of the system at run time: `sqlite3.dll` placed next to
+the program or `winsqlite3.dll` (part of Windows 10 and 11) on Windows, `libsqlite3` on Linux. No SQLite code is shipped
+with Photo Downloader. SQLite is in the public domain (https://www.sqlite.org/copyright.html). The Pascal declarations come
+from the Free Pascal unit `sqlite3dyn` (Free Pascal packages, LGPL with the static linking exception).
+
 ## Local changes to bundled code
 * `Av1.Decoder.pas` (build 29): per-block state arrays enlarged and writes at the right/bottom picture edge clipped, to stop out-of-range writes that crashed AVIF decoding. Not sent upstream.
 * `Av1.Decoder.pas` (build 33): the 4x4-block grid size now comes from the frame header (MiCols/MiRows, always even) instead of `(size+3) shr 2`; pictures whose height or width gave an odd count (e.g. 1920x2523) never finished decoding.

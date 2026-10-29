@@ -68,6 +68,7 @@ type
     WriteExifText, AutoEject, ScanWholeDisk, AddIptc, PromptIptc, WriteIptcIIM,
     WriteIptcNef: Boolean;
     LrPrevAsJpg: Boolean;           // download .lrprev files as .jpg (the largest preview picture)
+    ScanLrData: Boolean;            // scan Lightroom preview folders (.lrdata) for .lrprev files
     LrPrevKeepBoth: Boolean;        // with LrPrevAsJpg: also keep the .lrprev file
     WriteExifOwner: Boolean;        // write author/copyright into EXIF on copy
     ExifAuthor, ExifCopyright: string;  // author and copyright text
@@ -286,6 +287,7 @@ begin
   LowerName := False;  // keep name case
   LowerExt := False;  // keep extension case
   LrPrevAsJpg := False;  // download .lrprev files as they are
+  ScanLrData := False;  // skip Lightroom preview folders (they can hold tens of thousands of folders)
   LrPrevKeepBoth := False;  // no second file
   UseCaptureTime := True;  // use the capture time
   SaveDateJobCodes := False;  // do not store job codes per date
@@ -464,6 +466,8 @@ begin
         if ((FileTypeKeys[I] = 'Mp4') or (FileTypeKeys[I] = 'Mov') or (FileTypeKeys[I] = 'Lrv')) and  // a video group
            not ValueExists('FileTypes', FileTypeKeys[I]) then  // that has no setting of its own yet
           TypeOn[I] := ReadBool('FileTypes', 'Video', True);  // take over the old switch
+    // older settings file without this key: scan the .lrdata folders when .lrprev files were switched on
+    ScanLrData := ReadBool('General', 'ScanLrData', TypeOn[FileTypeIndex('.lrprev')]);  // load: scan Lightroom preview folders
     LoggingOn := ReadBool('General', 'Logging', LoggingOn);  // load: write the log file
 
     if SectionExists('JobHistory') then LoadList(Ini, 'JobHistory', JobHistory);  // read the job history
@@ -521,6 +525,7 @@ begin
     WriteBool('General', 'WriteExifText', WriteExifText);  // save: write the job text into EXIF
     WriteBool('General', 'AutoEject', AutoEject);  // save: eject the card after download
     WriteBool('General', 'ScanWholeDisk', ScanWholeDisk);  // save: scan the whole disk, not only DCIM
+    WriteBool('General', 'ScanLrData', ScanLrData);  // save: scan Lightroom preview folders
     WriteBool('General', 'AddIptc', AddIptc);  // save: add IPTC/XMP details
     WriteBool('General', 'PromptIptc', PromptIptc);  // save: ask for the IPTC details
     WriteBool('General', 'WriteIptcIIM', WriteIptcIIM);  // save: write IPTC IIM into JPEGs

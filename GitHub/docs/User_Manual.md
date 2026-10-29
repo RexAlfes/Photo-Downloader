@@ -46,6 +46,8 @@ Photo Downloader copies photos from a memory card, card reader or folder to your
 
 **Linux.** Download `PhotoDownloader.<version>.linux64.tar.gz`, unpack it and run `PhotoDownloader`. The program needs `udisks2` (to eject cards), `gio` (for the trash) and `xdg-open` (to open folders). To build it yourself, see `docs/Linux_Build.md` in the repository.
 
+**Lightroom catalogs (optional SQLite library).** Photo Downloader needs no other files, with one exception: to read a Lightroom catalog for `.lrprev` preview files (see [section 15](#15-supported-picture-formats)) it uses the SQLite library of the system. On Windows 10 and 11 this is `winsqlite3.dll`, which is part of Windows, so there is nothing to do. On older Windows download the 64-bit `sqlite3.dll` from [sqlite.org](https://www.sqlite.org/download.html) and put it in the same folder as `PhotoDownloader.exe` (a `sqlite3.dll` there is always used first). On Linux it is `libsqlite3` (package `libsqlite3-0`), which is almost always installed. Without it, everything else works. **Help > Status** shows which library is in use.
+
 **Starting.** A splash screen appears for at least five seconds (click it to close it sooner). Then the **Job Code** window appears (see [section 4](#4-job-codes)). By default nothing is scanned at start-up; you choose a source folder or insert a card.
 
 **Updating.** Download the newer file and replace the old one. Your settings are kept separately (see [section 18](#18-where-your-settings-are-stored)). Help > Check for updates opens the Releases page.
@@ -280,6 +282,7 @@ Destination folder template, file name template, default job code, "Prompt for j
 - Save date-based job codes.
 - Automatically eject card reader media when disconnecting.
 - Scan whole disk.
+- **Scan Lightroom preview folders (.lrdata) for .lrprev files** (off by default). Lightroom keeps its previews in tens of thousands of small folders; with this option off they are skipped, which makes scanning a picture folder that holds a Lightroom catalog much faster. Changing it scans the source again.
 - IPTC/XMP options, including legacy IPTC IIM data and Nikon NEF raw files.
 - Author and copyright for downloaded JPEGs.
 - Run only one copy at a time (Windows; applies at the next start).
@@ -332,7 +335,7 @@ View > **File Types…** (or right-click > File Types…) selects which kinds of
 | HEIC, HEIF, AVIF | Yes, with the bundled decoder; no extra software needed. Files that are corrupt show the gray box with a red X. |
 | Video (MP4, MOV, LRV, one option each) | Listed and copied. The capture date and length come from the movie header. The thumbnail is a real frame from the Windows Shell, or on Linux from ffmpegthumbnailer or ffmpeg when installed (`sudo apt install ffmpegthumbnailer`). Otherwise the cover picture inside the file or a `.thm` file with the same name is used, and if there is none, a dark tile with a play symbol. Double-click plays the video in your default player. |
 | Audio (MP3) | Listed and copied. It shows a default music-note tile, and double-click plays it in your default player. |
-| Adobe Lightroom preview (.lrprev) | Listed and copied. The thumbnail and viewer show the largest preview stored in the file, at most 256 pixels, already upright. The file holds no original file name and no EXIF data, so the capture date is the file's own date; the preview cannot be matched to its photo by name. Preferences > File Handling can save it as a `.jpg` when downloading (or both). |
+| Adobe Lightroom preview (.lrprev) | Listed and copied. The thumbnail and viewer show the largest preview stored in the file, at most 256 pixels, already upright. The file holds no original file name and no EXIF data, so without the catalog the capture date is the file's own date. When the Lightroom Classic catalog is found (the previews folder `<catalog> Previews.lrdata` lies next to `<catalog>.lrcat`), the photo's file name, capture date, camera, serial number and ISO are read from it: the file is named after its photo (tokens `{o}`, `{r}`, `{f}`), filed by its real date, and Properties shows the **Lightroom photo**. This needs the SQLite library (see [section 1](#1-installing-and-starting)). Preferences > File Handling can save it as a `.jpg` when downloading (or both); Preferences > General must have **Scan Lightroom preview folders** on. |
 
 ## 16. Logging and troubleshooting
 
