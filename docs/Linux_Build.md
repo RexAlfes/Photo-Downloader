@@ -6,6 +6,7 @@ Status: built and tested on Linux Mint 22.3 (64-bit) with the LCL GTK 2 widgetse
 - Lazarus 4.8 and Free Pascal 3.2.2 (64-bit), the same versions as on Windows, with the LCL GTK2 widgetset (GTK3 is experimental and not recommended; Qt5 later)
 - Packages (Debian/Ubuntu/Mint names): `sudo apt install build-essential libgtk2.0-dev`. `libgtk2.0-dev` pulls in the GDK-Pixbuf, Cairo, Pango, ATK and GLib development files the LCL needs. `build-essential` supplies the linker (`ld`) that Free Pascal calls. Lazarus and Free Pascal themselves come from the Lazarus project downloads (`fpc-laz`, `fpc-src`, `lazarus-project`) or from your distribution.
 - Runtime helpers: `udisks2` (eject), `libglib2.0-bin` (`gio`, for the trash), `xdg-utils` (`xdg-open`)
+- Optional, for Lightroom catalogs (.lrprev files): `libsqlite3-0` (the SQLite library, loaded at run time; almost always installed). No development package is needed to build.
 - Optional, for video thumbnails: `ffmpegthumbnailer` (or `ffmpeg`). Without them videos show a play-symbol tile.
 
 ## Build

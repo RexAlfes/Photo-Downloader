@@ -330,6 +330,7 @@ begin
       Dims := Format('%d x %d pixels', [W, H]);  // format the size text
 
   AddRow('File name', Item.FileName);  // file name
+  if Item.CatalogName <> '' then AddRow('Lightroom photo', Item.CatalogName);  // .lrprev: the photo in the Lightroom catalog
   AddRow('Folder', Item.SourceDir);  // folder
   AddRow('Type', UpperCase(Copy(Ext, 2, 10)) + ' file');  // file type
   AddRow('Size', FormatSize(Item.Size) + '  (' + FormatFloat('#,##0', Item.Size) + ' bytes)');  // size in readable and exact form
@@ -771,7 +772,7 @@ type
     rbAuto, rbCamera, rbCard: TRadioButton;  // image source choices
     edLetters: TEdit;  // drive letters box
     chkPTP, chkReadOnly, chkPreserveRO, chkProfile, chkAutoRename, chkRenameDup, chkIgnoreDup, chkIgnoreSize, chkRotate, chkJpe, chkLrJpg, chkLrBoth,  // general options (first part)
-    chkLowerName, chkLowerExt, chkStamp, chkSaveJobs, chkExifTxt, chkEject, chkWholeDisk,  // general options (second part)
+    chkLowerName, chkLowerExt, chkStamp, chkSaveJobs, chkExifTxt, chkEject, chkWholeDisk, chkLrData,  // general options (second part)
     chkIptc, chkPromptIptc, chkIIM, chkNef, chkExifOwner, chkLoadLast, chkSingle, chkWinSafe: TCheckBox;  // general options (third part)
     lblLetters: TLabel;  // label of the drive letters box
     edAuthor, edCopyright: TEdit;  // author and copyright boxes
@@ -1079,6 +1080,8 @@ begin
   chkEject := MkCheck(TS, 'Automatically ''eject'' card reader media when disconnecting', 8, Y);  // eject option
   Inc(Y, 21);  // next row
   chkWholeDisk := MkCheck(TS, 'Scan whole disk for known image types', 8, Y);  // whole disk option
+  Inc(Y, 21);  // next row
+  chkLrData := MkCheck(TS, 'Scan Lightroom preview folders (.lrdata) for .lrprev files', 8, Y);  // Lightroom folders option
   Inc(Y, 21);  // next row
   chkIptc := MkCheck(TS, 'Add IPTC/XMP data to downloaded images', 8, Y);  // IPTC option
   Inc(Y, 21);  // next row
@@ -1609,6 +1612,7 @@ begin
     chkExifTxt.Checked := FS.WriteExifText;  // write the EXIF text file
     chkEject.Checked := FS.AutoEject;  // eject automatically
     chkWholeDisk.Checked := FS.ScanWholeDisk;  // scan the whole disk
+    chkLrData.Checked := FS.ScanLrData;  // scan Lightroom preview folders
     chkIptc.Checked := FS.AddIptc;  // add IPTC data
     chkPromptIptc.Checked := FS.PromptIptc;  // prompt for IPTC data
     chkIIM.Checked := FS.WriteIptcIIM;  // write legacy IIM data
@@ -1689,6 +1693,7 @@ begin
   FS.WriteExifText := chkExifTxt.Checked;  // write the EXIF text file
   FS.AutoEject := chkEject.Checked;  // eject automatically
   FS.ScanWholeDisk := chkWholeDisk.Checked;  // scan the whole disk
+  FS.ScanLrData := chkLrData.Checked;  // scan Lightroom preview folders
   FS.AddIptc := chkIptc.Checked;  // add IPTC data
   FS.PromptIptc := chkPromptIptc.Checked;  // prompt for IPTC data
   FS.WriteIptcIIM := chkIIM.Checked;  // write legacy IIM data

@@ -146,7 +146,7 @@
                 <div class="card">
                     <h3>&#9889; Native Desktop App</h3>
                     <p>Compiled with Lazarus 4.8 / Free Pascal 3.2.2 into a single executable for Windows 64-bit or Linux 64-bit.
-                       No runtime, no installer framework and no background services.</p>
+                       No runtime, no installer framework and no background services. Only reading Lightroom catalogs uses an outside library: SQLite, which is part of Windows 10 and 11 (<code>winsqlite3.dll</code>) and of nearly every Linux system.</p>
                 </div>
                 <div class="card">
                     <h3>&#127991;&#65039; Token Renaming</h3>
@@ -193,7 +193,7 @@
                 <li>Windows is the primary platform. The Linux build has been tested on Linux Mint 22.3 (GTK 2 widgetset); other distributions and the Qt widgetset are untested.</li>
                 <li>The single-instance option is Windows only.</li>
                 <li>Direct USB camera (PTP/MTP) download, GPS geotagging, a download history and RAW+JPEG pairing are not implemented yet.</li>
-                <li>Lightroom previews (.lrprev) are small (at most 256 px) and without an original file name; they can be downloaded as .jpg, or as both .lrprev and .jpg.</li>
+                <li>Lightroom previews (.lrprev) are small (at most 256 px); they can be downloaded as .jpg, or as both .lrprev and .jpg. Their file name, date and camera come from the Lightroom catalog when it is found, which needs the SQLite library (built into Windows 10 and 11; on older Windows place the 64-bit <code>sqlite3.dll</code> next to the program).</li>
                 <li>Video thumbnails depend on the system (Windows Shell codecs; <code>ffmpegthumbnailer</code> or <code>ffmpeg</code> on Linux). MP3 files show a default tile without cover art or length.</li>
             </ul>
         </section>

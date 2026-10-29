@@ -7,7 +7,7 @@ interface
 uses
   Classes, SysUtils, Contnrs, Math, Forms, Controls, Graphics, Dialogs, Menus,
   ExtCtrls, StdCtrls, ComCtrls, LCLType, LCLIntf, LazFileUtils,
-  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uSingle, uRotate, uSafeDel, uSplash;
+  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uLrCat, uSingle, uRotate, uSafeDel, uSplash;
 
 type
   TMainForm = class(TForm)
@@ -1296,7 +1296,10 @@ begin
       try
         if LrPrevExtract(It.FullPath, Mem, Info, Err) then  // largest level found
         begin
-          Dest := IncludeTrailingPathDelimiter(FLrOutDir) + ChangeFileExt(It.FileName, '') + '.jpg';  // output name
+          if It.CatalogName <> '' then  // the photo's name from the Lightroom catalog
+            Dest := IncludeTrailingPathDelimiter(FLrOutDir) + ChangeFileExt(It.CatalogName, '') + '.jpg'  // output name
+          else
+            Dest := IncludeTrailingPathDelimiter(FLrOutDir) + ChangeFileExt(It.FileName, '') + '.jpg';  // output name
           if FileExistsUTF8(Dest) then Dest := UniqueName(Dest, True);  // never overwrite: add (1), (2) ...
           Mem.SaveToFile(Dest);  // write the JPEG
           Inc(NOk);  // count it
@@ -2200,7 +2203,8 @@ begin
       [NNew, NDown, NClash, NDup]) +
     #13#10#13#10 + 'Job code: ' + FS.JobCode +  // job code
     #13#10 + 'Next sequence number: ' + IntToStr(FS.SeqNext) +  // next sequence number
-    #13#10 + 'Example: ' + ExampleDest(FS, FS.DownloadDir, FS.FileNameMask, FS.JobCode);  // example name
+    #13#10 + 'Example: ' + ExampleDest(FS, FS.DownloadDir, FS.FileNameMask, FS.JobCode) +  // example name
+    #13#10#13#10 + 'SQLite library (Lightroom catalogs): ' + LrCatLibraryText;  // library for .lrprev files
   ShowStatus(S, SettingsFileName);  // show the dialog (the settings file is a clickable link)
 end;
 
@@ -2208,9 +2212,11 @@ end;
 procedure TMainForm.PrefsClick(Sender: TObject);
 var
   OldDir, OldMask: string;  // OldDir, OldMask: destination before the dialog
+  OldLrData: Boolean;  // OldLrData: Lightroom preview folders scanned before the dialog
 begin
   OldDir := FS.DownloadDir;  // remember the folder
   OldMask := FS.FileNameMask;  // remember the file name pattern
+  OldLrData := FS.ScanLrData;  // remember the Lightroom option
   if ExecutePreferences(FS, FCamera) then  // show the dialog
   begin
     SaveSettingsNow;  // save the settings
@@ -2224,6 +2230,8 @@ begin
     end;
     if (OldDir <> FS.DownloadDir) or (OldMask <> FS.FileNameMask) then  // destination changed
       SetStatus('Destination changed - rescanned for files already downloaded.');  // tell the user
+    if (OldLrData <> FS.ScanLrData) and (FSourcePath <> '') then  // Lightroom folders now (or no longer) scanned
+      LoadSource(FSourcePath);  // scan the source again
   end;
 end;
 

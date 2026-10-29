@@ -19,7 +19,7 @@ It serves as a modern, GPL-licensed alternative to paid, subscription-based and 
 Key Features (Available in version 0.1.1.1)
 --------------------------------------
 * High-Performance Scanning: Fast recursive scanning of source folders, local drives, or network locations, with an option to isolate just the DCIM directory.
-* Extensive Format Support: Ingestion, thumbnails and camera data for JPEG, PNG, BMP, TIFF (including compressed, palette and fax scans), GIF, DNG and RAW files with embedded previews (NEF, NRW, CR2, CR3, CRW, ARW and others). HEIC (camera data, renaming and picture previews all work out of the box). Adobe Lightroom preview files (.lrprev) can be viewed. Video (MP4, MOV, LRV; each its own filter) and audio (MP3) files are listed, dated from the movie header and copied, with real video thumbnails from the system when available, a play-symbol or music-note tile otherwise, and double-click to play in your default player.
+* Extensive Format Support: Ingestion, thumbnails and camera data for JPEG, PNG, BMP, TIFF (including compressed, palette and fax scans), GIF, DNG and RAW files with embedded previews (NEF, NRW, CR2, CR3, CRW, ARW and others). HEIC (camera data, renaming and picture previews all work out of the box). Adobe Lightroom preview files (.lrprev) can be viewed and downloaded as .jpg; when the Lightroom catalog is next to them, the original file name, capture date and camera are read from it (needs the SQLite library, see Tech Stack). Video (MP4, MOV, LRV; each its own filter) and audio (MP3) files are listed, dated from the movie header and copied, with real video thumbnails from the system when available, a play-symbol or music-note tile otherwise, and double-click to play in your default player.
 * Advanced Token-Based Renaming: Dynamically rename files using a highly customizable token engine based on precise EXIF temporal data, camera models, and sequential counters.
 * Intelligent Status Detection: Automatically identifies and labels files on import as "New file", "Already downloaded", "Name clash", or "Duplicate file" (analyzing size, time, and camera metadata to protect your archives).
 * Automated Organization: Builds structured "Date - Job Code" directory trees automatically.
@@ -35,6 +35,7 @@ Tech Stack & Architecture
 -------------------------
 * Framework/Compiler: Lazarus 4.8 / Free Pascal Compiler (FPC) 3.2.2
 * Platform: 64-bit program. 32-bit builds are not provided at this time; if you need one, request it through the GitHub testing process (open an issue) or the online testing form. Windows may show "Windows protected your PC" with "Unknown publisher" because the free file is not code-signed: click More info, then Run anyway (if there is no such button, right-click the downloaded file, choose Properties and tick Unblock).
+* External library (optional): Reading Lightroom catalogs for .lrprev files uses the SQLite library of the system, loaded only when needed: winsqlite3.dll is part of Windows 10 and 11 (on older Windows put the 64-bit sqlite3.dll from sqlite.org next to PhotoDownloader.exe), libsqlite3 on Linux (usually installed). Everything else works without it.
 * Configuration: Portable configuration parsing via PhotoDownloader.ini and a local user profile system
 * License: GNU GPL v3 or later
 

@@ -1,5 +1,5 @@
-Description (238 chars):
-Free, open source photo ingest tool for Windows and Linux: copies and verifies images from memory cards, renames with EXIF and job-code tokens, flags duplicates, previews RAW/TIFF/DNG/HEIC, writes XMP sidecars. Built with Lazarus. GPL v3.
+Description (297 chars):
+Free, open source photo ingest tool for Windows and Linux: copies and verifies images from memory cards, renames with EXIF and job-code tokens, flags duplicates, previews RAW/TIFF/DNG/HEIC, writes XMP sidecars. Lightroom catalog lookup uses the system's SQLite library. Built with Lazarus. GPL v3.
 
 Website:
 https://rexalfes.github.io/Photo-Downloader/

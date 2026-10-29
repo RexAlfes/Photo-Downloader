@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Contnrs, Math, StrUtils, DateUtils, Graphics, FPReadJPEG,
-  LazFileUtils, md5, uSettings, uExif, uHeic, uRotate, uTiffRead, uPngFix, uWebP, uVideoThumb, uLrPrev;
+  LazFileUtils, md5, uSettings, uExif, uHeic, uRotate, uTiffRead, uPngFix, uWebP, uVideoThumb, uLrPrev, uLrCat;
 
 type
   TItemStatus = (isNew, isDownloaded, isNameClash, isDuplicate);  // state of an image compared with earlier downloads
@@ -34,6 +34,7 @@ type
     Thumb: TBitmap;  // thumbnail picture
     ThumbTried: Boolean;  // True once a thumbnail was tried
     Duration: Double;               // length of a video in seconds (0 = unknown or not a video)
+    CatalogName: string;            // .lrprev: file name of the photo in the Lightroom catalog ('' = unknown)
     destructor Destroy; override;  // frees the thumbnail
     function StatusText: string;  // text for the status column
     function IsProblem: Boolean;  // True when the item has a problem
@@ -266,6 +267,7 @@ begin
 end;
 
 var
+  ScanSkipLrData: Boolean = True;  // True: Lightroom preview folders (.lrdata) are not scanned (set by ScanFolder)
   LastProgTick: QWord = 0;  // time of the last progress report
   LoggedMsgs: TStringList = nil;  // messages already written to the log, so that each is written only once
 
@@ -469,6 +471,7 @@ var
   MovCreated: TDateTime;  // MovCreated: creation time stored in a video
   MovHasDate: Boolean;  // MovHasDate: True when the video has a usable creation time
   MovLen: Double;  // MovLen: length of a video in seconds
+  Cat: TLrCatInfo;  // Cat: what the Lightroom catalog knows about a .lrprev file
 begin
   if FindFirstUTF8(IncludeTrailingPathDelimiter(Dir) + '*', faAnyFile, SR) <> 0 then Exit;  // start the search; stop if the folder is empty
   try
@@ -488,7 +491,10 @@ begin
       if (SR.Attr and faDirectory) <> 0 then  // folder entry
       begin
         // skip hidden/system folders such as $RECYCLE.BIN and System Volume Information
-        if (SR.Attr and (AttrHidden or AttrSystem)) = 0 then  // skip hidden and system folders
+        // also skip Lightroom preview folders unless they are wanted: they hold only .lrprev files,
+        // often in tens of thousands of small folders that take long to walk through
+        if ((SR.Attr and (AttrHidden or AttrSystem)) = 0) and  // skip hidden and system folders
+           not (ScanSkipLrData and SameText(ExtractFileExt(SR.Name), '.lrdata')) then  // and unwanted .lrdata folders
           ScanDir(Full, Items, Cnt, Progress);  // scan the subfolder
       end
       else if IsImageFile(SR.Name) then  // file with an image extension
@@ -523,6 +529,16 @@ begin
           on E: Exception do  // unreadable metadata: keep the file time and the empty camera fields
             LogThumb(Full + ': metadata could not be read: ' + E.Message);  // note it in the log
         end;
+        // a Lightroom preview: date, camera and the photo's file name from the Lightroom catalog
+        if Pos(';' + LowerCase(ExtractFileExt(SR.Name)) + ';', LrPrevExts) > 0 then  // .lrprev file
+          if LrCatLookup(Full, Cat) then  // its photo is in the catalog
+          begin
+            It.CatalogName := Cat.OrigName;  // file name of the photo
+            if Cat.HasDate then It.CaptureTime := Cat.CaptureTime;  // capture date
+            It.Camera := Cat.Camera;  // camera model
+            It.Serial := Cat.Serial;  // camera serial number
+            It.ISO := Cat.ISO;  // ISO speed
+          end;
         try
           if It.IsVideo then  // MP4, MOV or LRV: read the movie header
             if ReadMovieHeader(Full, MovCreated, MovHasDate, MovLen) then  // creation time and length
@@ -555,6 +571,8 @@ begin
   Cnt := 0;  // nothing found yet
   ScanAbort := False;  // clear the abort flag
   Dcim := IncludeTrailingPathDelimiter(Root) + 'DCIM';  // path of the DCIM folder
+  LrCatReset;  // read the Lightroom catalogs anew, so changes made in Lightroom are seen
+  ScanSkipLrData := not S.ScanLrData;  // Lightroom preview folders only when wanted
   try
     if (not S.ScanWholeDisk) and DirectoryExistsUTF8(Dcim) then  // use DCIM unless the whole disk is to be scanned
       ScanDir(Dcim, Items, Cnt, Progress)  // scan DCIM
@@ -562,6 +580,7 @@ begin
       ScanDir(Root, Items, Cnt, Progress);  // scan the whole root
   finally
     SaveExifCache;  // keep what was read for the next scan (also after Cancel)
+    if LrCatMessages <> '' then LogThumb(Trim(LrCatMessages));  // Lightroom catalogs that could not be read
   end;
   Items.Sort(@CompareItems);  // sort by capture time
   for I := 0 to Items.Count - 1 do  // number the items
@@ -653,6 +672,8 @@ begin
   Known := True;  // assume the token is valid
   DT := Item.CaptureTime;  // capture time of the item
   Base := ChangeFileExt(Item.FileName, '');  // file name without extension
+  // a Lightroom preview is named after its photo in the catalog when that is known
+  if Item.CatalogName <> '' then Base := ChangeFileExt(Item.CatalogName, '');  // catalog name without extension
   case Tok of
     'd': Result := FormatDateTime('yyyymmdd', DT);  // date as yyyymmdd
     'y': Result := FormatDateTime('yy', DT);  // two-digit year
