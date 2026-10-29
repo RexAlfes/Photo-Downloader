@@ -61,10 +61,10 @@ check means it compiles on both.
 
 Marking a release
 -----------------
-When a bundle is stable and tested: set the version in PhotoDownloader.lpi (for example 0.1.0.58),
+When a bundle is stable and tested: set the version in PhotoDownloader.lpi (for example 0.1.1.1),
 commit, then tag it:
-    git tag v0.1.0.58
-    git push origin v0.1.0.58
+    git tag v0.1.1.1
+    git push origin v0.1.1.1
 Then on GitHub: Releases > Draft a new release > choose the tag, paste the release notes, attach
 the .exe / .zip / .tar.gz files (see "Git Instructions.txt").
 

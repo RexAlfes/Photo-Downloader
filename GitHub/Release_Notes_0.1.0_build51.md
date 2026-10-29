@@ -1,19 +1,37 @@
-## Photo Downloader 0.1.0 – Alpha build 51
+## Photo Downloader 0.1.0 – Build 51
 
-> **Alpha software.** Keep your original files until you have checked the copies. Windows is the primary platform.
+> **Pre-release software.** Keep your original files until you have checked the copies. Windows is the primary platform.
 
-### What's new
-- **Linux build tested** on Linux Mint 22.3 (XFCE, GTK 3): card detection, eject, safe delete (hidden trash folder on cards, system trash on internal disks), View/Empty Trash, settings in `~/.config`, cache in `~/.cache`. See `docs/Linux_Build.md`.
-- **Locate card reader** on Linux lists the removable drives found.
-- Progress windows stay above the main window; the main window now fits small screens (1366x768); Preferences layout fixes.
-- Compiler hint clean-up.
+### Highlights
+- **Linux build now tested.** The program builds and runs on Linux Mint 22.3 (XFCE 4.18, GTK 3.24, 64-bit). Working on Linux:
+  - removable-drive detection
+  - **Locate card reader**, which lists the drives it finds
+  - eject
+  - safe delete (hidden trash folder on cards, system trash on internal disks)
+  - File > View Trash and Empty Trash
+  - settings in `~/.config/PhotoDownloader/` and the thumbnail cache in `~/.cache/PhotoDownloader/`
+  - the thumbnail grid, sortable headings and the viewer
+- **Windows-safe file names.** New option in Preferences > General, shown on Linux only (Windows always applies it). It controls whether characters such as `: ? * " < > |` are replaced.
+- **Progressive JPEG fix.** A variable mix-up in the decoder used for lossless auto-rotate could start decoding from the wrong position. Fixed and tested.
 
-### In development
-Video and audio files.
+### Other changes
+- Progress windows stay above the main window.
+- The main window fits small screens such as 1366x768, with extra room for desktop panels on Linux.
+- The Preferences General tab and its labels fit the window.
+- Compiler hint clean-up in the program's own code.
+
+### Downloads
+- `PhotoDownloader.0.1.0.build.51.win64.exe` – Windows 64-bit
+- `PhotoDownloader.0.1.0.build.51.linux64.tar.gz` – Linux 64-bit (unpack, then run `PhotoDownloader`)
+
+### Linux build
+See `docs/Linux_Build.md`. You need Lazarus with the GTK2 or GTK3 widgetset, plus `udisks2`, `gio` and `xdg-open` at run time.
 
 ### Known limitations
-- Single-instance handling is Windows only; other Linux distributions and Qt are untested.
+- Single-instance handling is Windows only.
+- Other Linux distributions and the Qt widgetset are untested.
 - Not yet implemented: USB camera download (PTP/MTP), GPS geotagging, watch mode, download history.
+- Video and audio files are still in development and switched off by default.
 
 ### Feedback
 https://github.com/RexAlfes/Photo-Downloader/issues

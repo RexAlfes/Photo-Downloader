@@ -3,7 +3,7 @@
 > **Alpha software.** Keep your original files until you have checked the copies. Windows is the primary platform.
 
 ### What's new
-- **Grey rows for downloaded files.** Files with the status "Already downloaded" are drawn on a grey background (blue-grey when selected), so new files stand out. Name clashes stay red.
+- **Gray rows for downloaded files.** Files with the status "Already downloaded" are drawn on a gray background (blue-gray when selected), so new files stand out. Name clashes stay red.
 - **Generic default folders.** The default destination is now `Pictures\Photo Downloader\{Y}\{Y}-{m}-{D}-{J}\` in your home folder and the default card reader letter is E. Existing settings files keep their saved values.
 - Build 36 changes carry over: separate NEF and NRW file types, clearer name clash text, rescan on destination change, Help > Logging and Save log file, faster HEIC/AVIF thumbnails.
 
