@@ -661,6 +661,15 @@ begin
   Result := StringReplace(Raw, '{T1}', Camera, [rfReplaceAll, rfIgnoreCase]);  // insert the camera name for the T1 placeholder
 end;
 
+{ Returns the extension the saved file gets (with the dot, case as in the original name):
+  .jpe becomes .jpg when requested, a Lightroom preview saved as a picture becomes .jpg. }
+function SavedExt(S: TAppSettings; Item: TImageItem): string;
+begin
+  Result := ExtractFileExt(Item.FileName);  // original extension
+  if S.RenameJpe and SameText(Result, '.jpe') then Result := '.jpg';  // rename .jpe to .jpg when requested
+  if LrPrevJpgOnly(S, Item) then Result := '.jpg';  // a Lightroom preview saved as a .jpg
+end;
+
 { Returns the text of one token for an item; Known is False for an unknown token. }
 function TokenValue(const Tok: string; Item: TImageItem; const Job: string;
   SeqDown, SeqSess: Integer; S: TAppSettings; out Known: Boolean): string;
@@ -711,6 +720,9 @@ begin
     'T8': Result := MapValue(S, Item.Camera, 8);  // first custom token of the camera
     'T9': Result := MapValue(S, Item.Camera, 9);  // second custom token of the camera
     'J': Result := Job;  // job code
+    'E': Result := UpperCase(Copy(SavedExt(S, Item), 2, MaxInt));  // file extension in upper case, without the dot
+    'e': Result := LowerCase(Copy(SavedExt(S, Item), 2, MaxInt));  // file extension in lower case, without the dot
+    'ea': Result := Copy(SavedExt(S, Item), 2, MaxInt);  // file extension as it is, without the dot
     'seq#': Result := IntToStr(SeqDown);  // download sequence number
   else
     if (Length(Tok) = 2) and (Tok[1] = 'n') and (Tok[2] in ['1'..'9']) then  // n1 to n9: sequence number of this session
@@ -805,9 +817,7 @@ begin
     Dir := TidyBlankJob(Dir);  // tidy the folder
     Nm := TidyBlankJob(Nm);  // tidy the file name
   end;
-  Ext := ExtractFileExt(Item.FileName);  // original extension
-  if S.RenameJpe and SameText(Ext, '.jpe') then Ext := '.jpg';  // rename .jpe to .jpg when requested
-  if LrPrevJpgOnly(S, Item) then Ext := '.jpg';  // a Lightroom preview saved as a .jpg
+  Ext := SavedExt(S, Item);  // extension of the saved file
   if S.LowerExt then Ext := LowerCase(Ext);  // lower case extension when requested
   if S.LowerName then Nm := LowerCase(Nm);  // lower case name when requested
   if Dir <> '' then Dir := IncludeTrailingPathDelimiter(Dir);  // add the separator
