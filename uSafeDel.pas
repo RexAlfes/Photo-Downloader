@@ -202,7 +202,14 @@ begin
   end;
 end;
 
-{ Deletes everything in the trash folder and the folder itself; Failed counts files that could not be removed. }
+{ True when a folder entry is a link (Linux symlink, Windows junction or symbolic link) rather than a real file or folder. }
+function IsLinkEntry(const Path: string): Boolean;
+begin
+  Result := FileIsSymlink(Path);  // LazFileUtils: lstat on Linux, reparse tag on Windows (faSymLink is not portable)
+end;
+
+{ Deletes everything in the trash folder and the folder itself; Failed counts files that could not be removed.
+  Links inside it are removed as links: what they point to is never touched. }
 procedure EmptyTrashFolder(const Dir: string; out Failed: Integer);
 var
   SR: TSearchRec;  // SR: search record
@@ -216,7 +223,17 @@ begin
     try
       repeat
         if (SR.Name = '.') or (SR.Name = '..') then Continue;  // skip the '.' and '..' entries
-        if (SR.Attr and faDirectory) <> 0 then  // a sub-folder
+        if IsLinkEntry(Base + SR.Name) then  // a link (Linux symlink or Windows junction)
+        begin
+          // remove only the link itself, never what it points to (that may be outside the trash)
+          if (SR.Attr and faDirectory) <> 0 then
+          begin
+            if not RemoveDirUTF8(Base + SR.Name) then  // a Windows folder link is removed like a folder
+              if not DeleteFileUTF8(Base + SR.Name) then Inc(Failed);  // a Linux link is removed like a file
+          end
+          else if not DeleteFileUTF8(Base + SR.Name) then Inc(Failed);  // a link to a file
+        end
+        else if (SR.Attr and faDirectory) <> 0 then  // a real sub-folder
         begin
           EmptyTrashFolder(Base + SR.Name, F2);  // empty it first
           Inc(Failed, F2);  // add its failures

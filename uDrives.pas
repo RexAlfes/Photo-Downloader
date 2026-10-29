@@ -35,7 +35,7 @@ type
   TMountInfo = record
     Dev, Dir, FsType: string;  // Dev: device name, Dir: mount point, FsType: file system type
   end;
-  TMountList = array[0..255] of TMountInfo;  // list of mounted file systems
+  TMountList = array of TMountInfo;  // list of mounted file systems (any number: snap packages can add hundreds)
 
 { Names in /proc/mounts escape space, tab, newline and backslash as \040 \011 \012 \134 }
 function UnescapeMount(const S: string): string;
@@ -53,6 +53,7 @@ var
   I: Integer;  // I: line index
 begin
   N := 0;  // no entries yet
+  SetLength(M, 0);  // empty list
   L := TStringList.Create;  // list for the file's lines
   P := TStringList.Create;  // list used to split one line into fields
   try
@@ -63,10 +64,11 @@ begin
     end;
     P.Delimiter := ' ';  // fields are separated by spaces
     P.StrictDelimiter := True;  // do not treat quotes specially
+    SetLength(M, L.Count);  // room for one entry per line
     for I := 0 to L.Count - 1 do  // go through every line
     begin
       P.DelimitedText := L[I];  // split the line into fields
-      if (P.Count >= 3) and (N <= High(M)) then  // need device, mount point and type, and room in the array
+      if P.Count >= 3 then  // need device, mount point and type
       begin
         M[N].Dev := UnescapeMount(P[0]);  // device, unescaped
         M[N].Dir := UnescapeMount(P[1]);  // mount point, unescaped
@@ -74,6 +76,7 @@ begin
         Inc(N);  // count the stored entry
       end;
     end;
+    SetLength(M, N);  // drop the unused room
   finally
     P.Free;  // free the field list
     L.Free;  // free the line list
