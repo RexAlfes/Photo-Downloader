@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Contnrs, Math, Forms, Controls, Graphics, Dialogs, Menus,
-  ExtCtrls, StdCtrls, ComCtrls, LCLType, LCLIntf, LazFileUtils,
+  ExtCtrls, StdCtrls, ComCtrls, LCLType, LCLIntf, LazFileUtils, IniFiles,
   uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uLrCat, uSingle, uRotate, uSafeDel, uSplash, uPlugins;
 
 type
@@ -70,6 +70,7 @@ type
     procedure AutoDetectSource;
     procedure Reevaluate;
     procedure ReloadPlugins;  // looks for plug-in libraries again and reports problems
+    procedure SaveDownloadDirToProfile;  // writes the download path just used into the profile in use
     procedure RebuildDates;
     procedure ApplyFilter;
     procedure GetDownloadList(L: TList; Scope: TDownloadScope = dsAuto);
@@ -881,6 +882,31 @@ begin
 end;
 
 { Works out status and destination again after a setting changed. }
+{ Writes the download path just used ([Path] DownloadDir) into the user profile in use, so loading the
+  profile later downloads to the same place. Only that one value is changed in the profile file. }
+procedure TMainForm.SaveDownloadDirToProfile;
+var
+  Fn: string;  // Fn: the profile file
+  Ini: TMemIniFile;  // Ini: the profile as an ini object
+begin
+  if FS.ProfileName = '' then Exit;  // no profile in use
+  Fn := ProfilesDir + FS.ProfileName + '.ini';  // its file
+  if not FileExistsUTF8(Fn) then Exit;  // deleted meanwhile
+  try
+    Ini := TMemIniFile.Create(Fn);  // open it
+    try
+      if Ini.ReadString('Path', 'DownloadDir', '') = FS.DownloadDir then Exit;  // already the same
+      Ini.WriteString('Path', 'DownloadDir', FS.DownloadDir);  // the download path just used
+      Ini.UpdateFile;  // write it back
+      LogThumb('profile ' + FS.ProfileName + ': download path saved: ' + FS.DownloadDir);  // log it
+    finally
+      Ini.Free;  // close it
+    end;
+  except
+    on E: Exception do LogThumb('profile ' + FS.ProfileName + ': download path not saved: ' + E.Message);  // log the failure
+  end;
+end;
+
 { Looks for plug-in libraries again (after a profile was loaded) and reports problems. }
 procedure TMainForm.ReloadPlugins;
 var
@@ -1848,6 +1874,7 @@ begin
   end;
 
   SaveSettingsNow;  // save the sequence number
+  if Done > 0 then SaveDownloadDirToProfile;  // the profile in use remembers where it downloaded to
   ApplyFilter;  // refresh the grid
   if Failed > 0 then  // a copy failed
     MessageDlg(AppTitle, Msg, mtError, [mbOK], 0)  // show the message
@@ -2095,7 +2122,9 @@ begin
           FS.ProfileName := Choice;  // the profile in use
           ReloadPlugins;  // the profile may switch other plug-ins on
           ApplyState;  // apply the settings
-        end;
+        end
+        else
+          FS.ProfileName := '';  // "Default" without a profile file: no profile in use
     finally
       L.Free;  // free the list
     end;
