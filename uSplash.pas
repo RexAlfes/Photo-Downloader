@@ -17,7 +17,7 @@ procedure CloseSplash;
 implementation
 
 uses
-  Classes, SysUtils, Forms, Controls, Graphics, ExtCtrls, StdCtrls, ComCtrls, uSettings, uVersion;
+  Classes, SysUtils, Math, Forms, Controls, Graphics, ExtCtrls, StdCtrls, ComCtrls, uSettings, uVersion;
 
 const
   MinShowMs = 5000;                 // the splash stays at least this long, unless it is clicked
@@ -25,6 +25,7 @@ const
 type
   TSplashHandler = class  // small helper class so a method can be used as a click handler
     procedure Click(Sender: TObject);
+    procedure Tick(Sender: TObject);  // Windows: moves the sweeping block one step
   end;
 
 var
@@ -32,12 +33,22 @@ var
   Handler: TSplashHandler = nil;  // object that owns the click handler
   Clicked: Boolean = False;  // True once the user clicked the splash
   StartTick: QWord = 0;  // time (ms) when the splash was shown
+  // Windows: own sweeping bar. The Windows marquee progress bar only moves with a themes
+  // manifest, which this program does not have (it would change the look of every control).
+  Track: TShape = nil;  // the bar's background
+  Block: TShape = nil;  // the block that sweeps back and forth over it
+  Sweep: TTimer = nil;  // moves the block
+  SweepDir: Integer = 1;  // 1 = moving right, -1 = moving left
 
 { Hides the splash and frees it. Release frees the window later, so this is safe inside its own
   click event. }
 procedure ReleaseSplash;
 begin
   try
+    if Sweep <> nil then Sweep.Enabled := False;  // stop the bar before the window goes
+    Sweep := nil;  // the window owns and frees the timer and the shapes
+    Track := nil;
+    Block := nil;
     if Splash <> nil then
     begin
       Splash.Hide;  // hide the window now
@@ -56,11 +67,31 @@ begin
   ReleaseSplash;  // close it at once
 end;
 
+{ Timer handler (Windows): moves the block a few pixels and turns it around at either end. }
+procedure TSplashHandler.Tick(Sender: TObject);
+var
+  X: Integer;  // new left edge of the block
+begin
+  if (Track = nil) or (Block = nil) then Exit;  // splash already closing
+  X := Block.Left + Max(2, Track.Width div 60) * SweepDir;  // one step (larger on a high-DPI screen)
+  if X <= Track.Left then  // reached the left end
+  begin
+    X := Track.Left;
+    SweepDir := 1;  // turn right
+  end
+  else if X >= Track.Left + Track.Width - Block.Width then  // reached the right end
+  begin
+    X := Track.Left + Track.Width - Block.Width;
+    SweepDir := -1;  // turn left
+  end;
+  Block.Left := X;  // move the block
+end;
+
 { Builds and shows the splash window with title, version and a moving progress bar. }
 procedure ShowSplash;
 var
   L: TLabel;  // L: label being created
-  Bar: TProgressBar;  // Bar: moving progress bar
+  {$IFNDEF WINDOWS}Bar: TProgressBar;{$ENDIF}  // Bar: moving progress bar (Linux)
   I: Integer;  // I: index for the control loop
 begin
   if Splash <> nil then Exit;  // already showing: nothing to do
@@ -105,10 +136,29 @@ begin
     L.Font.Color := clSilver;  // light gray text
     L.Font.Size := 9;  // smaller font
 
+    {$IFDEF WINDOWS}
+    // Windows: a block that sweeps back and forth, drawn by the splash itself
+    Track := TShape.Create(Splash);  // background of the bar
+    Track.Parent := Splash;  // place it on the splash
+    Track.SetBounds(60, 138, 300, 10);  // position and size
+    Track.Brush.Color := $4A3A3A;  // a little lighter than the window
+    Track.Pen.Style := psClear;  // no outline
+    Block := TShape.Create(Splash);  // the moving block, on top of the track
+    Block.Parent := Splash;  // place it on the splash
+    Block.SetBounds(60, 138, 75, 10);  // starts at the left end
+    Block.Brush.Color := $E0A040;  // blue
+    Block.Pen.Style := psClear;  // no outline
+    SweepDir := 1;  // start moving right
+    Sweep := TTimer.Create(Splash);  // owned by the splash, freed with it
+    Sweep.Interval := 20;  // about 50 steps a second
+    Sweep.OnTimer := @Handler.Tick;  // move the block
+    Sweep.Enabled := True;  // start moving
+    {$ELSE}
     Bar := TProgressBar.Create(Splash);  // moving bar shows that start-up is in progress
     Bar.Parent := Splash;  // place it on the splash
     Bar.SetBounds(60, 138, 300, 10);  // position and size
-    Bar.Style := pbstMarquee;  // endless "marquee" animation
+    Bar.Style := pbstMarquee;  // endless "marquee" animation (GTK draws it)
+    {$ENDIF}
     Splash.OnClick := @Handler.Click;          // a click anywhere closes it
     for I := 0 to Splash.ControlCount - 1 do  // every child control also reacts to a click
       Splash.Controls[I].OnClick := @Handler.Click;  // use the same click handler
