@@ -2063,6 +2063,7 @@ begin
         begin
           FS.LoadFromFile(ProfilesDir + Choice + '.ini');  // load the profile
           FS.PromptProfile := True;       // a profile must not switch the prompt off
+          FS.ProfileName := Choice;  // the profile in use
           ReloadPlugins;  // the profile may switch other plug-ins on
           ApplyState;  // apply the settings
         end;
@@ -2165,6 +2166,7 @@ begin
     begin
       FS.LoadFromFile(ProfilesDir + Choice + '.ini');  // load the profile
       FS.PromptProfile := PromptWas;      // a profile must not change the start-up prompt setting
+      FS.ProfileName := Choice;  // the profile in use
       ReloadPlugins;  // the profile may switch other plug-ins on
       SaveSettingsNow;  // save the settings
       ApplyState;  // apply the settings
@@ -2178,17 +2180,36 @@ end;
 { Saves the settings as a user profile. }
 procedure TMainForm.ProfileSaveClick(Sender: TObject);
 var
-  Nm: string;  // Nm: profile name
+  Nm, Fn: string;  // Nm: profile name; Fn: profile file
   I: Integer;  // I: loop counter
+  L: TStringList;  // L: saved profiles
 begin
-  Nm := '';  // no name yet
-  if not InputQuery('Save User Profile', 'Profile name:', Nm) then Exit;  // ask for the name
-  Nm := Trim(Nm);  // trim the name
+  Nm := FS.ProfileName;  // suggest the profile in use
+  L := TStringList.Create;  // create the list
+  try
+    ListProfiles(L);  // the saved profiles
+    if L.IndexOf(Nm) < 0 then Nm := '';  // the profile in use no longer exists
+    if not AskProfileName(L, Nm) then Exit;  // ask for the name
+  finally
+    L.Free;  // free the list
+  end;
   for I := 1 to Length(Nm) do  // every character
     if Nm[I] in ['\', '/', ':', '*', '?', '"', '<', '>', '|'] then Nm[I] := '_';  // replace forbidden characters
   if Nm = '' then Exit;  // empty name
+  Fn := ProfilesDir + Nm + '.ini';  // the profile file
+  if FileExistsUTF8(Fn) and  // saving over a profile
+     (MessageDlg(AppTitle, 'Replace the profile "' + Nm + '" with the current settings?', mtConfirmation,
+       [mbYes, mbNo], 0) <> mrYes) then Exit;  // only when the user agrees
   try
-    FS.SaveToFile(ProfilesDir + Nm + '.ini');  // write the profile file
+    FS.ProfileName := Nm;  // the profile in use from now on (also stored inside the profile)
+    // write a new file first, so an old profile is replaced completely (no left-over keys) and
+    // is not lost when writing fails
+    if FileExistsUTF8(Fn + '.tmp') then DeleteFileUTF8(Fn + '.tmp');  // a left-over from a failed save
+    FS.SaveToFile(Fn + '.tmp');  // write the new profile
+    if FileExistsUTF8(Fn) then DeleteFileUTF8(Fn);  // remove the old one
+    if not RenameFileUTF8(Fn + '.tmp', Fn) then raise Exception.Create('cannot rename ' + Fn + '.tmp');  // put the new one in place
+    SaveSettingsNow;  // remember the profile in use
+    SetStatus('Profile "' + Nm + '" saved.');  // tell the user
   except
     on E: Exception do
       MessageDlg(AppTitle, 'Could not save the profile:'#13#10 + E.Message, mtError, [mbOK], 0);  // tell the user
@@ -2212,7 +2233,10 @@ begin
     if ChooseFromList('Delete User Profile', 'Select a profile to delete:', L, Choice) then  // ask the user
       if MessageDlg(AppTitle, 'Delete the profile "' + Choice + '"?', mtConfirmation,  // ask for confirmation
            [mbYes, mbNo], 0) = mrYes then
+      begin
         DeleteFileUTF8(ProfilesDir + Choice + '.ini');  // delete the profile file
+        if Choice = FS.ProfileName then FS.ProfileName := '';  // it was the profile in use
+      end;
   finally
     L.Free;  // free the list
   end;
