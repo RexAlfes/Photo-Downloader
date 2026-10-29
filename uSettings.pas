@@ -67,6 +67,8 @@ type
     AutoRotate, RenameJpe, LowerName, LowerExt, UseCaptureTime, SaveDateJobCodes,
     WriteExifText, AutoEject, ScanWholeDisk, AddIptc, PromptIptc, WriteIptcIIM,
     WriteIptcNef: Boolean;
+    LrPrevAsJpg: Boolean;           // download .lrprev files as .jpg (the largest preview picture)
+    LrPrevKeepBoth: Boolean;        // with LrPrevAsJpg: also keep the .lrprev file
     WriteExifOwner: Boolean;        // write author/copyright into EXIF on copy
     ExifAuthor, ExifCopyright: string;  // author and copyright text
     FirstRunDone: Boolean;          // False until the first start has completed
@@ -283,6 +285,8 @@ begin
   RenameJpe := False;  // keep .jpe names
   LowerName := False;  // keep name case
   LowerExt := False;  // keep extension case
+  LrPrevAsJpg := False;  // download .lrprev files as they are
+  LrPrevKeepBoth := False;  // no second file
   UseCaptureTime := True;  // use the capture time
   SaveDateJobCodes := False;  // do not store job codes per date
   WriteExifText := False;  // do not write EXIF text
@@ -399,6 +403,8 @@ begin
     RenameJpe := ReadBool('General', 'RenameJpe', RenameJpe);  // load: rename .jpe to .jpg
     LowerName := ReadBool('General', 'LowerName', LowerName);  // load: lowercase file names
     LowerExt := ReadBool('General', 'LowerExt', LowerExt);  // load: lowercase extensions
+    LrPrevAsJpg := ReadBool('General', 'LrPrevAsJpg', LrPrevAsJpg);  // load: .lrprev files as .jpg
+    LrPrevKeepBoth := ReadBool('General', 'LrPrevKeepBoth', LrPrevKeepBoth);  // load: keep the .lrprev file as well
     UseCaptureTime := ReadBool('General', 'UseCaptureTime', UseCaptureTime);  // load: use the capture time for dates
     SaveDateJobCodes := ReadBool('General', 'SaveDateJobCodes', SaveDateJobCodes);  // load: remember a job code per date
     WriteExifText := ReadBool('General', 'WriteExifText', WriteExifText);  // load: write the job text into EXIF
@@ -508,6 +514,8 @@ begin
     WriteBool('General', 'RenameJpe', RenameJpe);  // save: rename .jpe to .jpg
     WriteBool('General', 'LowerName', LowerName);  // save: lowercase file names
     WriteBool('General', 'LowerExt', LowerExt);  // save: lowercase extensions
+    WriteBool('General', 'LrPrevAsJpg', LrPrevAsJpg);  // save: .lrprev files as .jpg
+    WriteBool('General', 'LrPrevKeepBoth', LrPrevKeepBoth);  // save: keep the .lrprev file as well
     WriteBool('General', 'UseCaptureTime', UseCaptureTime);  // save: use the capture time for dates
     WriteBool('General', 'SaveDateJobCodes', SaveDateJobCodes);  // save: remember a job code per date
     WriteBool('General', 'WriteExifText', WriteExifText);  // save: write the job text into EXIF

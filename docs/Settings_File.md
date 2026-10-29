@@ -37,6 +37,8 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 | `[General]` | `AutoRotate` | True/False | 1 | Auto-rotate downloaded JPEGs losslessly |
 | `[General]` | `WinSafeNames` | True/False | 1 | Replace characters Windows cannot store in file names (used on Linux; always on in Windows) |
 | `[General]` | `RenameJpe` | True/False | 0 | Rename .jpe to .jpg |
+| `[General]` | `LrPrevAsJpg` | True/False | 0 | Save Lightroom previews (.lrprev) as .jpg when downloading |
+| `[General]` | `LrPrevKeepBoth` | True/False | 0 | With LrPrevAsJpg: keep the .lrprev file as well (save both) |
 | `[General]` | `Logging` | True/False | 1 | Write diagnostics to `thumbnail.log` (Help > Logging) |
 | `[General]` | `LowerName` | True/False | 0 | Lower-case file names |
 | `[General]` | `LowerExt` | True/False | 0 | Lower-case extensions |

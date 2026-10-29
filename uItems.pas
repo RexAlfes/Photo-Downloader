@@ -98,6 +98,12 @@ function CopyFileChecked(const Src, Dst: string; Verify: Boolean; out Hash: stri
   out Err: string): TCopyResult;
 { MD5 of a file as 32 hex characters; '' if it cannot be read }
 function HashOfFile(const FileName: string): string;
+{ True when Item is a .lrprev file that is downloaded as a .jpg only (Lightroom previews as .jpg, without the original) }
+function LrPrevJpgOnly(S: TAppSettings; Item: TImageItem): Boolean;
+{ Writes the largest preview picture of the .lrprev file Src to Dst as a .jpg (not re-encoded);
+  with Verify the file is read back and compared. Hash is the MD5 of the .jpg. }
+function SaveLrPrevJpg(const Src, Dst: string; Verify: Boolean; out Hash: string;
+  out Err: string): TCopyResult;
 { Folder for the backup copy of an item (own folder template, same patterns), with the file
   name of the main copy }
 function BackupDestFor(S: TAppSettings; Item: TImageItem; SeqDown, SeqSess: Integer;
@@ -780,6 +786,7 @@ begin
   end;
   Ext := ExtractFileExt(Item.FileName);  // original extension
   if S.RenameJpe and SameText(Ext, '.jpe') then Ext := '.jpg';  // rename .jpe to .jpg when requested
+  if LrPrevJpgOnly(S, Item) then Ext := '.jpg';  // a Lightroom preview saved as a .jpg
   if S.LowerExt then Ext := LowerCase(Ext);  // lower case extension when requested
   if S.LowerName then Nm := LowerCase(Nm);  // lower case name when requested
   if Dir <> '' then Dir := IncludeTrailingPathDelimiter(Dir);  // add the separator
@@ -961,7 +968,8 @@ begin
       end;
       if DestSize(It.DestPath) >= 0 then  // a file with the destination name exists
       begin
-        if S.IgnoreSizeCheck or (DestSize(It.DestPath) = It.Size) then  // same size (or size check ignored)
+        // a .lrprev saved as .jpg never has the size of the original, so the name alone decides
+        if S.IgnoreSizeCheck or (DestSize(It.DestPath) = It.Size) or LrPrevJpgOnly(S, It) then  // same size (or size check ignored)
           It.Status := isDownloaded  // already downloaded
         else
           begin
@@ -1988,6 +1996,47 @@ begin
   begin
     Old := TImageItem(ThumbLru[0]);  // oldest item
     ReleaseThumb(Old);  // free its thumbnail
+  end;
+end;
+
+function LrPrevJpgOnly(S: TAppSettings; Item: TImageItem): Boolean;
+begin
+  Result := S.LrPrevAsJpg and (not S.LrPrevKeepBoth) and  // .jpg wanted instead of the .lrprev file
+    (Pos(';' + LowerCase(ExtractFileExt(Item.FileName)) + ';', LrPrevExts) > 0);  // and this is a .lrprev file
+end;
+
+function SaveLrPrevJpg(const Src, Dst: string; Verify: Boolean; out Hash: string;
+  out Err: string): TCopyResult;
+var
+  Mem: TMemoryStream;  // Mem: the preview picture
+  Info: TLrPrevInfo;  // Info: header values of the preview file
+begin
+  Result := crFailed;  // assume failure
+  Hash := '';  // no hash yet
+  Err := '';  // no error yet
+  Mem := TMemoryStream.Create;  // buffer for the picture
+  try
+    try
+      if not LrPrevExtract(Src, Mem, Info, Err) then Exit;  // not a usable .lrprev file (Err tells why)
+      Mem.SaveToFile(Dst);  // write the .jpg
+      Hash := MD5Print(MD5Buffer(Mem.Memory^, Mem.Size));  // MD5 of the picture
+      if Verify and (HashOfFile(Dst) <> Hash) then  // the file on disk differs
+      begin
+        DeleteFileUTF8(Dst);  // remove the bad file
+        Err := 'the .jpg read back differs from the preview picture';  // reason
+        Result := crVerifyFailed;  // report it
+        Exit;
+      end;
+      Result := crOk;  // success
+    except
+      on E: Exception do
+      begin
+        Err := E.Message;  // reason
+        if FileExistsUTF8(Dst) then DeleteFileUTF8(Dst);  // no half-written file
+      end;
+    end;
+  finally
+    Mem.Free;  // free the buffer
   end;
 end;
 
