@@ -19,7 +19,7 @@
       <AutoIncrementBuild Value="True"/>
       <MinorVersionNr Value="1"/>
       <RevisionNr Value="1"/>
-      <BuildNr Value="103"/>
+      <BuildNr Value="104"/>
       <Attributes pvaPreRelease="True"/>
       <StringTable FileDescription="Photo Downloader" ProductName="Photo Downloader"/>
     </VersionInfo>
@@ -111,10 +111,6 @@
       </Unit>
       <Unit>
         <Filename Value="uLrPrev.pas"/>
-        <IsPartOfProject Value="True"/>
-      </Unit>
-      <Unit>
-        <Filename Value="uLrCat.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
