@@ -40,6 +40,13 @@ Open `PhotoDownloader.lpi` in Lazarus 4.8 and press F9. The same project file bu
 
 Build on the system you want the program for: cross compiling does not work with the current Lazarus and Free Pascal.
 
+**Build modes.** *Default* (used by F9 and plain `lazbuild`) includes debug information for finding errors: the exe is about 30 MB, in `bin/<system>/`. *Release* leaves the debug information out and strips symbols: about 4 MB, in `bin/<system>-release/`. Use it for the files you publish:
+
+    lazbuild -B --build-mode=Release PhotoDownloader.lpi                (Windows)
+    lazbuild -B --build-mode=Release --ws=gtk2 PhotoDownloader.lpi      (Linux)
+
+In the Lazarus IDE, choose the mode in Project > Project Options > Build modes (or the build mode box on the toolbar).
+
 Forms are created in code (no `.lfm` files). Required packages: LCL and LazUtils.
 Settings live in the per-user config folder (`PhotoDownloader.ini`, `profiles\`).
 

@@ -45,7 +45,7 @@ BUILD 57 (bundled as PhotoDownloader-Claude 57.zip; the lpi said BuildNr 57; the
 
 OPEN / NEXT
 Linux "misbehaving windows" (0.1.0.58) was the GTK3 widgetset; resolved by using GTK2 (user confirmed: folder chooser, window height and Open Source Folder work with GTK2). Linux program-file icon is set with gio by linux/install-desktop.sh (file managers only; the user has not yet confirmed the file icon). Not yet re-tested by me after 0.1.1.1: nothing new in code since the GTK2 test except the version number.
-Next bundle: 0.1.3.1 (revision 3, build 1); write Claude-Prompt-0.1.3.1.txt then. Between bundles the build number counts up with each compile (raise BuildNr by hand before a lazbuild run).
+Build modes in the lpi: Default (-g -gl debug information, about 30 MB, bin/<os>/) and Release (GenerateDebugInfo off, StripSymbols, LinkSmart, about 4.3 MB, bin/<os>-release/, lib/<cpu>-<os>-release); release files are built with --build-mode=Release. Next bundle: 0.1.3.1 (revision 3, build 1); write Claude-Prompt-0.1.3.1.txt then. Between bundles the build number counts up with each compile (raise BuildNr by hand before a lazbuild run).
 Resume after crash; download history; RAW+JPEG pairing; content-based duplicates; dry run; MP3 length and cover art; installer and signing; automated tests for pure functions; Linux groundwork (cthreads first, mount detection, udisks eject, ~/.config and ~/.cache); .lfm conversion; third-party compiler hint cleanup.
 
 Please read docs/Specification_Current.md first, then wait for my next request.
