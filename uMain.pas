@@ -733,6 +733,7 @@ var
 begin
   FSourcePath := Path;  // remember the source
   FS.LastSource := Path;  // remember it in the settings
+  UpdateCaption;  // show the new source in the title bar at once, not only after the scan
   Screen.Cursor := crHourGlass;  // show the wait cursor
   try
     // detach the grid and lists from the old images before they are freed
