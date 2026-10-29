@@ -440,15 +440,16 @@ begin
     try
       for I := 0 to Found.Count - 1 do  // every library file
         if FindLibPlugin(LibKey(Found[I])) = nil then  // the first file of a key wins
-        begin
-          P := TLibPlugin.Create(LibKey(Found[I]), Found[I]);  // add the entry
-          Libs.Add(P);  // keep it
-          if S.Plugins.IndexOfName(P.Key) < 0 then S.Plugins.Add(P.Key + '=0');  // new library: listed, switched off
-        end;
+          Libs.Add(TLibPlugin.Create(LibKey(Found[I]), Found[I]));  // add the entry
     finally
       Found.Free;  // free the file list
     end;
   end;
+  // every library known must be on the Plug-ins list, also when the settings were replaced by a user
+  // profile saved before the library was installed: missing ones are added, switched off
+  for I := 0 to Libs.Count - 1 do
+    if S.Plugins.IndexOfName(TLibPlugin(Libs[I]).Key) < 0 then
+      S.Plugins.Add(TLibPlugin(Libs[I]).Key + '=0');  // listed, switched off
   for I := 0 to Libs.Count - 1 do  // load the switched-on libraries
   begin
     P := TLibPlugin(Libs[I]);  // the library
