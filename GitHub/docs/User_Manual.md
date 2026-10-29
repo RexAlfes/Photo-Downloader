@@ -314,7 +314,7 @@ Gives each camera its own values for the `{T8}` and `{T9}` tokens, for example a
 Enable the button, set its caption and the command line.
 
 ### Plug-ins
-Lists the built-in plug-ins. **Directory Maker** works. The others (JPEG auto profile, DNG Converter, JPEG resolution) are listed only and do nothing yet. The old Backup plug-in is replaced by the backup folder on the Download Path tab.
+Lists the built-in plug-ins. **Directory Maker** works. The others (JPEG auto profile, DNG Converter, JPEG resolution) are listed only and do nothing yet. The old Backup plug-in has been removed; backups are set with the backup folder on the Download Path tab.
 
 ## 13. User profiles and exporting settings
 

@@ -88,7 +88,7 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 |---|---|
 | `[JobHistory]` | Previously used job codes, newest first |
 | `[Mappings]` | One line per camera: `Camera name|T8 value|T9 value` (`Default|{T1}|{T1}` is created if empty) |
-| `[Plugins]` | `Name=0` or `Name=1` for JPEG auto profile, Backup, Directory Maker, DNG Converter, JPEG resolution |
+| `[Plugins]` | `Name=0` or `Name=1` for JPEG auto profile, Directory Maker, DNG Converter, JPEG resolution (an old `Backup=` line is removed when the file is read) |
 | `[PluginOpts]` | `Name=option` settings for the plug-ins (for example the Backup folder) |
 | `[Iptc]` | `Name=value` details for the XMP sidecar: Creator, Copyright, Title, Description, Credit, Source |
 | `[DateJobCodes]` | `yyyy/mm/dd=job code`; written only when `SaveDateJobCodes=1`, otherwise the section is removed |

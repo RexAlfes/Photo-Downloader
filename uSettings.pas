@@ -120,8 +120,10 @@ procedure MapSplit(const Line: string; out CamName, T8, T9: string);  // splits 
 function MapJoin(const CamName, T8, T9: string): string;  // joins camera name and two templates into one mapping line
 
 const
-  DefaultPlugins: array[0..4] of string =  // names of the built-in plug-ins
-    ('JPEG auto profile', 'Backup', 'Directory Maker', 'DNG Converter', 'JPEG resolution');
+  DefaultPlugins: array[0..3] of string =  // names of the built-in plug-ins
+    ('JPEG auto profile', 'Directory Maker', 'DNG Converter', 'JPEG resolution');
+  // the Backup plug-in was replaced by the backup folder on the Download Path tab
+  RemovedPlugins: array[0..0] of string = ('Backup');  // names dropped from older settings files
 
 implementation
 
@@ -480,6 +482,13 @@ begin
   end;
   if Mappings.Count = 0 then  // always keep at least the default mapping
     Mappings.Add(MapJoin('Default', '{T1}', '{T1}'));  // add it
+  for I := Low(RemovedPlugins) to High(RemovedPlugins) do  // drop plug-ins that no longer exist
+  begin
+    while Plugins.IndexOfName(RemovedPlugins[I]) >= 0 do  // listed in an older settings file
+      Plugins.Delete(Plugins.IndexOfName(RemovedPlugins[I]));  // remove it from the list
+    while PluginOpts.IndexOfName(RemovedPlugins[I]) >= 0 do  // its options
+      PluginOpts.Delete(PluginOpts.IndexOfName(RemovedPlugins[I]));  // remove them too
+  end;
   for I := Low(DefaultPlugins) to High(DefaultPlugins) do  // make sure every built-in plug-in is listed
     if Plugins.IndexOfName(DefaultPlugins[I]) < 0 then  // missing from the list
       Plugins.Add(DefaultPlugins[I] + '=0');  // add it switched off
