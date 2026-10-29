@@ -88,7 +88,7 @@ There is no fixed limit on the number of images scanned. The source folder and a
 Settings are stored in `PhotoDownloader.ini` in the per-user configuration folder, for example
 `%LOCALAPPDATA%\<application name>\PhotoDownloader.ini` on Windows and `~/.config/<application name>/PhotoDownloader.ini` on Linux.
 The Status dialog shows the exact path. Saved user profiles are in a `profiles` folder next to it (same format), and
-`thumbnail.log` (diagnostics, written when Help > Logging is on) and the `thumbcache` folder are in the same folder. The file is plain UTF-8 text with
+`thumbnail.log` (diagnostics, written when Help > Logging is on), the `thumbcache` folder and `exifcache.txt` (what the scan read from each file, so a second scan is faster) are in the same folder. The file is plain UTF-8 text with
 `[Section]` headers and `Key=Value` lines; missing keys use their defaults, so deleting the file (program closed) resets everything.
 The full list of sections, keys, types and defaults is in `docs/Settings_File.md` (also section 5 of `docs/Specification_Current.md`).
 
