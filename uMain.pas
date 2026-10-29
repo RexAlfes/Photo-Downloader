@@ -12,6 +12,7 @@ uses
 type
   TMainForm = class(TForm)
   private
+    FWantClientH: Integer;  // client height the window was given at creation (GTK may shrink it before it is shown)
     FS: TAppSettings;  // program settings
     FItems: TObjectList;            // all images found on the source (owned)
     FVisible: TList;                // images currently shown (not owned)
@@ -179,6 +180,7 @@ begin
   if ClientHeight > Screen.WorkAreaHeight - 150 then ClientHeight := Screen.WorkAreaHeight - 150;  // keep the window inside the work area, leaving room for a panel
   {$ENDIF}
   if ClientWidth > Screen.WorkAreaWidth - 20 then ClientWidth := Screen.WorkAreaWidth - 20;  // keep the window inside the work area
+  FWantClientH := ClientHeight;  // remember the wanted height
   FS := TAppSettings.Create;  // create the settings
   FS.LoadFromFile(SettingsFileName);  // read the settings file
   LogEnabled := FS.LoggingOn;  // switch the log on or off
@@ -580,6 +582,7 @@ end;
 procedure TMainForm.CenterOnWorkArea;
 begin
   if WindowState <> wsNormal then Exit;  // a maximized window needs no centering
+  if ClientHeight < FWantClientH - 40 then ClientHeight := FWantClientH;  // GTK made the window too short: restore the wanted height
   Left := Screen.WorkAreaLeft + (Screen.WorkAreaWidth - Width) div 2;  // center horizontally
   Top := Screen.WorkAreaTop + (Screen.WorkAreaHeight - Height) div 2;  // center vertically
   if Left < Screen.WorkAreaLeft then Left := Screen.WorkAreaLeft;  // keep it on the screen
