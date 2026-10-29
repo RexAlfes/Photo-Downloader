@@ -417,6 +417,16 @@ begin
   end;
 end;
 
+{ True for the names of the plug-ins built into the program. }
+function IsBuiltInPlugin(const Name: string): Boolean;
+var
+  I: Integer;  // I: list index
+begin
+  Result := False;  // not found yet
+  for I := Low(DefaultPlugins) to High(DefaultPlugins) do
+    if SameText(DefaultPlugins[I], Name) then Exit(True);  // a built-in plug-in
+end;
+
 { Looks for plug-in libraries and loads the switched-on ones; returns the problems found. }
 function LoadPlugins(S: TAppSettings): string;
 var
@@ -445,6 +455,14 @@ begin
       Found.Free;  // free the file list
     end;
   end;
+  // a library whose file was removed leaves the Plug-ins list (its values stay in [PluginOpts], so
+  // they are back when it is installed again); built-in plug-ins always stay
+  for I := S.Plugins.Count - 1 downto 0 do
+    if (not IsBuiltInPlugin(S.Plugins.Names[I])) and (FindLibPlugin(S.Plugins.Names[I]) = nil) then
+    begin
+      LogThumb('plug-in ' + S.Plugins.Names[I] + ': library file not found, removed from the list');  // log it
+      S.Plugins.Delete(I);  // remove the entry
+    end;
   // every library known must be on the Plug-ins list, also when the settings were replaced by a user
   // profile saved before the library was installed: missing ones are added, switched off
   for I := 0 to Libs.Count - 1 do

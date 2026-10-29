@@ -149,7 +149,8 @@ Do not send `Set.` for a text field the user is typing in; the cursor would jump
 - A new library is listed **switched off and not loaded**. None of its code runs until the user switches it on and confirms a message that shows its full path.
 - A library runs with the user's rights, and a crash in it stops the whole program. Users should only install libraries they trust.
 - Libraries are never loaded from the image source (memory card).
-- If a switched-on library cannot be loaded (missing, 32-bit, wrong system, other interface version), it is **switched off** and the user is told why, after the start-up screen.
+- If a switched-on library cannot be loaded (32-bit, wrong system, other interface version), it is **switched off** and the user is told why, after the start-up screen.
+- A library whose file was deleted leaves the Plug-ins list at the next start (logged). Its values stay in `[PluginOpts]` for a later reinstall. A library that is installed but missing from a loaded user profile is added to the list, switched off.
 
 # 6. Testing a library
 
