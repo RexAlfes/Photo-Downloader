@@ -105,7 +105,7 @@ The Status dialog shows the exact path. Saved user profiles are in a `profiles` 
 The full list of sections, keys, types and defaults is in `docs/Settings_File.md` (also section 5 of `docs/Specification_Current.md`).
 
 ## Versioning
-Version info is enabled with "Automatically increment build number". The IDE increments the number on each build; `lazbuild` does not.
+Version info is enabled with "Automatically increment build number". The IDE increments the number on each build; `lazbuild` does not, so raise `BuildNr` in `PhotoDownloader.lpi` by hand before a `lazbuild` run. Documents show only the version (0.1.1), not the build number.
 The version is shown in About, Status and Register. See `docs/Specification_Current.md` for the version history.
 
 **Baseline.** Build 42 is the baseline code. Suggested Git tag: `baseline-build-42`; later builds are compared against it.

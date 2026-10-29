@@ -1,6 +1,6 @@
 # Photo Downloader – Current Specification and Status
 
-**Version:** 0.1.1.1 (baseline: build 42)  **Date:** 28 Oct 2026  **License:** GNU GPL v3 or later
+**Version:** 0.1.1  **Date:** 28 Oct 2026  **License:** GNU GPL v3 or later
 
 ## 1. Purpose
 
@@ -159,7 +159,7 @@ There is no fixed limit on the number of images scanned. The source folder and a
 - List view is lighter: thumbnails are drawn only for rows you scroll to.
 - Only the most recent 1,200 thumbnails are kept in memory (each one uses a Windows bitmap handle and a program may only own about 10,000). Older ones are drawn again when scrolled into view. Folders with about 6,000 pictures have been tested.
 
-### 3.8 Verified copy and backup destination (build 38)
+### 3.8 Verified copy and backup destination
 
 | Function | Status |
 |---|---|
