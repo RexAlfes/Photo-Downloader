@@ -331,7 +331,7 @@ The interface for writing libraries is described in `docs/Plugin_Developer_Manua
 
 A **profile** is a saved set of preferences – useful if you use several cameras, clients or computers.
 
-- File > User Profiles > **Save** stores the current settings under a name; **Load** applies one; **Delete** removes one.
+- File > User Profiles > **Save** stores the current settings under a name; **Load** applies one; **Delete** removes one. In the Load window (and the start-up profile list), double-clicking a profile loads it.
 - **Save** lists the saved profiles and fills in the name of the profile in use (the one loaded or saved last). Click **Save** to update that profile, click another profile in the list (double-click saves at once) to save over it, or type a new name. Saving over a profile asks for confirmation first.
 - A profile holds all preferences, including the **plug-ins**: which are switched on, their order, and the values entered in a plug-in's window (with the download path it set). Loading a profile switches the plug-ins on or off as saved; a plug-in library that is missing on this computer is switched off with a message.
 - With "Prompt for user profile at start-up", a list appears each time the program starts. The entry **Default** keeps your current settings.
