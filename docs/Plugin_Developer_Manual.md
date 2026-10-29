@@ -131,6 +131,7 @@ Called on every change in the window with the current values, plus `_changed=<ke
 | `Error` | text shown in red; while it is not empty, **OK** is disabled |
 | `Set.<key>` | a value the window shows in that field now (for example a district filled in from a county) |
 | `Value.<key>` | the normalized value stored on OK (for example `95` stored as `0095`) |
+| `Invalid.<key>` | `1` = that field breaks its rule: its box is shown light red with dark red text until it is right |
 
 Do not send `Set.` for a text field the user is typing in; the cursor would jump. Use `Value.` to store the cleaned-up text instead.
 

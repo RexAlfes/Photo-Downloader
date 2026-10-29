@@ -1136,6 +1136,18 @@ begin
   lblPreview.Caption := LineValue(Res, 'Preview');  // preview of the result
   lblError.Caption := LineValue(Res, 'Error');  // error text
   BtnOK.Enabled := lblError.Caption = '';  // OK only for valid values
+  for I := 0 to High(FCtrls) do  // fields the plug-in marks as wrong (Invalid.<key>=1): light red with dark red text
+    if (FCtrls[I] is TEdit) or (FCtrls[I] is TComboBox) then
+      if LineValue(Res, 'Invalid.' + FPlugin.Fields[I].Key) = '1' then
+      begin
+        FCtrls[I].Color := RGBToColor(255, 214, 214);  // light red background
+        FCtrls[I].Font.Color := RGBToColor(160, 0, 0);  // dark red text (also seen where a widgetset ignores the background)
+      end
+      else
+      begin
+        FCtrls[I].Color := clDefault;  // normal background
+        FCtrls[I].Font.Color := clDefault;  // normal text
+      end;
 end;
 
 { A field was changed: check again. }
@@ -1351,12 +1363,12 @@ begin
   FMaps := TStringList.Create;  // list of mappings
   FPlugins := TStringList.Create;  // list of plug-ins
   FPluginOpts := TStringList.Create;  // list of plug-in options
-  InitDialog(Self, 'Preferences', 520, 692);  // set the common dialog properties
+  InitDialog(Self, 'Preferences', 520, 722);  // set the common dialog properties
   KeyPreview := True;  // let the form see keys first
   OnKeyDown := @FormKeyDown;  // handle the F1 key
   PC := TPageControl.Create(Self);  // create the tab control
   PC.Parent := Self;  // place it on the form
-  PC.SetBounds(8, 8, 504, 636);  // position and size it
+  PC.SetBounds(8, 8, 504, 666);  // position and size it
   PC.MultiLine := True;  // wrap the tab headings when they do not fit on one row
   BuildPathTab(PC.AddTabSheet);  // build the first tab
   PC.Pages[0].Caption := 'Download Path';  // tab title
@@ -1391,9 +1403,9 @@ begin
     PC.Width := PC.Width + Extra;  // wider tab control
   end;
   {$ENDIF}
-  BtnOK := MkButton(Self, 'OK', 340 + Extra, 654, 80, mrOK);  // OK button
+  BtnOK := MkButton(Self, 'OK', 340 + Extra, 684, 80, mrOK);  // OK button
   BtnOK.Default := True;  // OK is the default button
-  BtnCancel := MkButton(Self, 'Cancel', 430 + Extra, 654, 80, mrCancel);  // Cancel button
+  BtnCancel := MkButton(Self, 'Cancel', 430 + Extra, 684, 80, mrCancel);  // Cancel button
   BtnCancel.Cancel := True;  // Cancel reacts to Esc
   LoadValues;  // fill the controls from the settings
 end;
@@ -1461,26 +1473,26 @@ begin
   MkButton(TS, 'Reset', 262, 147, 70).OnClick := @ResetClick;  // button that resets the sequence number
 
   MkLabel(TS, 'Directory and filename tokens (press F1 for a complete list):', 8, 184);  // label
-  MkWrap(TS, Col1, 8, 204, 150, 125);  // token help, first column
-  MkWrap(TS, Col2, 168, 204, 150, 125);  // token help, second column
-  MkWrap(TS, Col3, 330, 204, 150, 125);  // token help, third column
-  MkLabel(TS, '{seq#} - download sequence', 8, 332);  // token label
-  MkLabel(TS, '{E} {e} {ea} - extension (upper, lower, as is)', 200, 332);  // token label
-  MkLabel(TS, '{n4} - download sequence number (this session)', 8, 350);  // token label
-  MkButton(TS, 'Show tokens...', 380, 346, 100).OnClick := @TokensClick;  // button that shows all tokens
+  MkWrap(TS, Col1, 8, 204, 150, 150);  // token help, first column
+  MkWrap(TS, Col2, 168, 204, 150, 150);  // token help, second column
+  MkWrap(TS, Col3, 330, 204, 150, 150);  // token help, third column
+  MkLabel(TS, '{seq#} - download sequence', 8, 358);  // token label
+  MkLabel(TS, '{E} {e} {ea} - extension (upper, lower, as is)', 200, 358);  // token label
+  MkLabel(TS, '{n4} - download sequence number (this session)', 8, 376);  // token label
+  MkButton(TS, 'Show tokens...', 380, 380, 100).OnClick := @TokensClick;  // button that shows all tokens
 
-  MkLabel(TS, 'Example image', 8, 386);  // label
-  edExample := MkEdit(TS, 8, 406, 472);  // example box
+  MkLabel(TS, 'Example image', 8, 416);  // label
+  edExample := MkEdit(TS, 8, 436, 472);  // example box
   edExample.ReadOnly := True;  // user cannot edit the example
 
-  chkVerify := MkCheck(TS, 'Verify every copy (read it back and compare checksums)', 8, 446);  // verify copies check box
-  chkBackup := MkCheck(TS, 'Also save a second copy to a backup folder', 8, 474);  // backup copy check box
+  chkVerify := MkCheck(TS, 'Verify every copy (read it back and compare checksums)', 8, 476);  // verify copies check box
+  chkBackup := MkCheck(TS, 'Also save a second copy to a backup folder', 8, 504);  // backup copy check box
   chkBackup.OnClick := @BackupChange;  // enable the backup controls when changed
-  MkLabel(TS, 'Backup directory (same patterns as above):', 26, 502);  // label
-  edBackup := MkEdit(TS, 26, 522, 418);  // backup folder box
-  btnBackupBrowse := MkButton(TS, '...', 452, 521, 28);  // button that browses for the backup folder
+  MkLabel(TS, 'Backup directory (same patterns as above):', 26, 532);  // label
+  edBackup := MkEdit(TS, 26, 552, 418);  // backup folder box
+  btnBackupBrowse := MkButton(TS, '...', 452, 551, 28);  // button that browses for the backup folder
   btnBackupBrowse.OnClick := @BackupBrowseClick;  // connect its handler
-  MkLabel(TS, 'The backup is made from the verified download, before rotation or metadata changes.', 26, 550);  // note about the backup
+  MkLabel(TS, 'The backup is made from the verified download, before rotation or metadata changes.', 26, 580);  // note about the backup
 end;
 
 { Enables the backup folder controls only when the backup is turned on. }
