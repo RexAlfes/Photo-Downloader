@@ -40,6 +40,8 @@ HEIC/
 Icon/
 Notes/
 Reference Docs/
+# private plug-ins (organization-specific libraries): never published
+Private/
 Sample Screen Shots/
 Test Files/
 Logs/

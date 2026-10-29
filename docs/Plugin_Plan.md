@@ -1,6 +1,6 @@
 # Plug-in system: plan
 
-Status: **plan agreed in outline, no plug-in code yet.** The decisions from the first review are in section 2. The first new plug-in is the PennDOT UAS folder sorter, with its own draft spec in `docs/Plugin_PennDOT_UAS.md`.
+Status: **plug-in libraries (DLL / .so) with tokens and a prompt window are built** (interface: `docs/Plugin_API.md`). Hooks that run code after each file or after the download, the move of Directory Maker and external-program plug-ins are still open. The decisions from the first review are in section 2. The first library is a private, organization-specific folder-naming plug-in; it is not part of this repository.
 
 ## 1. Where things stand
 
@@ -18,7 +18,7 @@ Status: **plan agreed in outline, no plug-in code yet.** The decisions from the 
 | 3 | DNG Converter | Keep **both** the raw file and the DNG. |
 | 4 | Native library plug-ins | **Yes**: DLL on Windows and .so on Linux (section 7). |
 | 5 | Plug-ins and the backup copy | **Never.** Plug-ins do not touch the backup copy; the backup always holds the untouched original. |
-| 6 | First plug-in | The PennDOT UAS folder sorter: extra tokens for the PennDOT UAS folder naming standard (spec to be confirmed by the user). |
+| 6 | First plug-in | A private, organization-specific folder-naming plug-in (tokens for an agency folder naming standard). Built as a separate library and handed out as needed; its source and spec are kept outside this repository. |
 
 ## 3. Goals
 
@@ -27,7 +27,7 @@ Status: **plan agreed in outline, no plug-in code yet.** The decisions from the 
 3. Plug-ins can **add tokens** that work in the folder and file name templates like the built-in tokens.
 4. The list order sets the run order.
 5. Every plug-in result is logged, and a failure is never silent.
-6. Windows and Linux both work, with no change to the single-exe, no-installer approach. Organization-specific plug-ins (such as the PennDOT sorter) stay out of the general program.
+6. Windows and Linux both work, with no change to the single-exe, no-installer approach. Organization-specific plug-ins stay out of the general program.
 
 ## 4. Kinds of plug-ins
 
@@ -35,7 +35,7 @@ Status: **plan agreed in outline, no plug-in code yet.** The decisions from the 
 |---|---|---|
 | **A. Built-in** | A Pascal class compiled into the exe (one unit per plug-in) | Directory Maker, JPEG auto profile, JPEG resolution |
 | **B. External program** | A manifest file (`<name>.plugin.ini`) in the `plugins` folder that describes a command line to run | DNG Converter, exiftool, ImageMagick and other tools |
-| **C. Native library** | A DLL (Windows) or .so (Linux) in the `plugins` folder with a small C-style interface (section 7) | Organization-specific plug-ins such as the PennDOT UAS sorter; plug-ins from other developers |
+| **C. Native library** | A DLL (Windows) or .so (Linux) in the `plugins` folder with a small C-style interface (section 7) | Organization-specific plug-ins; plug-ins from other developers |
 
 All three kinds look the same to the rest of the program: the registry in `uPlugins.pas` wraps B and C in the same class as A.
 
@@ -43,8 +43,8 @@ All three kinds look the same to the rest of the program: the registry in `uPlug
 
 | Hook | When | Example |
 |---|---|---|
-| `Tokens` | whenever a template is expanded (the Example line, the planned names after a scan, the download) | PennDOT sorter: `{UAS}`, `{UAS.Cnty}` ... |
-| `Prompt` | once, when the download starts or when the job code is asked; the host shows fields the plug-in describes | PennDOT sorter: Raw/Processed, district, county, route, section, file type |
+| `Tokens` | whenever a template is expanded (the Example line, the planned names after a scan, the download) | a folder-naming plug-in: `{ABC}`, `{ABC.Part}` ... |
+| `Prompt` | once, when the download starts or when the job code is asked; the host shows fields the plug-in describes | project numbers that make up a folder name |
 | `BeforeDownload` | once, before the first file is copied | check that an external tool exists |
 | `AfterFile` | after each file is copied, verified, backed up, auto-rotated and has its XMP written, **before** the read-only flag is set | DNG conversion, embed a color profile |
 | `AfterDownload` | once, after the last file (also after Cancel, with the count done) | Directory Maker (once per destination folder) |
@@ -144,9 +144,9 @@ TimeoutSec=300
 | Phase | Work | Test |
 |---|---|---|
 | 0 | Backup plug-in removed (done). | Old settings files load without it. |
-| 1 | `uPlugins.pas` registry and hooks, including **plug-in tokens** and the **host-drawn prompt**. Move Directory Maker into `uPluginDirMaker.pas` (`AfterDownload`). Fill the Plug-ins tab from the registry. Failure rules of decision 1. | Directory Maker makes the same folders as today; order and on/off survive a restart; a test plug-in that fails is switched off and its files are not offered for deletion. |
-| 2 | Native library loader (section 7) on Windows and Linux, with a tiny example library in the repository (`plugins/example/`). | Example library loads, gives a token, fails on request; a library with a newer interface version is refused. |
-| 3 | **PennDOT UAS folder sorter** (spec: `docs/Plugin_PennDOT_UAS.md`). Built as a library (phase 2), so the PennDOT-specific code stays out of the general program. | The examples in its spec give exactly the expected folder names; invalid entries are refused. |
+| 1 | **Done:** plug-in tokens and the host-drawn prompt (`uPlugins.pas`, `TPluginPromptForm`). **Open:** registry for built-in plug-ins and run hooks; move Directory Maker into `uPluginDirMaker.pas` (`AfterDownload`). Fill the Plug-ins tab from the registry. Failure rules of decision 1. | Directory Maker makes the same folders as today; order and on/off survive a restart; a test plug-in that fails is switched off and its files are not offered for deletion. |
+| 2 | **Done (Windows tested, Linux not tested yet):** native library loader (section 7, details in `docs/Plugin_API.md`). Open: a small public example library. | Example library loads, gives a token, fails on request; a library with a newer interface version is refused. |
+| 3 | First library: a private folder-naming plug-in (kept outside this repository). | Done on Windows: its test program passes; Linux build untested. |
 | 4 | External-program plug-ins (section 8); DNG Converter manifest as the example. | DNG next to the raw file; failing exit code; timeout. |
 | later | JPEG auto profile (built-in; APP2 ICC segment without re-encoding). JPEG resolution is deferred. | |
 

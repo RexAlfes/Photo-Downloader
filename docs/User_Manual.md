@@ -184,7 +184,7 @@ Only **New file** pictures and name clashes are downloaded; downloaded files are
 
 ## 8. Naming files and folders (tokens)
 
-The destination folder and the file name are built from a template. Words in braces are **tokens** that are replaced by details of each picture. Every token works in both templates, so the tokens that name a file can also build the folder structure (for example one folder per file type with `{E}`). Set the templates in **Preferences > Download Path**; the **Example image** line shows the result as you type, and **Show tokens…** (or F1) lists all tokens.
+The destination folder and the file name are built from a template. Words in braces are **tokens** that are replaced by details of each picture. Every token works in both templates, so the tokens that name a file can also build the folder structure (for example one folder per file type with `{E}`). Plug-in libraries can add more tokens (see Preferences > Plug-ins). Set the templates in **Preferences > Download Path**; the **Example image** line shows the result as you type, and **Show tokens…** (or F1) lists all tokens.
 
 Default folder template: `Pictures\Photo Downloader\{Y}\{Y}-{m}-{D}-{J}\`
 Default file name template: `{o}` (the original name)
@@ -314,7 +314,18 @@ Gives each camera its own values for the `{T8}` and `{T9}` tokens, for example a
 Enable the button, set its caption and the command line.
 
 ### Plug-ins
-Lists the built-in plug-ins. **Directory Maker** works. The others (JPEG auto profile, DNG Converter, JPEG resolution) are listed only and do nothing yet. The old Backup plug-in has been removed; backups are set with the backup folder on the Download Path tab.
+Lists the built-in plug-ins and any plug-in libraries found. **Directory Maker** works. The other built-in ones (JPEG auto profile, DNG Converter, JPEG resolution) are listed only and do nothing yet. The old Backup plug-in has been removed; backups are set with the backup folder on the Download Path tab.
+
+**Plug-in libraries.** A plug-in library is a separate file that adds its own tokens to the folder and file name templates, for example to build folder names by an organization's naming standard. Put the file into the `plugins` folder:
+
+- Windows: `%LOCALAPPDATA%\Photo Downloader\plugins\name.dll` (or a `plugins` folder next to `PhotoDownloader.exe`)
+- Linux: `~/.config/Photo Downloader/plugins/libname.so` (or a `plugins` folder next to the program)
+
+The next time the program starts, the library appears in the list as **name (library) - disabled**. Nothing of it runs yet. Select it and tick **Enable plug-in**: a message shows the full path of the file. Click **OK** only when you trust where the file came from, because a library runs with your rights. If a library cannot be loaded (for example a 32-bit or a Linux file on Windows), the program says why and switches it off.
+
+Once it is switched on, the list shows the library's own name, the information below the list names its tokens, and its logo (if it has one) is shown. **Setup...** opens the library's window for its values. The same window opens each time you click **Download**, filled with the last values; check them and click **OK**. **Cancel** stops the download before anything is copied. **OK** is only available when the values are valid. Use the library's tokens in the templates on the Download Path tab like any other token; the **Example image** line shows the result. A token whose value is missing stays in the name as written (for example `{ABC}`), so you can see it.
+
+The interface for writing libraries is described in `docs/Plugin_API.md`.
 
 ## 13. User profiles and exporting settings
 

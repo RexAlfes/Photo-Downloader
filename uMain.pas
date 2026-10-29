@@ -7,11 +7,12 @@ interface
 uses
   Classes, SysUtils, Contnrs, Math, Forms, Controls, Graphics, Dialogs, Menus,
   ExtCtrls, StdCtrls, ComCtrls, LCLType, LCLIntf, LazFileUtils,
-  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uLrCat, uSingle, uRotate, uSafeDel, uSplash;
+  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uLrCat, uSingle, uRotate, uSafeDel, uSplash, uPlugins;
 
 type
   TMainForm = class(TForm)
   private
+    FPluginErr: string;  // problems found while loading plug-in libraries (shown after the splash)
     FWantClientH: Integer;  // client height the window was given at creation (GTK may shrink it before it is shown)
     FS: TAppSettings;  // program settings
     FItems: TObjectList;            // all images found on the source (owned)
@@ -64,6 +65,7 @@ type
     procedure LoadSource(const Path: string);
     procedure AutoDetectSource;
     procedure Reevaluate;
+    procedure ReloadPlugins;  // looks for plug-in libraries again and reports problems
     procedure RebuildDates;
     procedure ApplyFilter;
     procedure GetDownloadList(L: TList);
@@ -184,6 +186,7 @@ begin
   FS := TAppSettings.Create;  // create the settings
   FS.LoadFromFile(SettingsFileName);  // read the settings file
   LogEnabled := FS.LoggingOn;  // switch the log on or off
+  FPluginErr := LoadPlugins(FS);  // plug-in libraries (their tokens are needed for the first scan)
   FItems := TObjectList.Create(True);  // list of all images (owns them)
   FVisible := TList.Create;  // list of the visible images
   FDateKeys := TStringList.Create;  // list of the image dates
@@ -855,6 +858,17 @@ begin
 end;
 
 { Works out status and destination again after a setting changed. }
+{ Looks for plug-in libraries again (after a profile was loaded) and reports problems. }
+procedure TMainForm.ReloadPlugins;
+var
+  Err: string;  // Err: libraries that could not be loaded
+begin
+  Err := LoadPlugins(FS);  // list new libraries, load the switched-on ones
+  if Err <> '' then  // some were switched off
+    MessageDlg(AppTitle, 'These plug-ins could not be loaded and were switched off:'#13#10#13#10 + Err,
+      mtWarning, [mbOK], 0);  // tell the user
+end;
+
 procedure TMainForm.Reevaluate;
 begin
   EvaluateItems(FItems, FS);  // work out status and destination
@@ -1598,6 +1612,7 @@ var
   R: TModalResult;  // R: answer of the question dialog
   CR: TCopyResult;  // CR: result of a copy
   Attempt, BackupFail, Verified: Integer;  // Attempt: copy attempt; BackupFail: failed backup copies; Verified: verified copies
+  OldOpts: string;  // OldOpts: plug-in values before the plug-ins asked for new ones
 begin
   Result := False;  // assume failure
   Done := 0; Skipped := 0; Failed := 0; Problems := 0; ExifFail := 0;  // clear the counters
@@ -1605,6 +1620,16 @@ begin
   BackupFail := 0; Verified := 0;  // clear the counters
   UniqueMode := FS.AutoRenameClash;  // rename name clashes automatically when that option is on; otherwise skip problem files by default
   Msg := '';  // no message yet
+  if not Silent then  // plug-ins that ask for values (for example project numbers for the folder name)
+  begin
+    OldOpts := FS.PluginOpts.Text;  // values before asking
+    if not AskPluginValues(FS) then Exit;  // canceled: download nothing
+    if FS.PluginOpts.Text <> OldOpts then  // new values: other folder and file names
+    begin
+      SaveSettingsNow;  // keep the values
+      Reevaluate;  // work out the names again
+    end;
+  end;
   L := TList.Create;  // create the list
   try
     GetDownloadList(L);  // get the files to download
@@ -2013,6 +2038,13 @@ begin
   end;
   FTimer.Enabled := False;  // run only once
   CloseSplash;                 // the main window is up
+  if FPluginErr <> '' then  // a plug-in library could not be loaded
+  begin
+    SaveSettingsNow;  // it was switched off: keep that
+    MessageDlg(AppTitle, 'These plug-ins could not be loaded and were switched off:'#13#10#13#10 + FPluginErr,
+      mtWarning, [mbOK], 0);  // tell the user
+    FPluginErr := '';  // reported
+  end;
   FixThumbWidth;  // correct the window width
   {$IFDEF UNIX}
   CenterOnWorkArea;  // GTK: center again now that the window has its final size
@@ -2030,6 +2062,7 @@ begin
         begin
           FS.LoadFromFile(ProfilesDir + Choice + '.ini');  // load the profile
           FS.PromptProfile := True;       // a profile must not switch the prompt off
+          ReloadPlugins;  // the profile may switch other plug-ins on
           ApplyState;  // apply the settings
         end;
     finally
@@ -2131,6 +2164,7 @@ begin
     begin
       FS.LoadFromFile(ProfilesDir + Choice + '.ini');  // load the profile
       FS.PromptProfile := PromptWas;      // a profile must not change the start-up prompt setting
+      ReloadPlugins;  // the profile may switch other plug-ins on
       SaveSettingsNow;  // save the settings
       ApplyState;  // apply the settings
       Reevaluate;  // work out the names again

@@ -185,7 +185,7 @@ There is no fixed limit on the number of images scanned. The source folder and a
 | Time offset correction | Shift capture times when the camera clock was wrong |
 | RAW+JPEG pairing | Treat a RAW and its JPEG as one unit; optionally download only one of them |
 | Ratings and labels | Read from the camera and write into the XMP sidecar |
-| Plug-in system | Plan in `docs/Plugin_Plan.md`: built-in plug-ins (Pascal classes), external-program plug-ins (manifest) and native library plug-ins (DLL / .so, C-style key=value interface); hooks for tokens, a host-drawn prompt, before download, after each file and after download, in list order. A failed plug-in step keeps the file from deletion and switches the plug-in off; plug-ins never touch the backup copy. First plug-in: PennDOT UAS folder sorter (draft spec `docs/Plugin_PennDOT_UAS.md`). No plug-in code yet |
+| Plug-in system | Plan in `docs/Plugin_Plan.md`. **Built:** plug-in libraries (DLL on Windows, .so on Linux; interface `docs/Plugin_API.md`, unit `uPlugins.pas`): found in the `plugins` folder next to the settings file or the program, listed switched off and loaded only after a confirmation; their tokens work in the templates; their prompt window (drawn by the program from the library's field list, with its logo) opens at Setup and before each download. A library that cannot be loaded is switched off. The first library is a private, organization-specific folder-naming plug-in kept outside this repository (Windows test program passes; Linux untested). **Open:** run hooks after each file / after the download (a failed step will keep the file from deletion and switch the plug-in off; plug-ins never touch the backup copy), Directory Maker move, external-program plug-ins |
 | Watermark or resize on copy | Optional, mainly for event work |
 | Dry run / preview | Show what would be copied and renamed without changing anything |
 | Installer and code signing | Windows SmartScreen warns about unsigned programs |
@@ -301,8 +301,8 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 |---|---|
 | `[JobHistory]` | Previously used job codes, newest first |
 | `[Mappings]` | One line per camera: `Camera name|T8 value|T9 value` (`Default|{T1}|{T1}` is created if empty) |
-| `[Plugins]` | `Name=0` or `Name=1` for JPEG auto profile, Directory Maker, DNG Converter, JPEG resolution (an old `Backup=` line is removed when the file is read) |
-| `[PluginOpts]` | `Name=option` settings for the plug-ins (for example the Backup folder) |
+| `[Plugins]` | `Name=0` or `Name=1` for JPEG auto profile, Directory Maker, DNG Converter, JPEG resolution and every plug-in library found (new ones `=0`); an old `Backup=` line is removed when the file is read |
+| `[PluginOpts]` | `Name=option` settings for the plug-ins; for a plug-in library its prompt values as `key=value;key=value` |
 | `[Iptc]` | `Name=value` details for the XMP sidecar: Creator, Copyright, Title, Description, Credit, Source |
 | `[DateJobCodes]` | `yyyy/mm/dd=job code`; written only when `SaveDateJobCodes=1`, otherwise the section is removed |
 
