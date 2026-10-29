@@ -70,7 +70,7 @@ type
     procedure AutoDetectSource;
     procedure Reevaluate;
     procedure ReloadPlugins;  // looks for plug-in libraries again and reports problems
-    procedure SaveDownloadDirToProfile;  // writes the download path just used into the profile in use
+    procedure SaveDownloadToProfile;  // writes the download path and plug-in values just used into the profile in use
     procedure RebuildDates;
     procedure ApplyFilter;
     procedure GetDownloadList(L: TList; Scope: TDownloadScope = dsAuto);
@@ -882,9 +882,10 @@ begin
 end;
 
 { Works out status and destination again after a setting changed. }
-{ Writes the download path just used ([Path] DownloadDir) into the user profile in use, so loading the
-  profile later downloads to the same place. Only that one value is changed in the profile file. }
-procedure TMainForm.SaveDownloadDirToProfile;
+{ Writes the download path ([Path] DownloadDir) and the plug-in values ([PluginOpts]) just used into the
+  user profile in use, so loading the profile later downloads to the same place with the same plug-in
+  values. Only these are changed in the profile file. }
+procedure TMainForm.SaveDownloadToProfile;
 var
   Fn: string;  // Fn: the profile file
   Ini: TMemIniFile;  // Ini: the profile as an ini object
@@ -895,15 +896,15 @@ begin
   try
     Ini := TMemIniFile.Create(Fn);  // open it
     try
-      if Ini.ReadString('Path', 'DownloadDir', '') = FS.DownloadDir then Exit;  // already the same
       Ini.WriteString('Path', 'DownloadDir', FS.DownloadDir);  // the download path just used
+      SaveList(Ini, 'PluginOpts', FS.PluginOpts);  // the plug-in values just used
       Ini.UpdateFile;  // write it back
-      LogThumb('profile ' + FS.ProfileName + ': download path saved: ' + FS.DownloadDir);  // log it
+      LogThumb('profile ' + FS.ProfileName + ': download path and plug-in values saved: ' + FS.DownloadDir);  // log it
     finally
       Ini.Free;  // close it
     end;
   except
-    on E: Exception do LogThumb('profile ' + FS.ProfileName + ': download path not saved: ' + E.Message);  // log the failure
+    on E: Exception do LogThumb('profile ' + FS.ProfileName + ': download path and plug-in values not saved: ' + E.Message);  // log the failure
   end;
 end;
 
@@ -1874,7 +1875,7 @@ begin
   end;
 
   SaveSettingsNow;  // save the sequence number
-  if Done > 0 then SaveDownloadDirToProfile;  // the profile in use remembers where it downloaded to
+  if Done > 0 then SaveDownloadToProfile;  // the profile in use remembers where it downloaded to, and the plug-in values
   ApplyFilter;  // refresh the grid
   if Failed > 0 then  // a copy failed
     MessageDlg(AppTitle, Msg, mtError, [mbOK], 0)  // show the message

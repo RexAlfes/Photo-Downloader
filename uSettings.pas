@@ -126,6 +126,9 @@ const
   // the Backup plug-in was replaced by the backup folder on the Download Path tab
   RemovedPlugins: array[0..0] of string = ('Backup');  // names dropped from older settings files
 
+{ Writes a list into an ini section (Count, Item0, Item1 ...); the old section is removed first. }
+procedure SaveList(Ini: TCustomIniFile; const Sec: string; L: TStrings);
+
 implementation
 
 { Returns the settings folder (created if needed) with a trailing delimiter. }
