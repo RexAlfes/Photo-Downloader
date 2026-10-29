@@ -8,8 +8,8 @@
 - Cancel now also stops a copy in the middle of a large file.
 - **Source folder at start-up.** The job code window shown at start-up also asks for the source folder (leave it empty to choose later).
 - Documentation: planned features and the Linux version are listed in the specification; note on very large folders.
-- Please test: a card with many files, a backup folder on another drive, and cancelling in the middle of a download.
-- Build 37 changes carry over: grey rows for downloaded files, generic default folders, separate NEF/NRW types, Help > Logging, faster HEIC/AVIF thumbnails.
+- Please test: a card with many files, a backup folder on another drive, and canceling in the middle of a download.
+- Build 37 changes carry over: gray rows for downloaded files, generic default folders, separate NEF/NRW types, Help > Logging, faster HEIC/AVIF thumbnails.
 
 ### In development
 Video and audio files.

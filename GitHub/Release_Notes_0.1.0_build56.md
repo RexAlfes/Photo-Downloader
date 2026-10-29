@@ -14,8 +14,10 @@
 - Lazarus 4.8 / FPC 3.2.2 are now used on both Windows and Linux.
 
 ### Downloads
-- `PhotoDownloader.0.1.0.build.56.win64.exe` – Windows 64-bit
+- `PhotoDownloader.0.1.0.build.56.Win64.exe` – Windows 64-bit (single file)
+- `PhotoDownloader.0.1.0.build.56.Win64.zip` – Windows 64-bit (zipped copy of the exe)
 - `PhotoDownloader.0.1.0.build.56.linux64.tar.gz` – Linux 64-bit (unpack, then run `PhotoDownloader`)
+- `User_Manual.0.1.0.build.56.odt` and `.md` – User Manual
 
 ### Linux build
 See `docs/Linux_Build.md`. You need Lazarus with the GTK2 or GTK3 widgetset, plus `udisks2`, `gio` and `xdg-open` at run time. For video thumbnails install `ffmpegthumbnailer` (or `ffmpeg`). To get the menu entry and icon run `linux/install-desktop.sh`.

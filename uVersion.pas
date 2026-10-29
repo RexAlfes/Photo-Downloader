@@ -7,7 +7,7 @@ unit uVersion;
 
 interface
 
-function AppVersionString: string;     // e.g. '0.1.0.58' (major.minor.revision.build)
+function AppVersionString: string;     // e.g. '0.1.1.1' (major.minor.revision.build)
 
 implementation
 
@@ -17,7 +17,7 @@ uses
   {$IFDEF LINUX}, elfreader{$ENDIF}
   {$IFDEF DARWIN}, machoreader{$ENDIF};
 
-{ Returns "major.minor.revision.build" (for example 0.1.0.58) from the version resource, or 'unknown' if it cannot be read.
+{ Returns "major.minor.revision.build" (for example 0.1.1.1) from the version resource, or 'unknown' if it cannot be read.
   From 0.1.0.58 on the revision goes up with every bundle; the build number restarts at 1 and is counted up by the IDE (Project Options > Version Info). }
 function AppVersionString: string;
 var

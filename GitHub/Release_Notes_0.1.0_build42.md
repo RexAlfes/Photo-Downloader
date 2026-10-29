@@ -10,7 +10,7 @@
 ### Highlights of the baseline
 - Thumbnails and viewer for JPEG, PNG, BMP, TIFF (LZW, PackBits, Deflate, fax, palette, 1-bit, CMYK), DNG, HEIC, AVIF and RAW previews.
 - Verified copy (checksum read-back) and optional backup folder.
-- File type filter, logging with Save log file, start-up job code and source folder, grey rows for already downloaded files.
+- File type filter, logging with Save log file, start-up job code and source folder, gray rows for already downloaded files.
 - Large folders (about 6,000 pictures tested).
 
 ### In development
