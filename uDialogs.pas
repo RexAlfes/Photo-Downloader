@@ -756,6 +756,16 @@ end;
 { Plug-in prompt window                                                   }
 { ====================================================================== }
 
+{ The fixed start of a download folder template: the folders before the first token. }
+function DestRootOf(const DirMask: string): string;
+var
+  I: Integer;  // I: position of the first token
+begin
+  Result := DirMask;  // the whole template
+  I := Pos('{', Result);  // first token
+  if I > 0 then Result := ExtractFilePath(Copy(Result, 1, I - 1));  // the folders before it
+end;
+
 type
   { Window that asks for the values of a plug-in library. It is drawn from the library's field list;
     the library checks the values (pd_check) and returns a preview, an error text and values to set. }
@@ -766,22 +776,24 @@ type
     FUpdating: Boolean;  // True while the program changes the controls
     FChanged: string;  // key of the field changed last
     FNormal: string;  // normalized values from the last check (Value.<key>= lines)
-    FDestRoot: string;  // destination folder (the fixed part of the download folder template)
+    FDestDir: string;  // download folder template (changed by "Destination folder...")
+    lblDest: TLabel;  // shows the download folder template
     lblPreview, lblError: TLabel;  // preview and error text
     BtnOK: TButton;  // OK button (only enabled when the values are valid)
     function FieldValue(I: Integer): string;  // value of one field
     procedure SetFieldValue(I: Integer; const V: string);  // shows a value in one field
     procedure ApplyCheck(const Extra: string);  // lets the plug-in check the values and shows the result
     procedure FieldChange(Sender: TObject);  // a field was changed
-    procedure FolderClick(Sender: TObject);  // fills the fields from an existing destination folder
+    procedure FolderClick(Sender: TObject);  // chooses the destination folder to download to
   public
-    constructor CreatePrompt(AOwner: TComponent; P: TLibPlugin; const Values, DestRoot: string);  // builds the window
+    constructor CreatePrompt(AOwner: TComponent; P: TLibPlugin; const Values, DestDir: string);  // builds the window
+    property DestDir: string read FDestDir;  // the download folder template after the window closed
     function Values: string;  // the values as key=value lines (normalized by the plug-in)
   end;
 
 { Builds the window: logo header, accent bar, one row per field, preview, error and buttons.
   The window is as wide as the longest label and the controls need (at least 600 pixels). }
-constructor TPluginPromptForm.CreatePrompt(AOwner: TComponent; P: TLibPlugin; const Values, DestRoot: string);
+constructor TPluginPromptForm.CreatePrompt(AOwner: TComponent; P: TLibPlugin; const Values, DestDir: string);
 const
   CtlW = 320;  // width of the controls
 var
@@ -796,7 +808,7 @@ var
 begin
   inherited CreateNew(AOwner);  // create the form without a resource file
   FPlugin := P;  // remember the plug-in
-  FDestRoot := DestRoot;  // where the destination folders are
+  FDestDir := DestDir;  // the download folder template
   Head := nil;  // no header yet
   Bar := nil;  // no bar yet
   Fnt := P.Info.Values['FontName'];  // font asked for by the plug-in
@@ -842,11 +854,15 @@ begin
   LabW := 0;  // widest label so far
   Canvas.Font := Font;  // measure in the window's font
   for I := 0 to High(P.Fields) do  // every field
+    LabW := Max(LabW, Canvas.TextWidth(P.Fields[I].Caption + ':'));  // width of its label
+  CtlX := 12 + LabW + 8;  // controls start here
+  for I := 0 to High(P.Fields) do  // labels right-aligned, ending next to their control
   begin
     Lab := MkLabel(Self, P.Fields[I].Caption + ':', 12, Y + I * 32 + 3);  // label
-    LabW := Max(LabW, Canvas.TextWidth(Lab.Caption));  // its width
+    Lab.AutoSize := False;  // keep the width set below
+    Lab.Alignment := taRightJustify;  // text against the right edge
+    Lab.SetBounds(12, Y + I * 32 + 3, LabW, Lab.Height);  // same right edge for every label
   end;
-  CtlX := 12 + LabW + 16;  // controls start here
   W := Max(W, CtlX + CtlW + 14);  // window width
   SetLength(FCtrls, Length(P.Fields));  // one control per field
   for I := 0 to High(P.Fields) do  // every field
@@ -882,8 +898,13 @@ begin
   lblError := MkWrap(Self, '', 12, Y + 28, W - 24, 36);  // error text
   lblError.Font.Color := clRed;  // red
   Inc(Y, 72);  // room for preview and error
-  if P.Info.Values['ParseFolder'] = '1' then  // the plug-in can read an existing destination folder name
-    MkButton(Self, 'Destination folder...', 12, Y, 150).OnClick := @FolderClick;  // fill the fields from a destination folder
+  if P.Info.Values['DestFolder'] = '1' then  // the plug-in lets the user choose the destination here
+  begin
+    lblDest := MkWrap(Self, '', 12, Y, W - 24, 36);  // the download folder template
+    lblDest.Caption := 'Download to: ' + FDestDir;  // show it
+    Inc(Y, 40);  // room for it
+    MkButton(Self, 'Destination folder...', 12, Y, 150).OnClick := @FolderClick;  // choose the destination
+  end;
   BtnOK := MkButton(Self, 'OK', W - 184, Y, 80, mrOK);  // OK button
   BtnOK.Default := True;  // reacts to Enter
   MkButton(Self, 'Cancel', W - 94, Y, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
@@ -976,59 +997,65 @@ begin
   ApplyCheck('');  // check the values
 end;
 
-{ Fills the fields from an existing destination folder (the plug-in reads its path). The chooser
-  opens in the destination: the download folder up to its first token. }
+{ Chooses the destination folder to download to. The download folder template becomes the chosen
+  folder plus the token part of the current template when that uses the plug-in's tokens, otherwise
+  plus the plug-in's suggested folder template (DestTemplate). }
 procedure TPluginPromptForm.FolderClick(Sender: TObject);
 var
   D: TSelectDirectoryDialog;  // D: folder chooser
+  Root, Rest: string;  // Root: current destination folder; Rest: token part of the template
+  I: Integer;  // I: token index
+  HasTok: Boolean;  // HasTok: the token part uses a token of the plug-in
 begin
+  Root := DestRootOf(FDestDir);  // current destination folder
+  Rest := Copy(FDestDir, Length(Root) + 1, MaxInt);  // folders built from tokens
+  HasTok := False;  // no plug-in token found yet
+  for I := 0 to FPlugin.Tokens.Count - 1 do  // look for the plug-in's tokens
+    if Pos('{' + LowerCase(FPlugin.Tokens[I]) + '}', LowerCase(Rest)) > 0 then HasTok := True;
+  if not HasTok then  // use the folder template the plug-in suggests
+    Rest := StringReplace(StringReplace(FPlugin.Info.Values['DestTemplate'], '\', PathDelim, [rfReplaceAll]),
+      '/', PathDelim, [rfReplaceAll]);
   D := TSelectDirectoryDialog.Create(Self);  // create the chooser
   try
-    D.Title := 'Choose an existing project folder in the destination';  // window title
-    if (FDestRoot <> '') and DirectoryExists(FDestRoot) then D.InitialDir := FDestRoot;  // start in the destination
+    D.Title := 'Choose the destination folder to download to';  // window title
+    if (Root <> '') and DirectoryExists(Root) then D.InitialDir := Root;  // start in the current destination
     if D.Execute then  // a folder was chosen
     begin
-      FChanged := '';  // not a single field
-      ApplyCheck('_parse=' + ExcludeTrailingPathDelimiter(D.FileName) + LineEnding);  // let the plug-in read the path
+      FDestDir := IncludeTrailingPathDelimiter(D.FileName) + Rest;  // the new download folder template
+      lblDest.Caption := 'Download to: ' + FDestDir;  // show it
     end;
   finally
     D.Free;  // free the chooser
   end;
 end;
 
-{ The fixed start of a download folder template: the folders before the first token. }
-function DestRootOf(const DirMask: string): string;
-var
-  I: Integer;  // I: position of the first token
-begin
-  Result := DirMask;  // the whole template
-  I := Pos('{', Result);  // first token
-  if I > 0 then Result := ExtractFilePath(Copy(Result, 1, I - 1));  // the folders before it
-end;
-
-{ Shows the prompt window of one plug-in; Values (key=value lines) is updated on OK.
-  DestRoot: the destination folder that "Destination folder..." opens in. }
-function ExecutePluginPrompt(P: TLibPlugin; var Values: string; const DestRoot: string): Boolean;
+{ Shows the prompt window of one plug-in; on OK, Values (key=value lines) and DestDir (the download
+  folder template, which "Destination folder..." can change) are updated. }
+function ExecutePluginPrompt(P: TLibPlugin; var Values, DestDir: string): Boolean;
 var
   F: TPluginPromptForm;  // F: the window
 begin
-  F := TPluginPromptForm.CreatePrompt(Application, P, Values, DestRoot);  // build the window
+  F := TPluginPromptForm.CreatePrompt(Application, P, Values, DestDir);  // build the window
   try
     Result := F.ShowModal = mrOK;  // True when the user clicked OK
-    if Result then Values := F.Values;  // return the values
+    if Result then
+    begin
+      Values := F.Values;  // return the values
+      DestDir := F.DestDir;  // and the download folder template
+    end;
   finally
     F.Free;  // free the window
   end;
 end;
 
 { Asks every switched-on plug-in with prompt fields for its values (before a download);
-  False when the user canceled. The values are stored in S.PluginOpts. }
+  False when the user canceled. The values are stored in S.PluginOpts, a new destination in S.DownloadDir. }
 function AskPluginValues(S: TAppSettings): Boolean;
 var
   L: TList;  // L: plug-ins with prompt fields
   I: Integer;  // I: list index
   P: TLibPlugin;  // P: one plug-in
-  V: string;  // V: its values
+  V, D: string;  // V: its values; D: download folder template
 begin
   Result := True;  // nothing canceled yet
   L := PromptPlugins(S);  // plug-ins that ask for values
@@ -1037,8 +1064,10 @@ begin
     begin
       P := TLibPlugin(L[I]);  // the plug-in
       V := PluginValues(S.PluginOpts, P.Key);  // stored values
-      if not ExecutePluginPrompt(P, V, DestRootOf(S.DownloadDir)) then Exit(False);  // canceled
+      D := S.DownloadDir;  // current download folder template
+      if not ExecutePluginPrompt(P, V, D) then Exit(False);  // canceled
       SetPluginValues(S.PluginOpts, P.Key, V);  // store the new values
+      S.DownloadDir := D;  // and the destination
     end;
   finally
     L.Free;  // free the list
@@ -1901,7 +1930,7 @@ end;
 procedure TPrefsForm.PluginSetupClick(Sender: TObject);
 var
   I: Integer;  // I: selected entry
-  Nm, V: string;  // Nm: plug-in name; V: option value
+  Nm, V, D: string;  // Nm: plug-in name; V: option value; D: download folder template
   P: TLibPlugin;  // P: the plug-in library (nil for a built-in plug-in)
 begin
   I := lbPlugins.ItemIndex;  // selected entry
@@ -1917,7 +1946,12 @@ begin
     else
     begin
       V := PluginValues(FPluginOpts, Nm);  // stored values
-      if ExecutePluginPrompt(P, V, DestRootOf(cbDir.Text)) then SetPluginValues(FPluginOpts, Nm, V);  // ask and store
+      D := cbDir.Text;  // download folder template on the Download Path tab
+      if ExecutePluginPrompt(P, V, D) then  // ask
+      begin
+        SetPluginValues(FPluginOpts, Nm, V);  // store the values
+        cbDir.Text := D;  // a new destination goes to the Download Path tab (and its example)
+      end;
     end;
   end
   else if Nm = 'Directory Maker' then

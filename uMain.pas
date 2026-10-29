@@ -1622,9 +1622,9 @@ begin
   Msg := '';  // no message yet
   if not Silent then  // plug-ins that ask for values (for example project numbers for the folder name)
   begin
-    OldOpts := FS.PluginOpts.Text;  // values before asking
+    OldOpts := FS.PluginOpts.Text + FS.DownloadDir;  // values and destination before asking
     if not AskPluginValues(FS) then Exit;  // canceled: download nothing
-    if FS.PluginOpts.Text <> OldOpts then  // new values: other folder and file names
+    if FS.PluginOpts.Text + FS.DownloadDir <> OldOpts then  // new values or destination: other folder and file names
     begin
       SaveSettingsNow;  // keep the values
       Reevaluate;  // work out the names again
