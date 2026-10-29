@@ -21,6 +21,7 @@ const
 type
   TSplashHandler = class  // small helper class so a method can be used as a click handler
     procedure Click(Sender: TObject);
+    procedure TimerDone(Sender: TObject);  // Linux: the minimum time has passed
   end;
 
 var
@@ -28,11 +29,43 @@ var
   Handler: TSplashHandler = nil;  // object that owns the click handler
   Clicked: Boolean = False;  // True once the user clicked the splash
   StartTick: QWord = 0;  // time (ms) when the splash was shown
+  CloseTimer: TTimer = nil;  // Linux: closes the splash when the minimum time has passed (nil when not waiting)
+
+{ Linux: closes the splash without waiting in a loop. Release and ReleaseComponent free the
+  window and the timer later, so this is safe inside their own click and timer events. }
+procedure ReleaseSplash;
+begin
+  try
+    if CloseTimer <> nil then
+    begin
+      CloseTimer.Enabled := False;  // no second call
+      Application.ReleaseComponent(CloseTimer);  // free the timer once its event has ended
+      CloseTimer := nil;  // forget it
+    end;
+    if Splash <> nil then
+    begin
+      Splash.Hide;  // hide the window now
+      Splash.Release;  // free it once its events have ended
+    end;
+  except
+    // ignore: the splash is only decoration
+  end;
+  Splash := nil;  // forget the window
+end;
 
 { Click handler: remember that the user wants the splash closed. }
 procedure TSplashHandler.Click(Sender: TObject);
 begin
   Clicked := True;  // let CloseSplash stop waiting
+  {$IFDEF UNIX}
+  if CloseTimer <> nil then ReleaseSplash;  // Linux: already waiting for the timer, so close now
+  {$ENDIF}
+end;
+
+{ Timer handler (Linux): the minimum time has passed, close the splash. }
+procedure TSplashHandler.TimerDone(Sender: TObject);
+begin
+  ReleaseSplash;  // close it
 end;
 
 { Builds and shows the splash window with title, version and a moving progress bar. }
@@ -103,10 +136,31 @@ end;
 { Called when the main window is up. The splash is kept for MinShowMs from its start (the
   main window shows behind it meanwhile) unless it is clicked. }
 procedure CloseSplash;
+{$IFDEF UNIX}
+var
+  Remaining: Int64;  // ms left until MinShowMs is reached
+{$ENDIF}
 begin
   if Splash = nil then Exit;  // no splash: nothing to do
+  {$IFDEF UNIX}
+  // Linux: a timer instead of a waiting loop. A loop inside the start-up timer lets menu clicks
+  // run inside it, which froze GTK 3; the timer returns at once and the program runs normally.
+  Remaining := MinShowMs - Int64(GetTickCount64 - StartTick);  // time still to show
+  if (not Clicked) and (Remaining > 0) and (CloseTimer = nil) then
+  begin
+    try
+      CloseTimer := TTimer.Create(nil);  // own timer, freed in ReleaseSplash
+      CloseTimer.Interval := Remaining;  // fire when the minimum time is reached
+      CloseTimer.OnTimer := @Handler.TimerDone;  // then close the splash
+      CloseTimer.Enabled := True;  // start it
+      Exit;  // the timer (or a click) closes the splash
+    except
+      FreeAndNil(CloseTimer);  // no timer: close at once below
+    end;
+  end;
+  ReleaseSplash;  // clicked, time is up, or no timer: close now
+  {$ELSE}
   try
-    {$IFNDEF UNIX}
     // Windows: keep the splash for at least MinShowMs
     while (not Clicked) and (GetTickCount64 - StartTick < MinShowMs) do  // wait until clicked or the minimum time has passed
     begin
@@ -114,9 +168,6 @@ begin
       if Application.Terminated then Break;  // program is closing: stop waiting
       Sleep(20);  // short pause to avoid using the processor
     end;
-    {$ENDIF}
-    // Linux: no waiting. A waiting loop inside the start-up timer lets menu clicks run inside the
-    // loop, which froze GTK 3; the splash simply closes when the main window is up.
     Splash.Hide;  // hide the window
     Splash.Free;  // free it
   except
@@ -124,6 +175,10 @@ begin
   end;
   Splash := nil;  // forget the window
   FreeAndNil(Handler);  // free the click handler
+  {$ENDIF}
 end;
+
+finalization
+  FreeAndNil(Handler);  // Linux keeps the click handler until the end (the timer may still use it)
 
 end.
