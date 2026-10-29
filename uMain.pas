@@ -651,11 +651,20 @@ end;
 
 { Shows the number of files found during a scan and lets the user cancel it. }
 procedure TMainForm.ScanProgress(Count: Integer);
+var
+  S: string;  // S: folder text, shortened to fit the label
 begin
-  SetStatus(Format('Scanning... %d files found', [Count]));  // status text
+  SetStatus(Format('Scanning... %d files found - %s', [Count, ScanCurrentDir]));  // status text with the folder being read
   if FProg <> nil then  // progress window is open
   begin
     FProgLbl.Caption := Format('Reading the source folder... %d files found', [Count]);  // progress text
+    if FProgLbl2 <> nil then  // second label exists
+    begin
+      S := ScanCurrentDir;  // folder being read
+      while (Length(S) > 8) and (FProgLbl2.Canvas.TextWidth(S) > FProgLbl2.Width) do
+        S := '...' + Copy(S, 5, MaxInt);  // too wide: drop the start of the path
+      FProgLbl2.Caption := S;  // show it
+    end;
     Application.ProcessMessages;  // let the window update
     if FCancel then ScanAbort := True;  // pass cancel to the scan
   end;
