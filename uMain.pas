@@ -50,6 +50,7 @@ type
     procedure ApplyState;
     procedure SizeForThumbColumns(Cols: Integer);
     procedure FixThumbWidth;
+    procedure CenterOnWorkArea;
     procedure SetViewMode(M: Integer);
     procedure SetThumbPreset(Size: Integer);
     procedure UpdateViewChecks;
@@ -205,13 +206,52 @@ begin
   inherited Destroy;  // run the inherited destructor
 end;
 
-{ Adds a menu item with a handler and a shortcut to a parent item. }
+{$IFDEF UNIX}
+type
+  { Runs a menu handler a moment after the menu has closed. With GTK 3 a dialog that is opened
+    from inside the menu click (for example the folder chooser) blocks while the menu still holds
+    the mouse and keyboard grab: the menu stays pressed and the program seems to hang. }
+  TDeferredClick = class(TComponent)
+  public
+    Handler: TNotifyEvent;  // the real click handler
+    Item: TMenuItem;  // the menu item that was clicked
+    procedure Click(Sender: TObject);  // menu click: queue the call
+    procedure Fire(Data: PtrInt);  // runs the real handler after the menu is gone
+  end;
+
+procedure TDeferredClick.Click(Sender: TObject);
+begin
+  Application.QueueAsyncCall(@Fire, 0);  // run it when the main loop is idle
+end;
+
+procedure TDeferredClick.Fire(Data: PtrInt);
+begin
+  if Assigned(Handler) then Handler(Item);  // call the real handler
+end;
+{$ENDIF}
+
+{ Adds a menu item with a handler and a shortcut to a parent item. On Linux the handler runs
+  a moment after the menu has closed (see TDeferredClick).}
 function TMainForm.AddMenu(AParent: TMenuItem; const Cap: string; H: TNotifyEvent;
   SC: TShortCut): TMenuItem;
+{$IFDEF UNIX}
+var
+  D: TDeferredClick;  // D: helper that delays the click handler
+{$ENDIF}
 begin
   Result := TMenuItem.Create(Self);  // create the item
   Result.Caption := Cap;  // set the text
+  {$IFDEF UNIX}
+  if Assigned(H) then  // Linux: run the handler after the menu has closed
+  begin
+    D := TDeferredClick.Create(Self);  // helper owned by the form
+    D.Handler := H;  // the real handler
+    D.Item := Result;  // the item
+    Result.OnClick := @D.Click;  // the menu calls the helper
+  end;
+  {$ELSE}
   if Assigned(H) then Result.OnClick := H;  // set the handler
+  {$ENDIF}
   if SC <> 0 then Result.ShortCut := SC;  // set the shortcut
   AParent.Add(Result);  // add it to the parent
 end;
@@ -532,6 +572,18 @@ begin
   ClientWidth := W;  // set the width
   Left := Screen.WorkAreaLeft + (Screen.WorkAreaWidth - Width) div 2;  // center the window
   if Left < Screen.WorkAreaLeft then Left := Screen.WorkAreaLeft;  // keep it on the screen
+end;
+
+{ Centers the window on the work area of the screen, using its real size. On Linux (GTK) the
+  automatic centering (poScreenCenter) happens before the window has its final size and can leave
+  the window shifted to the right and down, so the start-up code calls this once the window exists. }
+procedure TMainForm.CenterOnWorkArea;
+begin
+  if WindowState <> wsNormal then Exit;  // a maximized window needs no centering
+  Left := Screen.WorkAreaLeft + (Screen.WorkAreaWidth - Width) div 2;  // center horizontally
+  Top := Screen.WorkAreaTop + (Screen.WorkAreaHeight - Height) div 2;  // center vertically
+  if Left < Screen.WorkAreaLeft then Left := Screen.WorkAreaLeft;  // keep it on the screen
+  if Top < Screen.WorkAreaTop then Top := Screen.WorkAreaTop;  // keep the title bar visible
 end;
 
 { Called once the window really exists: measures the grid and corrects the width so the
@@ -1916,6 +1968,9 @@ begin
   FTimer.Enabled := False;  // run only once
   CloseSplash;                 // the main window is up
   FixThumbWidth;  // correct the window width
+  {$IFDEF UNIX}
+  CenterOnWorkArea;  // GTK: center again now that the window has its final size
+  {$ENDIF}
   if FS.SingleInstance then RegisterMainWindow(Handle);   // lets a second copy find this window
   if FS.PromptProfile then  // ask for a profile
   begin
