@@ -1497,8 +1497,6 @@ begin
       Info := 'Automatically embeds color profiles in JPEGs.'#13#10 +
               'Different color profiles can be defined for each camera model.'#13#10 +
               '(Not yet implemented in this build.)'
-    else if Nm = 'Backup' then
-      Info := 'Replaced by "Also save a second copy to a backup folder" on the Download Path tab.'
     else if Nm = 'Directory Maker' then
       Info := 'Creates extra sub-folders (for example Edit and Web) next to the download folder.'
     else if Nm = 'DNG Converter' then
@@ -1562,12 +1560,7 @@ begin
   I := lbPlugins.ItemIndex;  // selected entry
   if I < 0 then Exit;  // nothing selected
   Nm := FPlugins.Names[I];  // plug-in name
-  if Nm = 'Backup' then  // backup plug-in
-  begin
-    ShowMessage('Backups are now set on the Download Path tab:'#13#10 +  // explain where backups are set up
-      '"Also save a second copy to a backup folder".');
-  end
-  else if Nm = 'Directory Maker' then
+  if Nm = 'Directory Maker' then
   begin
     V := FPluginOpts.Values['Directory Maker'];  // current option value
     if InputQuery('Directory Maker', 'Folders to create (comma separated):', V) then  // ask for the folders

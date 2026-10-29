@@ -1,53 +1,70 @@
-# Plug-in system: planning draft
+# Plug-in system: plan
 
-Status: **draft for discussion**. No code has been written yet. The open questions at the end need answers before work starts.
+Status: **plan agreed in outline, no plug-in code yet.** The decisions from the first review are in section 2. The first new plug-in is the PennDOT UAS folder sorter, with its own draft spec in `docs/Plugin_PennDOT_UAS.md`.
 
 ## 1. Where things stand
 
-- Preferences > Plug-ins lists five fixed names from `uSettings.DefaultPlugins`: JPEG auto profile, Backup, Directory Maker, DNG Converter, JPEG resolution. Each can be switched on or off and moved up or down. Settings live in `[Plugins]` (`Name=0/1`) and `[PluginOpts]` (`Name=value`).
-- Only **Directory Maker** does anything. Its code is written straight into `TMainForm` (the post-download steps in `uMain.pas`), and its info text is an `if` chain in `TPrefsForm.PluginSelect`.
-- **Backup** was replaced by the backup folder on the Download Path tab and is still listed.
+- Preferences > Plug-ins lists the built-in names from `uSettings.DefaultPlugins`: JPEG auto profile, Directory Maker, DNG Converter, JPEG resolution. Each can be switched on or off and moved up or down. Settings live in `[Plugins]` (`Name=0/1`) and `[PluginOpts]` (`Name=value`).
+- The **Backup** plug-in has been removed (the backup folder on the Download Path tab replaced it). An old `[Plugins] Backup=` line is dropped when the settings are read.
+- Only **Directory Maker** does anything. Its code sits in `TMainForm` (the post-download steps in `uMain.pas`), and its info text is an `if` chain in `TPrefsForm.PluginSelect`.
 - The order in the list has no effect yet.
 
-## 2. Goals
+## 2. Decisions (first review)
 
-1. A plug-in is a self-contained step with a name, a description, its own options and its own Setup dialog.
-2. The download code calls plug-ins at fixed points (hooks) instead of naming them.
-3. The list order sets the run order.
-4. Every plug-in result is logged, and a failure is never silent.
-5. Windows and Linux both work, with no change to the single-exe, no-installer approach.
-
-## 3. Kinds of plug-ins (recommendation)
-
-| Kind | What it is | Recommendation |
+| # | Question | Decision |
 |---|---|---|
-| **A. Built-in** | A Pascal class compiled into the exe (one unit per plug-in), registered in a list | **Yes.** Simple and safe, works on both systems, and has no version-matching problems. Directory Maker, JPEG resolution and JPEG auto profile belong here. |
-| **B. External program** | A small text file (manifest) in a `plugins` folder describes a command line to run, for example Adobe DNG Converter, exiftool or ImageMagick | **Yes, second step.** Users can add tools without a new build of Photo Downloader, in any language. DNG Converter belongs here. |
-| C. Native library | DLL / .so files loaded at run time | **Not now.** Free Pascal strings and memory do not cross library boundaries safely, Windows and Linux need separate builds, and a bad library crashes the program. Revisit only if other developers ask for it. |
-| D. Script language | Embedded Lua or Pascal Script | **Not now.** It adds a large dependency for little gain over B. |
+| 1 | A plug-in step fails | The file is **not offered for deletion** from the source (the same as a failed backup), **and the plug-in is switched off** (saved in the settings) with a message naming the plug-in and the reason. It must be switched on again on the Plug-ins tab after the cause is fixed. The rest of the download continues. |
+| 2 | JPEG resolution | Not needed at this time. It stays in the list, inactive. |
+| 3 | DNG Converter | Keep **both** the raw file and the DNG. |
+| 4 | Native library plug-ins | **Yes**: DLL on Windows and .so on Linux (section 7). |
+| 5 | Plug-ins and the backup copy | **Never.** Plug-ins do not touch the backup copy; the backup always holds the untouched original. |
+| 6 | First plug-in | The PennDOT UAS folder sorter: extra tokens for the PennDOT UAS folder naming standard (spec to be confirmed by the user). |
 
-## 4. Hooks (where plug-ins run)
+## 3. Goals
+
+1. A plug-in is a self-contained step with a name, a description, its own options and its own Setup.
+2. The download code calls plug-ins at fixed points (hooks) instead of naming them.
+3. Plug-ins can **add tokens** that work in the folder and file name templates like the built-in tokens.
+4. The list order sets the run order.
+5. Every plug-in result is logged, and a failure is never silent.
+6. Windows and Linux both work, with no change to the single-exe, no-installer approach. Organization-specific plug-ins (such as the PennDOT sorter) stay out of the general program.
+
+## 4. Kinds of plug-ins
+
+| Kind | What it is | Use |
+|---|---|---|
+| **A. Built-in** | A Pascal class compiled into the exe (one unit per plug-in) | Directory Maker, JPEG auto profile, JPEG resolution |
+| **B. External program** | A manifest file (`<name>.plugin.ini`) in the `plugins` folder that describes a command line to run | DNG Converter, exiftool, ImageMagick and other tools |
+| **C. Native library** | A DLL (Windows) or .so (Linux) in the `plugins` folder with a small C-style interface (section 7) | Organization-specific plug-ins such as the PennDOT UAS sorter; plug-ins from other developers |
+
+All three kinds look the same to the rest of the program: the registry in `uPlugins.pas` wraps B and C in the same class as A.
+
+## 5. Hooks (where plug-ins run)
 
 | Hook | When | Example |
 |---|---|---|
-| `BeforeDownload` | once, before the first file is copied | check that an external tool exists; ask a question |
-| `AfterFile` | after each file is copied, verified, backed up, auto-rotated and has its XMP written, **before** the read-only flag is set | DNG conversion, embed a color profile, make a resized copy |
-| `AfterDownload` | once, after the last file (also after Cancel, with the count done) | Directory Maker (once per destination folder instead of once per file), a summary |
+| `Tokens` | whenever a template is expanded (the Example line, the planned names after a scan, the download) | PennDOT sorter: `{UAS}`, `{UAS.Cnty}` ... |
+| `Prompt` | once, when the download starts or when the job code is asked; the host shows fields the plug-in describes | PennDOT sorter: Raw/Processed, district, county, route, section, file type |
+| `BeforeDownload` | once, before the first file is copied | check that an external tool exists |
+| `AfterFile` | after each file is copied, verified, backed up, auto-rotated and has its XMP written, **before** the read-only flag is set | DNG conversion, embed a color profile |
+| `AfterDownload` | once, after the last file (also after Cancel, with the count done) | Directory Maker (once per destination folder) |
 
-The backup copy is made from the verified download before any `AfterFile` plug-in runs, so the backup always holds the untouched original (the same rule as today for rotation and metadata).
+The backup copy is made from the verified download before any `AfterFile` plug-in runs and is never passed to a plug-in.
 
-## 5. Built-in plug-in interface (sketch)
+Tokens from plug-ins are looked up only when no built-in token has that name, so a plug-in cannot change a built-in token. A token of a plug-in that is switched off stays as literal text (like an unknown token today), so a template never silently loses a folder level.
+
+## 6. Built-in plug-in interface (sketch)
 
 New unit `uPlugins.pas`:
 
 ```pascal
 type
-  TPluginHook = (phBeforeDownload, phAfterFile, phAfterDownload);
+  TPluginHook = (phTokens, phPrompt, phBeforeDownload, phAfterFile, phAfterDownload);
   TPluginHooks = set of TPluginHook;
 
   TPluginContext = record
     Settings: TAppSettings;   // all settings, including PluginOpts
-    Item: TImageItem;         // the file (nil for BeforeDownload / AfterDownload)
+    Item: TImageItem;         // the file (nil for the once-per-download hooks)
     SourcePath: string;       // original file on the card
     DestPath: string;         // the downloaded file
     DestDirs: TStrings;       // AfterDownload: every destination folder used
@@ -59,69 +76,78 @@ type
     function Name: string; virtual; abstract;          // also the key in [Plugins] / [PluginOpts]
     function Description: string; virtual; abstract;   // text on the Plug-ins tab
     function Hooks: TPluginHooks; virtual; abstract;   // where it runs
-    function Handles(Item: TImageItem): Boolean; virtual; // file types it works on (default: all)
-    function Setup(AOwner: TComponent; var Opts: string): Boolean; virtual; // Setup... dialog
-    function Run(Hook: TPluginHook; const Ctx: TPluginContext;
-      out Msg: string): TPluginResult; virtual; abstract;
+    function Handles(Item: TImageItem): Boolean; virtual;         // file types it works on (default: all)
+    function TokenNames: string; virtual;                        // e.g. 'UAS;UAS.RP;UAS.Dist'
+    function TokenValue(const Tok: string; Item: TImageItem; out Value: string): Boolean; virtual;
+    function PromptFields: string; virtual;                      // field list for the host's prompt window
+    function Setup(AOwner: TComponent; var Opts: string): Boolean; virtual;
+    function Run(Hook: TPluginHook; const Ctx: TPluginContext; out Msg: string): TPluginResult; virtual;
   end;
-
-procedure RegisterPlugin(P: TPhotoPlugin);   // called from each plug-in unit's initialization
-function PluginCount: Integer;
-function PluginAt(I: Integer): TPhotoPlugin;
-procedure RunPlugins(S: TAppSettings; Hook: TPluginHook; const Ctx: TPluginContext);
 ```
 
-- The Plug-ins tab is filled from the registry. `DefaultPlugins` and the `if` chain in `PluginSelect` are no longer needed.
+- The Plug-ins tab is filled from the registry; `DefaultPlugins` and the `if` chain in `PluginSelect` go away.
 - `RunPlugins` walks `[Plugins]` in the saved order and runs every enabled plug-in that has the hook and handles the file. It logs `plug-in <name>: <file>: <Msg>`.
-- Options stay one string per plug-in in `[PluginOpts]` (kept compatible with today's Directory Maker value). A plug-in that needs more can store `key=value;key=value` in that string.
+- On `prFailed`: log, count, mark the file as not deletable from the source, switch the plug-in off in the settings, save, and tell the user once at the end of the download.
+- Options stay one string per plug-in in `[PluginOpts]` (compatible with today's Directory Maker value); plug-ins that need more store `key=value;key=value` in it, or their own section `[Plugin.<Name>]`.
 
-## 6. External-program plug-ins (sketch)
+## 7. Native library plug-ins (DLL / .so)
 
-A folder `plugins/` next to the settings file (also `plugins/` next to the exe for a portable copy). Each plug-in is one file, `<name>.plugin.ini`:
+Free Pascal strings, objects and memory managers cannot cross a library boundary safely, and plug-ins may be written in other languages. The interface therefore uses only plain C types:
+
+- Calling convention `cdecl` on both systems; 64-bit only.
+- Text is UTF-8 `PAnsiChar`. Data goes both ways as **key=value lines** (`#10` separated), so no record layouts have to match and new keys never break old plug-ins.
+- The host always owns the memory: it passes a buffer and its size; the plug-in returns the length it needs. If the buffer is too small, the host calls again with a bigger one.
+- An interface version number lets the host refuse a library built for a newer interface.
+
+Exported functions (draft):
+
+```c
+int  pd_api_version(void);                                   // returns 1
+int  pd_info(char *buf, int bufLen);                         // Name=, Version=, Description=, Hooks=, Tokens=, Fields=...
+int  pd_token(const char *token, const char *context,       // context: key=value lines about the file and the prompt values
+              char *buf, int bufLen);                        // returns length, or -1 = unknown token
+int  pd_run(int hook, const char *context,                  // returns 0 = OK, 1 = skipped, 2 = failed
+            char *msg, int msgLen);
+void pd_setup(const char *opts, char *buf, int bufLen);     // optional; returns new options
+```
+
+- The **prompt window is drawn by the host** from the field list in `pd_info` (field name, label, kind: choice / text / number, allowed values, pattern, default). So a library needs no user interface code, which avoids putting the LCL inside a DLL.
+- Files: `plugins/<name>.dll` (Windows) or `plugins/lib<name>.so` (Linux), in the folder next to the settings file, or next to the exe for a portable copy. Each system needs its own build of the library.
+- Safety: a library runs with the user's rights and a crash in it stops the whole program. A new library appears in the list **switched off**; the first time it is switched on, a confirmation shows its full path. Libraries are never loaded from the source card.
+- Linux: loaded with `dynlibs.LoadLibrary`; the same unit works on Windows.
+
+## 8. External-program plug-ins (sketch)
+
+A manifest `<name>.plugin.ini` in the `plugins` folder:
 
 ```ini
 [Plugin]
 Name=DNG Converter
-Description=Converts raw files to DNG with Adobe DNG Converter.
+Description=Converts raw files to DNG with Adobe DNG Converter (the raw file is kept).
 Hook=AfterFile
 FileTypes=.nef;.nrw;.cr2;.cr3;.arw;.orf;.rw2;.raf
 Platforms=windows
 
 [Run]
-Windows="C:\Program Files\Adobe\Adobe DNG Converter\Adobe DNG Converter.exe"
+Windows=C:\Program Files\Adobe\Adobe DNG Converter\Adobe DNG Converter.exe
 Args=-c -d "{folder}" "{file}"
-Wait=1
 TimeoutSec=300
 ```
 
-- `Args` takes `{file}` (downloaded file), `{folder}` (its folder), `{source}` (original on the card), `{name}` (file name without extension) and **every naming token** (`{Y}`, `{J}`, `{E}` ...), so the token system is shared.
-- The same placeholders can later replace `%f` and `%d` of the Custom Button (the spec already lists `{file}` and `{folder}` as open there).
-- The exit code decides the result: 0 = OK, anything else = failed. The program's output goes to the log.
+- `Args` takes `{file}`, `{folder}`, `{source}`, `{name}` and every naming token. The same placeholders can later replace `%f` / `%d` of the Custom Button.
+- Exit code 0 = OK, anything else = failed; the program's output goes to the log.
 - Programs are started without a shell (`TProcess` with separate arguments), so a file name cannot inject a command.
-- A new manifest appears in the list **switched off**. The first time it is switched on, a confirmation shows the exact program path and arguments.
+- A new manifest appears switched off; the first time it is switched on, a confirmation shows the exact program path and arguments.
 
-## 7. Failure rules (proposal)
-
-- A failed plug-in never deletes or changes the source file, and never stops the rest of the download.
-- The file is counted in the status line ("3 plug-in steps failed, see the log").
-- Like a failed backup copy, a file whose plug-in step failed is **not offered for deletion** from the source (see question 1).
-
-## 8. Plan by phase
+## 9. Plan by phase
 
 | Phase | Work | Test |
 |---|---|---|
-| 1 | `uPlugins.pas` registry and hooks. Move Directory Maker into `uPluginDirMaker.pas` and run it at `AfterDownload`. Fill the Plug-ins tab from the registry. Drop the Backup entry (an old `[Plugins] Backup=` line is ignored). Log every result. | Directory Maker makes the same folders as today; order and on/off survive a restart; old settings files load. |
-| 2 | External-program plug-ins: manifest reader, `plugins/` folder, placeholder expansion, `TProcess` run with timeout, first-enable confirmation. Ship `DNG Converter.plugin.ini` as an example (switched off). | A test manifest that copies the file; DNG Converter on Windows; a failing exit code; a timeout. |
-| 3 | JPEG resolution (built-in): longest side and quality as options; writes a smaller copy (see question 2). EXIF is kept by copying the APP1 segment. | Sizes, orientation, EXIF kept, original untouched. |
-| 4 | JPEG auto profile (built-in): per-camera ICC profile file (Mapping-style list); inserts an APP2 ICC segment without re-encoding, like the lossless auto-rotate. | Profile shows in an image viewer that reads ICC; picture data unchanged (MD5 of the scan data). |
+| 0 | Backup plug-in removed (done). | Old settings files load without it. |
+| 1 | `uPlugins.pas` registry and hooks, including **plug-in tokens** and the **host-drawn prompt**. Move Directory Maker into `uPluginDirMaker.pas` (`AfterDownload`). Fill the Plug-ins tab from the registry. Failure rules of decision 1. | Directory Maker makes the same folders as today; order and on/off survive a restart; a test plug-in that fails is switched off and its files are not offered for deletion. |
+| 2 | Native library loader (section 7) on Windows and Linux, with a tiny example library in the repository (`plugins/example/`). | Example library loads, gives a token, fails on request; a library with a newer interface version is refused. |
+| 3 | **PennDOT UAS folder sorter** (spec: `docs/Plugin_PennDOT_UAS.md`). Built as a library (phase 2), so the PennDOT-specific code stays out of the general program. | The examples in its spec give exactly the expected folder names; invalid entries are refused. |
+| 4 | External-program plug-ins (section 8); DNG Converter manifest as the example. | DNG next to the raw file; failing exit code; timeout. |
+| later | JPEG auto profile (built-in; APP2 ICC segment without re-encoding). JPEG resolution is deferred. | |
 
-Each phase is a separate commit, and the docs are updated with each one: manual (Plug-ins section), spec, Settings_File.md and the website.
-
-## 9. Open questions
-
-1. **Failure and source deletion.** Should a failed plug-in step keep the file from being offered for deletion from the card? *Proposal: yes, the same as a failed backup.*
-2. **JPEG resolution.** Should it replace the downloaded JPEG, or write a smaller copy (for example into a `Web` subfolder or with a suffix)? *Proposal: a copy; the full-size original stays.*
-3. **DNG Converter.** Keep the raw file and the DNG, or the DNG only? *Proposal: both by default; "DNG only" as an option.*
-4. **Native library plug-ins** (DLL / .so for other developers): wanted later, or never? *Proposal: not planned.*
-5. **Plug-ins on the backup copy.** *Proposal: never. The backup stays the untouched original.*
-6. **Which plug-in first** after the phase 1 groundwork: DNG Converter, JPEG resolution or JPEG auto profile?
+Each phase is a separate commit; the manual (Plug-ins section), spec, Settings_File.md and the website are updated with each one.

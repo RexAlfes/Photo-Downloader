@@ -127,7 +127,7 @@ Re-evaluation runs after changes to destination, patterns, job code, profile or 
 | XMP sidecar from IPTC/XMP data, EXIF text file | Done |
 | Lossless auto-rotate of downloaded JPEGs (Preferences > File Handling) | Done – works on the compressed data, no quality loss; baseline/extended sequential 8-bit JPEG with one scan. Up to 15 pixel rows or columns that do not fill a block are trimmed on the mirrored edge (like jpegtran -trim); the EXIF orientation is reset to 1; the embedded EXIF thumbnail is not turned; progressive JPEGs are decoded fully and saved back as sequential JPEG files (build 43, tested) |
 | Legacy IPTC IIM, GPS geotagging | Open |
-| Backup plug-in | Replaced by the backup destination (see 3.8) |
+| Backup plug-in | Removed from the Plug-ins list; replaced by the backup destination (see 3.8) |
 | Directory Maker plug-in | Done |
 | JPEG auto profile, DNG Converter, JPEG resolution plug-ins | Open – listed only |
 | Launch external program after download | Partial – custom button with %f and %d, not {file} and {folder} |
@@ -185,7 +185,7 @@ There is no fixed limit on the number of images scanned. The source folder and a
 | Time offset correction | Shift capture times when the camera clock was wrong |
 | RAW+JPEG pairing | Treat a RAW and its JPEG as one unit; optionally download only one of them |
 | Ratings and labels | Read from the camera and write into the XMP sidecar |
-| Plug-in system | Planning draft in `docs/Plugin_Plan.md`: built-in plug-ins as Pascal classes and external-program plug-ins described by a manifest, run at fixed hooks (before download, after each file, after download) in list order. No code yet |
+| Plug-in system | Plan in `docs/Plugin_Plan.md`: built-in plug-ins (Pascal classes), external-program plug-ins (manifest) and native library plug-ins (DLL / .so, C-style key=value interface); hooks for tokens, a host-drawn prompt, before download, after each file and after download, in list order. A failed plug-in step keeps the file from deletion and switches the plug-in off; plug-ins never touch the backup copy. First plug-in: PennDOT UAS folder sorter (draft spec `docs/Plugin_PennDOT_UAS.md`). No plug-in code yet |
 | Watermark or resize on copy | Optional, mainly for event work |
 | Dry run / preview | Show what would be copied and renamed without changing anything |
 | Installer and code signing | Windows SmartScreen warns about unsigned programs |
@@ -301,7 +301,7 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 |---|---|
 | `[JobHistory]` | Previously used job codes, newest first |
 | `[Mappings]` | One line per camera: `Camera name|T8 value|T9 value` (`Default|{T1}|{T1}` is created if empty) |
-| `[Plugins]` | `Name=0` or `Name=1` for JPEG auto profile, Backup, Directory Maker, DNG Converter, JPEG resolution |
+| `[Plugins]` | `Name=0` or `Name=1` for JPEG auto profile, Directory Maker, DNG Converter, JPEG resolution (an old `Backup=` line is removed when the file is read) |
 | `[PluginOpts]` | `Name=option` settings for the plug-ins (for example the Backup folder) |
 | `[Iptc]` | `Name=value` details for the XMP sidecar: Creator, Copyright, Title, Description, Credit, Source |
 | `[DateJobCodes]` | `yyyy/mm/dd=job code`; written only when `SaveDateJobCodes=1`, otherwise the section is removed |
