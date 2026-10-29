@@ -39,6 +39,7 @@ type
     Values, Labels: TStringArray;  // list entries: value and the text shown for it
     Default: string;  // value used when none is stored yet
     Upper: Boolean;  // flag "upper": typed text is shown and kept in capitals
+    FolderTokens: string;  // check fields, flag "folder=A;B": when checked, {A} is the last folder of the download path (B ... are removed there)
   end;
 
   { A plug-in library found in a plugins folder }
@@ -220,7 +221,10 @@ begin
       Fields[F].Kind := LowerCase(Parts[1]);  // control type
       Fields[F].Caption := Parts[2];  // label
       if Length(Parts) > 4 then Fields[F].Default := Parts[4];  // default value
-      if Length(Parts) > 5 then Fields[F].Upper := Pos('upper', LowerCase(Parts[5])) > 0;  // flags
+      if Length(Parts) > 5 then  // flags, separated by commas
+        for T in Parts[5].Split([',']) do
+          if SameText(Trim(T), 'upper') then Fields[F].Upper := True  // capitals only
+          else if SameText(Copy(Trim(T), 1, 7), 'folder=') then Fields[F].FolderTokens := Copy(Trim(T), 8, MaxInt);  // folder tokens
       Items := nil;  // no entries yet
       if Length(Parts) > 3 then Items := SplitText(Parts[3], ',');  // entries: value or value:label
       SetLength(Fields[F].Values, Length(Items));  // room for the values
