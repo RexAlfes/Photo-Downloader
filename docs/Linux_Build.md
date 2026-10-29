@@ -36,3 +36,33 @@ cd linux
 ```
 
 The script puts the icon into `~/.local/share/icons/hicolor/` and a launcher into `~/.local/share/applications/`, so Photo Downloader appears in the application menu with its icon, and the taskbar groups its windows under that icon. The script also sets a custom icon on the program file itself with `gio set` (file managers such as Nemo, Nautilus and Caja show it; refresh with F5). That icon is lost when the file is rebuilt or copied, so run the script again after a rebuild. Add `--no-file-icon` to skip this step. `./install-desktop.sh --remove [/full/path/to/PhotoDownloader]` undoes everything. The program also loads its window icon from its own resource at start-up.
+
+## Plug-in libraries on Linux
+A plug-in is a `.so` file built on Linux (a Windows `.dll` does not load on Linux). The example in the repository:
+
+```
+cd plugins/example
+fpc -B -Cg example_plugin.lpr          # makes libexample_plugin.so
+mkdir -p "$HOME/.config/Photo Downloader/plugins"
+cp libexample_plugin.so "$HOME/.config/Photo Downloader/plugins/"
+```
+
+`-Cg` makes position-independent code, which a shared library needs. The plug-in folder is the `plugins` folder next to the settings file (File > Status shows where the settings file is; on Linux it is normally `~/.config/Photo Downloader/`), or a `plugins` folder next to the program. See `docs/Plugin_Developer_Manual.md`.
+
+## Linux test checklist (features added since the last Linux test, 0.1.0.58)
+Build with `lazbuild -B --ws=gtk2 PhotoDownloader.lpi`, start `bin/linux/PhotoDownloader` from a terminal (messages appear there), and turn on Help > Logging.
+
+| # | Test | Expected |
+|---|---|---|
+| 1 | Start the program | Splash, then the job code window; no error messages in the terminal |
+| 2 | File > Status | Settings file under `~/.config/...`; "SQLite library" line names `libsqlite3.so.0` (or says it is missing) |
+| 3 | Open a card or folder with JPG, RAW/DNG, MP4 and LRV files | Thumbnails, dates and camera names; a second scan of the same folder is much faster (EXIF cache) |
+| 4 | Lightroom previews (.lrprev) with Preferences > General "Scan Lightroom preview folders" on | Previews listed with the photo's name and date when the catalog is next to the `.lrdata` folder |
+| 5 | Download Path tab: folder `.../{Y}/{E}/`, file `{o}-{e}` | Example line shows `JPG` / `jpg`; files land in one folder per type |
+| 6 | Select a few files, **Download Selected**; then **Download All** | Only the selected files first, then the rest; the buttons are greyed out when there is nothing to download |
+| 7 | File > Plug-ins... | Preferences opens on the Plug-ins tab |
+| 8 | Install the example plug-in (above), restart, switch it on | Confirmation with the `.so` path; the list shows "Example Plug-in"; Setup... opens its window (labels right-aligned, red centered reminder, version in the title) |
+| 9 | Use `{Example.Site}-{Example.Name}` as file name and download | Files named for example `NORTH-DJI_0001.JPG` |
+| 10 | Delete the `.so` file and restart | The plug-in leaves the list |
+| 11 | File > User Profiles > Save, then Load (double-click) | Save lists the profiles and suggests the one in use; replacing asks first; Load restores the plug-in settings |
+| 12 | Settings with a `{T}` or `{q}` folder and a non-ASCII folder name (for example `Ü`) | Folders are made and files copied |
