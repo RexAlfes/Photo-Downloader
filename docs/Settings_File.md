@@ -40,6 +40,7 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 | `[General]` | `LrPrevAsJpg` | True/False | 0 | Save Lightroom previews (.lrprev) as .jpg when downloading |
 | `[General]` | `LrPrevKeepBoth` | True/False | 0 | With LrPrevAsJpg: keep the .lrprev file as well (save both) |
 | `[General]` | `Logging` | True/False | 1 | Write diagnostics to `thumbnail.log` (Help > Logging) |
+| `[General]` | `ProfileName` | text | (empty) | User profile loaded or saved last; File > User Profiles > Save suggests it |
 | `[General]` | `LowerName` | True/False | 0 | Lower-case file names |
 | `[General]` | `LowerExt` | True/False | 0 | Lower-case extensions |
 | `[General]` | `UseCaptureTime` | True/False | 1 | Use the image capture time for the file timestamp |

@@ -18,6 +18,9 @@ function AskPluginValues(S: TAppSettings): Boolean;
 function ExecuteIptc(L: TStringList): Boolean;
 function ExecuteFileTypes(S: TAppSettings): Boolean;
 function ChooseFromList(const ATitle, APrompt: string; Items: TStrings; out Choice: string): Boolean;
+{ Asks for the name to save a user profile under; Items are the saved profiles (clicking one picks it to
+  save over). Name comes in as the suggested name (the profile in use) and goes out as the chosen one. }
+function AskProfileName(Items: TStrings; var Name: string): Boolean;
 procedure ShowTokenHelp;
 procedure ShowAbout;
 procedure ShowRegister;
@@ -597,6 +600,64 @@ begin
     Result := (F.ShowModal = mrOK) and (LB.ItemIndex >= 0);  // OK with an entry selected
     if Result then Choice := LB.Items[LB.ItemIndex];  // return the chosen entry
   finally
+    F.Free;  // free the dialog
+  end;
+end;
+
+type
+  { Helper of the Save User Profile dialog: a click in the list puts the name into the box. }
+  TProfileNameHelper = class
+    List: TListBox;  // saved profiles
+    Edit: TEdit;  // name to save under
+    Form: TForm;  // the dialog
+    procedure ListClick(Sender: TObject);  // copies the chosen profile into the box
+    procedure ListDblClick(Sender: TObject);  // picks the profile and saves
+  end;
+
+{ Copies the chosen profile name into the name box. }
+procedure TProfileNameHelper.ListClick(Sender: TObject);
+begin
+  if List.ItemIndex >= 0 then Edit.Text := List.Items[List.ItemIndex];  // save over this profile
+end;
+
+{ Picks the double-clicked profile and closes the dialog with Save. }
+procedure TProfileNameHelper.ListDblClick(Sender: TObject);
+begin
+  ListClick(Sender);  // copy the name
+  if List.ItemIndex >= 0 then Form.ModalResult := mrOK;  // save
+end;
+
+{ Asks for the name to save a user profile under: a list of the saved profiles and a name box that
+  starts with the profile in use. Double-clicking a profile saves over it. }
+function AskProfileName(Items: TStrings; var Name: string): Boolean;
+var
+  F: TForm;  // F: the dialog
+  H: TProfileNameHelper;  // H: event helper
+begin
+  F := TForm.CreateNew(Application);  // create the form
+  H := TProfileNameHelper.Create;  // create the helper
+  H.Form := F;  // the dialog it closes
+  try
+    InitDialog(F, 'Save User Profile', 340, 330);  // set the common dialog properties
+    MkLabel(F, 'Saved profiles (click one to save over it):', 10, 10);  // prompt for the list
+    H.List := TListBox.Create(F);  // create the list
+    H.List.Parent := F;  // place it on the form
+    H.List.SetBounds(10, 32, 320, 200);  // position and size it
+    H.List.Items.Assign(Items);  // the saved profiles
+    H.List.ItemIndex := H.List.Items.IndexOf(Name);  // highlight the profile in use
+    MkLabel(F, 'Profile name:', 10, 244);  // prompt for the name
+    H.Edit := MkEdit(F, 10, 264, 320);  // name box
+    H.Edit.Text := Name;  // the profile in use (or empty)
+    H.List.OnClick := @H.ListClick;  // a click picks the profile
+    H.List.OnDblClick := @H.ListDblClick;  // a double click saves over it
+    MkButton(F, 'Save', 160, 296, 80, mrOK).Default := True;  // Save button, also the default button
+    MkButton(F, 'Cancel', 250, 296, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
+    F.ActiveControl := H.Edit;  // typing goes into the name box
+    H.Edit.SelectAll;  // a new name replaces the suggestion
+    Result := F.ShowModal = mrOK;  // True when the user clicked Save
+    if Result then Name := Trim(H.Edit.Text);  // return the name
+  finally
+    H.Free;  // free the helper
     F.Free;  // free the dialog
   end;
 end;

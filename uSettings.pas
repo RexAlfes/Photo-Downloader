@@ -97,6 +97,7 @@ type
     FitWindow: Boolean;             // thumbnail view "Fit to Window" (default): cards share the window width, thumbnails at most 160 pixels
     ThumbSize: Integer;             // thumbnail box in pixels, 64..320 (presets: 64 small, 160 medium, 320 large)
     LoggingOn: Boolean;             // write thumbnail.log (Help > Logging)
+    ProfileName: string;            // user profile loaded or saved last ('' = none); offered when saving a profile
     TypeOn: array[0..FileTypeCount - 1] of Boolean;   // file type filter (all on by default except .thm, .mp3 and .lrprev)
     function TypeShown(const FileName: string): Boolean;  // True when the file's type group is shown
     constructor Create;  // creates the settings with default values
@@ -341,6 +342,7 @@ begin
   FitWindow := True;  // thumbnails fit the window width by default
   for I := 0 to FileTypeCount - 1 do TypeOn[I] := FileTypeDefaultOn(I);  // application default for each file type
   LoggingOn := True;  // logging on
+  ProfileName := '';  // no user profile yet
 end;
 
 { Application default of a file type group: on, except camera thumbnail (.thm) files (only helpers for
@@ -471,6 +473,7 @@ begin
     // older settings file without this key: scan the .lrdata folders when .lrprev files were switched on
     ScanLrData := ReadBool('General', 'ScanLrData', TypeOn[FileTypeIndex('.lrprev')]);  // load: scan Lightroom preview folders
     LoggingOn := ReadBool('General', 'Logging', LoggingOn);  // load: write the log file
+    ProfileName := ReadString('General', 'ProfileName', ProfileName);  // load: user profile in use
 
     if SectionExists('JobHistory') then LoadList(Ini, 'JobHistory', JobHistory);  // read the job history
     if SectionExists('Mappings') then LoadList(Ini, 'Mappings', Mappings);  // read the camera mappings
@@ -572,7 +575,8 @@ begin
     WriteBool('View', 'FitToWindow', FitWindow);  // save: Fit to Window
     for I := 0 to FileTypeCount - 1 do  // each file type group
       WriteBool('FileTypes', FileTypeKeys[I], TypeOn[I]);  // save: group on/off
-    WriteBool('General', 'Logging', LoggingOn);  // save: write the log file11|program name shown in titles
+    WriteBool('General', 'Logging', LoggingOn);  // save: write the log file
+    WriteString('General', 'ProfileName', ProfileName);  // save: user profile in use11|program name shown in titles
   end;
   SaveList(Ini, 'JobHistory', JobHistory);  // save the job history
   SaveList(Ini, 'Mappings', Mappings);  // save the camera mappings
