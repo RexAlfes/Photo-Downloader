@@ -48,6 +48,8 @@ function ItemAt(L: TObjectList; I: Integer): TImageItem;  // Returns item I of t
 var
   { Set to True (e.g. from the progress callback) to stop a running scan }
   ScanAbort: Boolean = False;  // scan abort flag
+  { Folder the scan is reading now (for the progress display) }
+  ScanCurrentDir: string = '';
 
 procedure ScanFolder(const Root: string; S: TAppSettings; Items: TObjectList;  // Scans a folder (DCIM when present) for images and fills Items.
   Progress: TScanProgress);
@@ -273,6 +275,15 @@ begin
   if FindFirstUTF8(IncludeTrailingPathDelimiter(Dir) + '*', faAnyFile, SR) <> 0 then Exit;  // start the search; stop if the folder is empty
   try
     repeat
+      // report progress for every entry, not only for pictures: folders with thousands of
+      // non-picture files (a Lightroom preview cache, for example) otherwise freeze the window
+      // and the Cancel button for a long time
+      if Assigned(Progress) and (GetTickCount64 - LastProgTick >= 80) then  // report progress at most every 80 ms
+      begin
+        LastProgTick := GetTickCount64;  // remember the time
+        ScanCurrentDir := Dir;  // folder being read
+        Progress(Cnt);  // report the count (lets the window update and Cancel work)
+      end;
       if ScanAbort then Break;  // stop when the scan was aborted
       if (SR.Name = '.') or (SR.Name = '..') or (SR.Name[1] = '.') then Continue;  // skip dot entries and hidden names
       Full := IncludeTrailingPathDelimiter(Dir) + SR.Name;  // complete path
@@ -327,11 +338,6 @@ begin
         end;
         Items.Add(It);  // add the item to the list
         Inc(Cnt);  // count the item
-        if Assigned(Progress) and (GetTickCount64 - LastProgTick >= 80) then  // report progress at most every 80 ms
-        begin
-          LastProgTick := GetTickCount64;  // remember the time
-          Progress(Cnt);  // report the count
-        end;
       end;
     until FindNextUTF8(SR) <> 0;  // next directory entry
   finally
