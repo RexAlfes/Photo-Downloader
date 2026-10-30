@@ -44,6 +44,7 @@ type
     TimeoutSec: Integer;  // longest run time in seconds
     constructor Create(const AKey, AFileName: string);  // reads the file
     function Available: Boolean;  // True when the plug-in is offered on this system
+    function DisplayName: string;  // name shown on the Plug-ins tab: name, version and "(program)"
     function ProgramPath(const Opts: string): string;  // the program to run ('' = not found)
     function ProgramSetting(const Opts: string): string;  // the program as set (for messages)
     function Handles(const AFileName: string): Boolean;  // True for the file types it works on
@@ -156,6 +157,13 @@ begin
   {$ELSE}
   Result := ((Platforms = '') or (Pos(';linux;', Platforms) > 0)) and (ProgLinux <> '');  // offered on Linux
   {$ENDIF}
+end;
+
+function TExtPlugin.DisplayName: string;
+begin
+  Result := Name;  // name from the .plugin.ini file
+  if Version <> '' then Result := Result + ' ' + Version;  // and its version
+  Result := Result + ' (program)';  // the kind of plug-in
 end;
 
 function TExtPlugin.ProgramSetting(const Opts: string): string;
