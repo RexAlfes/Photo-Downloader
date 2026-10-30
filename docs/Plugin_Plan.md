@@ -147,7 +147,8 @@ TimeoutSec=300
 | 1 | **Done:** plug-in tokens and the host-drawn prompt (`uPlugins.pas`, `TPluginPromptForm`). **Open:** registry for built-in plug-ins and run hooks; move Directory Maker into `uPluginDirMaker.pas` (`AfterDownload`). Fill the Plug-ins tab from the registry. Failure rules of decision 1. | Directory Maker makes the same folders as today; order and on/off survive a restart; a test plug-in that fails is switched off and its files are not offered for deletion. |
 | 2 | **Done (Windows tested, Linux not tested yet):** native library loader (section 7, details in `docs/Plugin_Developer_Manual.md`). Open: a small public example library. | Example library loads, gives a token, fails on request; a library with a newer interface version is refused. |
 | 3 | First library: a private folder-naming plug-in (kept outside this repository). | Done on Windows: its test program passes; Linux build untested. |
-| 4 | External-program plug-ins (section 8); DNG Converter manifest as the example. | DNG next to the raw file; failing exit code; timeout. |
-| later | JPEG auto profile (built-in; APP2 ICC segment without re-encoding). JPEG resolution is deferred. | |
+| 4 | **Done:** external-program plug-ins (`uExtPlugin.pas`, `.plugin.ini`), run after each file with the failure rules of decision 1; two DNG Converter plug-ins (Adobe, dnglab) in `plugins/dng-converter`. | Tested with a stand-in program: DNG made, skipped when it exists, exit code, timeout, missing program. The real converters were not installed on the test computer. |
+| 5 | **Done:** JPEG auto profile (built-in; `uIccEmbed.pas` writes APP2 ICC segments without re-encoding; one profile per camera model and a default). | Profiles of 560 bytes and 557 KB (9 segments) embedded; profile bytes and picture data checked; the JPEG still decodes. |
+| later | JPEG resolution (deferred); hooks for plug-in libraries (`pd_run`). | |
 
 Each phase is a separate commit; the manual (Plug-ins section), spec, Settings_File.md and the website are updated with each one.

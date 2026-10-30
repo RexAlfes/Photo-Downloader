@@ -7,7 +7,7 @@ interface
 uses
   Classes, SysUtils, Contnrs, Math, Forms, Controls, Graphics, Dialogs, Menus,
   ExtCtrls, StdCtrls, ComCtrls, LCLType, LCLIntf, LazFileUtils, IniFiles,
-  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uLrCat, uSingle, uRotate, uSafeDel, uSplash, uPlugins;
+  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uLrCat, uSingle, uRotate, uSafeDel, uSplash, uPlugins, uExtPlugin, uIccEmbed;
 
 type
   { Which files a download takes: dsAuto = the selected ones, or all when nothing is selected (automation);
@@ -17,6 +17,7 @@ type
   TMainForm = class(TForm)
   private
     FPluginErr: string;  // problems found while loading plug-in libraries (shown after the splash)
+    FStepFails: TStringList;  // plug-in steps that failed during the current download (one line each)
     FWantClientH: Integer;  // client height the window was given at creation (GTK may shrink it before it is shown)
     FS: TAppSettings;  // program settings
     FItems: TObjectList;            // all images found on the source (owned)
@@ -76,6 +77,8 @@ type
     procedure GetDownloadList(L: TList; Scope: TDownloadScope = dsAuto);
     procedure SelectWhere(Mode: Integer);
     function PostProcess(It: TImageItem; const Dest: string): Boolean;
+    procedure RunPluginSteps(It: TImageItem; const Dest: string);  // runs the switched-on plug-in steps on a downloaded file
+    function JpegProfileStep(It: TImageItem; const Dest: string; out Msg: string): Integer;  // the JPEG auto profile step
     procedure SyncDateHighlight;
     procedure SelectDatesFromList;
     procedure ChangeJobCode;
@@ -213,6 +216,7 @@ begin
   FVisible.Free;  // free the visible list
   FDateKeys.Free;  // free the date list
   FItems.Free;  // free the item list
+  FStepFails.Free;  // free the list of failed plug-in steps (may be nil)
   FS.Free;  // free the settings
   inherited Destroy;  // run the inherited destructor
 end;
@@ -1510,6 +1514,70 @@ begin
 end;
 
 { Post-processes a downloaded file: rotation, owner fields, time stamp, text file, XMP and read-only flag. }
+{ The JPEG auto profile step: embeds the ICC profile chosen for the camera (or the default) into a
+  downloaded JPEG. Returns 1 = done, 0 = skipped (Msg says why), -1 = failed (Msg says why). }
+function TMainForm.JpegProfileStep(It: TImageItem; const Dest: string; out Msg: string): Integer;
+var
+  Opts, Prof, Ext: string;  // Opts: the plug-in choices; Prof: profile file; Ext: extension of the copy
+begin
+  Msg := '';  // nothing yet
+  Ext := LowerCase(ExtractFileExt(Dest));  // extension of the downloaded copy
+  if (Ext <> '.jpg') and (Ext <> '.jpeg') and (Ext <> '.jpe') then Exit(0);  // only JPEGs
+  Opts := PluginValues(FS.PluginOpts, 'JPEG auto profile');  // choices from Setup...
+  Prof := LineValue(Opts, 'Cam.' + It.Camera);  // profile of this camera
+  if (Prof = '') or (It.Camera = '') then Prof := LineValue(Opts, 'Default');  // or the default
+  if Prof = '' then
+  begin
+    Msg := 'no profile chosen for camera "' + It.Camera + '"';  // nothing to do
+    Exit(0);
+  end;
+  Result := EmbedIccProfile(Dest, Prof, LineValue(Opts, 'Replace') = '1', Msg);  // embed it
+  if Result = 0 then Msg := 'the JPEG already has a profile'  // left alone
+  else if Result = 1 then Msg := 'profile ' + ExtractFileName(Prof);  // done
+end;
+
+{ Runs the switched-on plug-in steps on a downloaded file, in the order of the Plug-ins list.
+  A step that fails switches its plug-in off (so it does not run again in this download) and keeps the
+  original on the card (it is not offered for deletion); FStepFails collects the failures for the
+  message at the end of the download. }
+procedure TMainForm.RunPluginSteps(It: TImageItem; const Dest: string);
+var
+  I, R: Integer;  // I: list index; R: result of a step (1 done, 0 skipped, -1 failed)
+  Key, Msg, OutFile: string;  // Key: plug-in key; Msg: what the step reports; OutFile: file a program made
+  X: TExtPlugin;  // X: an external-program plug-in
+begin
+  for I := 0 to FS.Plugins.Count - 1 do  // in the order of the Plug-ins tab
+  begin
+    if FS.Plugins.ValueFromIndex[I] <> '1' then Continue;  // switched off
+    Key := FS.Plugins.Names[I];  // the plug-in
+    OutFile := '';  // no file made yet
+    if Key = 'JPEG auto profile' then
+      R := JpegProfileStep(It, Dest, Msg)  // built in
+    else
+    begin
+      X := FindExtPlugin(Key);  // an external-program plug-in?
+      if (X = nil) or (not X.Available) or (not SameText(X.Hook, 'AfterFile')) or (not X.Handles(Dest)) then Continue;  // not for this file
+      FProgLbl.Caption := X.Name + ': ' + It.FileName;  // progress text
+      Application.ProcessMessages;  // let the window update
+      R := X.Run(PluginValues(FS.PluginOpts, Key), Dest, It.FullPath, @CopyTick, OutFile, Msg);  // run the program
+      if (R = 1) and FS.UseCaptureTime and (OutFile <> '') and FileExistsUTF8(OutFile) then
+        FileSetDateUTF8(OutFile, DateTimeToFileDate(It.CaptureTime));  // the new file gets the capture time too
+    end;
+    case R of
+      1: if Msg <> '' then LogThumb('plug-in ' + Key + ': ' + Dest + ': done (' + Msg + ')')  // log it
+         else LogThumb('plug-in ' + Key + ': ' + Dest + ': done');
+      0: LogThumb('plug-in ' + Key + ': ' + Dest + ': skipped (' + Msg + ')');  // log it
+    else
+      begin
+        It.NoDelete := True;  // keep the original on the card
+        FS.Plugins.ValueFromIndex[I] := '0';  // switch the plug-in off (decision: a failed plug-in is switched off)
+        if FStepFails <> nil then FStepFails.Add(Key + ': ' + It.FileName + ': ' + Msg);  // for the message
+        LogThumb('plug-in ' + Key + ': ' + Dest + ': FAILED: ' + Msg + ' - plug-in switched off');  // log it
+      end;
+    end;
+  end;
+end;
+
 function TMainForm.PostProcess(It: TImageItem; const Dest: string): Boolean;
 var
   SL: TStringList;  // SL: lines of the EXIF text file
@@ -1524,6 +1592,9 @@ begin
       LogThumb(It.FullPath + ': could not be turned upright (' + RotateLastError + ')');  // log the reason
   if FS.WriteExifOwner and It.IsJpeg then  // add author and copyright
     Result := WriteExifOwnerFields(Dest, FS.ExifAuthor, FS.ExifCopyright);  // remember whether it worked
+
+  // plug-in steps on the downloaded copy (the backup copy was made before and is never changed)
+  RunPluginSteps(It, Dest);  // for example a color profile or a DNG copy
 
   if FS.UseCaptureTime then  // use the capture time as file time
     FileSetDateUTF8(Dest, DateTimeToFileDate(It.CaptureTime));  // set the file time
@@ -1672,6 +1743,8 @@ begin
   BackupFail := 0; Verified := 0;  // clear the counters
   UniqueMode := FS.AutoRenameClash;  // rename name clashes automatically when that option is on; otherwise skip problem files by default
   Msg := '';  // no message yet
+  if FStepFails = nil then FStepFails := TStringList.Create;  // plug-in steps that fail
+  FStepFails.Clear;  // none yet
   if not Silent then  // plug-ins that ask for values (for example project numbers for the folder name)
   begin
     OldOpts := FS.PluginOpts.Text + FS.DownloadDir;  // values and destination before asking
@@ -1874,7 +1947,14 @@ begin
     L.Free;  // free the list
   end;
 
-  SaveSettingsNow;  // save the sequence number
+  if FStepFails.Count > 0 then  // plug-in steps failed: their plug-ins were switched off
+  begin
+    if not Silent then
+      MessageDlg(AppTitle, 'These plug-in steps failed. The plug-ins were switched off (switch them on again on the ' +
+        'Plug-ins tab after fixing the cause), and these files are not offered for deletion from the source:'#13#10#13#10 +
+        FStepFails.Text, mtWarning, [mbOK], 0);  // tell the user
+  end;
+  SaveSettingsNow;  // save the sequence number (and plug-ins switched off by a failed step)
   if Done > 0 then SaveDownloadToProfile;  // the profile in use remembers where it downloaded to, and the plug-in values
   ApplyFilter;  // refresh the grid
   if Failed > 0 then  // a copy failed

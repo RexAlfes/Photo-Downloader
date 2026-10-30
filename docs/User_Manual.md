@@ -318,9 +318,15 @@ Gives each camera its own values for the `{T8}` and `{T9}` tokens, for example a
 Enable the button, set its caption and the command line.
 
 ### Plug-ins
-Lists the built-in plug-ins and any plug-in libraries found. **Directory Maker** works. The other built-in ones (JPEG auto profile, DNG Converter, JPEG resolution) are listed only and do nothing yet. The old Backup plug-in has been removed; backups are set with the backup folder on the Download Path tab.
+Lists the built-in plug-ins, the program plug-ins and the plug-in libraries found, in the order they run (**Up** / **Down** change it). **Directory Maker** and **JPEG auto profile** work; **JPEG resolution** is listed only and does nothing yet. The old Backup and DNG Converter entries have been removed (DNG conversion is now a program plug-in, see below).
 
-**Plug-in libraries.** A plug-in library is a separate file that adds its own tokens to the folder and file name templates, for example to build folder names by an organization's naming standard. Put the file into the `plugins` folder:
+**Plug-in steps after each file.** After a file is copied, verified, backed up and turned upright, the switched-on plug-ins work on the **downloaded copy**, in list order. The backup copy and the original on the card are never changed. If a step fails, the plug-in is switched off (switch it on again after fixing the cause), the file is not offered for deletion from the card, and a message at the end of the download lists what failed. Every step is written to the log (Help > Logging).
+
+**JPEG auto profile.** Embeds an ICC color profile into each downloaded JPEG, without recompressing the picture. **Setup...** chooses a profile for each camera model (**Add...** suggests the camera of the pictures shown; the name must match the camera model in the EXIF data) and a **default** profile for all other cameras. JPEGs that already carry a profile are left alone unless **Replace a profile the camera already embedded** is ticked. Windows keeps its profiles in `C:\Windows\System32\spool\drivers\color`, Linux usually in `/usr/share/color/icc`.
+
+**Program plug-ins (DNG Converter).** A program plug-in is a small `.plugin.ini` file that tells Photo Downloader which program to run on each downloaded file. Two are included in the `plugins\dng-converter` folder of the download: **DNG Converter (Adobe)** for the free Adobe DNG Converter (Windows) and **DNG Converter (dnglab)** for the free dnglab (Windows and Linux). Both make a `.dng` copy next to each raw file and keep the raw file; a DNG that already exists is not made again. To use one: install the converter, copy its `.plugin.ini` file into the `plugins` folder (below), restart Photo Downloader and switch the plug-in on (a message shows the program it will run). If the converter is installed somewhere else, choose it with **Setup...**. A program that runs longer than 5 minutes on one file is stopped.
+
+**Plug-in libraries.** A plug-in library is a separate program file that adds its own tokens to the folder and file name templates, for example to build folder names by an organization's naming standard. Put the file into the `plugins` folder:
 
 - Windows: `%LOCALAPPDATA%\Photo Downloader\plugins\name.dll` (or a `plugins` folder next to `PhotoDownloader.exe`)
 - Linux: `~/.config/Photo Downloader/plugins/libname.so` (or a `plugins` folder next to the program)
