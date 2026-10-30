@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Math, Types, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
-  ComCtrls, CheckLst, Spin, Clipbrd, LCLType, LCLIntf, uSettings, uItems, uExif, uDrives, uVersion, uSafeDel, uPlugins, uExtPlugin, uIccEmbed;
+  ComCtrls, CheckLst, Spin, Clipbrd, LCLType, LCLIntf, uSettings, uItems, uExif, uDrives, uVersion, uSafeDel, uPlugins, uExtPlugin, uIccEmbed, uJpegDpi;
 
 function ExecuteJobCode(S: TAppSettings; var Job: string; const CurrentCamera: string): Boolean;
 { As ExecuteJobCode, with an extra 'Source folder' line (used at start-up). Source is the
@@ -1437,6 +1437,85 @@ begin
 end;
 
 { ====================================================================== }
+{ JPEG resolution setup                                                   }
+{ ====================================================================== }
+
+type
+  { Setup of the built-in plug-in "JPEG resolution": the resolution written into downloaded JPEGs.
+    The choices are key=value lines: Value=<number>, Unit=dpi or Unit=cm. }
+  TJpegDpiForm = class(TForm)
+  private
+    seValue: TFloatSpinEdit;  // the resolution
+    cbUnit: TComboBox;  // dots per inch or dots per centimeter
+    FUnitIdx: Integer;  // unit shown before the last change (to convert the value)
+    procedure UnitChange(Sender: TObject);  // converts the value to the new unit
+  public
+    constructor CreateSetup(AOwner: TComponent; const Opts: string);  // builds the window
+    function Opts: string;  // the choices as key=value lines
+  end;
+
+{ Builds the window and fills it from the stored choices (300 dpi when nothing is stored). }
+constructor TJpegDpiForm.CreateSetup(AOwner: TComponent; const Opts: string);
+var
+  V: Double;  // V: stored value
+  PerCm: Boolean;  // PerCm: stored unit is dots per centimeter
+begin
+  inherited CreateNew(AOwner);  // create the form without a resource file
+  InitDialog(Self, 'JPEG resolution', 440, 230);  // set the common dialog properties
+  MkLabel(Self, 'Resolution written into each downloaded JPEG:', 10, 12);  // label
+  seValue := TFloatSpinEdit.Create(Self);  // the value
+  seValue.Parent := Self;  // place it on the form
+  seValue.SetBounds(10, 36, 110, 23);  // position and size it
+  seValue.DecimalPlaces := 2;  // dots per cm often has decimals (300 dpi = 118.11 dots/cm)
+  seValue.MinValue := 1;  // at least 1
+  seValue.MaxValue := 65535;  // the largest value a JPEG can hold
+  ParseResolutionOpts(Opts, V, PerCm);  // stored choices (300 dpi when none)
+  seValue.Value := V;  // show it
+  cbUnit := TComboBox.Create(Self);  // the unit
+  cbUnit.Parent := Self;  // place it on the form
+  cbUnit.SetBounds(130, 36, 220, 23);  // position and size it
+  cbUnit.Style := csDropDownList;  // one of the two units only
+  cbUnit.Items.Add('dots per inch (dpi)');  // index 0
+  cbUnit.Items.Add('dots per centimeter (dots/cm)');  // index 1
+  if PerCm then cbUnit.ItemIndex := 1 else cbUnit.ItemIndex := 0;  // stored unit
+  FUnitIdx := cbUnit.ItemIndex;  // unit shown now
+  cbUnit.OnChange := @UnitChange;  // convert when the unit changes
+  MkWrap(Self, 'Please note: adjusting the resolution does not affect the image data. The resolution is used by ' +
+    'some applications (for example Photoshop and Photoshop Elements) to determine the print size. Only the ' +
+    'downloaded copy is changed; the backup copy and the original are not.', 10, 76, 420, 80);  // note
+  MkButton(Self, 'OK', 260, 192, 80, mrOK).Default := True;  // OK button, also the default button
+  MkButton(Self, 'Cancel', 350, 192, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
+end;
+
+{ Converts the value when the unit changes, so the print size stays the same (1 inch = 2.54 cm). }
+procedure TJpegDpiForm.UnitChange(Sender: TObject);
+begin
+  if cbUnit.ItemIndex = FUnitIdx then Exit;  // no change
+  if cbUnit.ItemIndex = 1 then seValue.Value := seValue.Value / 2.54  // dpi -> dots/cm
+  else seValue.Value := seValue.Value * 2.54;  // dots/cm -> dpi
+  FUnitIdx := cbUnit.ItemIndex;  // unit shown now
+end;
+
+{ The choices as key=value lines. }
+function TJpegDpiForm.Opts: string;
+begin
+  Result := ResolutionOptsText(seValue.Value, cbUnit.ItemIndex = 1);  // value and unit
+end;
+
+function ExecuteJpegResolutionSetup(var Opts: string): Boolean;
+var
+  F: TJpegDpiForm;  // F: the window
+begin
+  F := TJpegDpiForm.CreateSetup(Application, Opts);  // build the window
+  try
+    Result := F.ShowModal = mrOK;  // True when the user clicked OK
+    if Result then Opts := F.Opts;  // return the choices
+  finally
+    F.Free;  // free the window
+  end;
+end;
+
+{ ====================================================================== }
 { Preferences dialog                                                      }
 { ====================================================================== }
 
@@ -2200,6 +2279,9 @@ var
   X: TExtPlugin;  // X: the external-program plug-in (nil for others)
   Png: TPortableNetworkGraphic;  // Png: logo of the library
   Prog: string;  // Prog: program of an external-program plug-in
+  DpiValue: Double;  // DpiValue: resolution chosen for JPEG resolution
+  DpiCm: Boolean;  // DpiCm: that resolution is in dots per centimeter
+  DpiText: string;  // DpiText: the resolution as text
 begin
   I := lbPlugins.ItemIndex;  // selected entry
   FUpdating := True;  // do not react to the check box change
@@ -2250,7 +2332,15 @@ begin
     else if Nm = 'Directory Maker' then
       Info := 'Creates extra sub-folders (for example Edit and Web) next to the download folder.'
     else if Nm = 'JPEG resolution' then
-      Info := 'Resizes JPEGs while downloading.'#13#10 + '(Not yet implemented in this build.)'
+    begin
+      ParseResolutionOpts(PluginValues(FPluginOpts, Nm), DpiValue, DpiCm);  // the chosen resolution
+      if DpiCm then DpiText := FormatFloat('0.##', DpiValue) + ' dots/cm'
+      else DpiText := FormatFloat('0.##', DpiValue) + ' dpi';
+      Info := 'Adjusts the DPI of downloaded JPEGs (now: ' + DpiText + '; change it with Setup...).'#13#10 +
+              'The resolution can be specified in DPI or dots/cm.'#13#10 +
+              'Please note: Adjusting the resolution does not affect the image data. The resolution is used by' +
+              ' some applications (e.g. Photoshop and Photoshop Elements) to determine the print size.';
+    end
     else
       Info := 'Plug-in library "' + Nm + '": its file was not found in the plugins folder.';  // not installed (any more)
     lblPluginInfo.Caption := Info;  // show the information
@@ -2537,6 +2627,16 @@ begin
   begin
     V := PluginValues(FPluginOpts, Nm);  // stored choices
     if ExecuteJpegProfileSetup(V, FCamera) then SetPluginValues(FPluginOpts, Nm, V);  // ask and store
+    Exit;
+  end;
+  if Nm = 'JPEG resolution' then  // the resolution to write
+  begin
+    V := PluginValues(FPluginOpts, Nm);  // stored choices
+    if ExecuteJpegResolutionSetup(V) then
+    begin
+      SetPluginValues(FPluginOpts, Nm, V);  // store them
+      PluginSelect(nil);  // show the new resolution
+    end;
     Exit;
   end;
   P := FindLibPlugin(Nm);  // plug-in library with this key

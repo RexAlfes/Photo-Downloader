@@ -7,7 +7,7 @@ interface
 uses
   Classes, SysUtils, Contnrs, Math, Forms, Controls, Graphics, Dialogs, Menus,
   ExtCtrls, StdCtrls, ComCtrls, LCLType, LCLIntf, LazFileUtils, IniFiles,
-  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uLrCat, uSingle, uRotate, uSafeDel, uSplash, uPlugins, uExtPlugin, uIccEmbed;
+  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uLrCat, uSingle, uRotate, uSafeDel, uSplash, uPlugins, uExtPlugin, uIccEmbed, uJpegDpi;
 
 type
   { Which files a download takes: dsAuto = the selected ones, or all when nothing is selected (automation);
@@ -79,6 +79,7 @@ type
     function PostProcess(It: TImageItem; const Dest: string): Boolean;
     procedure RunPluginSteps(It: TImageItem; const Dest: string);  // runs the switched-on plug-in steps on a downloaded file
     function JpegProfileStep(It: TImageItem; const Dest: string; out Msg: string): Integer;  // the JPEG auto profile step
+    function JpegResolutionStep(const Dest: string; out Msg: string): Integer;  // the JPEG resolution step
     procedure SyncDateHighlight;
     procedure SelectDatesFromList;
     procedure ChangeJobCode;
@@ -1536,6 +1537,24 @@ begin
   else if Result = 1 then Msg := 'profile ' + ExtractFileName(Prof);  // done
 end;
 
+{ The built-in plug-in "JPEG resolution": writes the chosen DPI (or dots per cm) into a downloaded
+  JPEG without touching the image data. Returns 1 = done, 0 = skipped, -1 = failed. }
+function TMainForm.JpegResolutionStep(const Dest: string; out Msg: string): Integer;
+var
+  Ext: string;  // Ext: extension of the copy
+  V: Double;  // V: the chosen resolution
+  PerCm: Boolean;  // PerCm: the resolution is in dots per centimeter
+begin
+  Msg := '';  // nothing yet
+  Ext := LowerCase(ExtractFileExt(Dest));  // extension of the downloaded copy
+  if (Ext <> '.jpg') and (Ext <> '.jpeg') and (Ext <> '.jpe') then Exit(0);  // only JPEGs
+  ParseResolutionOpts(PluginValues(FS.PluginOpts, 'JPEG resolution'), V, PerCm);  // choices from Setup... (300 dpi when none)
+  Result := SetJpegResolution(Dest, V, PerCm, Msg);  // write it
+  if PerCm then Ext := FormatFloat('0.##', V) + ' dots/cm' else Ext := FormatFloat('0.##', V) + ' dpi';  // as text
+  if Result = 0 then Msg := 'the JPEG has ' + Ext + ' already'  // nothing to change
+  else if Result = 1 then Msg := Ext;  // done
+end;
+
 { Runs the switched-on plug-in steps on a downloaded file, in the order of the Plug-ins list.
   A step that fails switches its plug-in off (so it does not run again in this download) and keeps the
   original on the card (it is not offered for deletion); FStepFails collects the failures for the
@@ -1553,6 +1572,8 @@ begin
     OutFile := '';  // no file made yet
     if Key = 'JPEG auto profile' then
       R := JpegProfileStep(It, Dest, Msg)  // built in
+    else if Key = 'JPEG resolution' then
+      R := JpegResolutionStep(Dest, Msg)  // built in
     else
     begin
       X := FindExtPlugin(Key);  // an external-program plug-in?
