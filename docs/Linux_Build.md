@@ -10,6 +10,15 @@ Status: built and tested on Linux Mint 22.3 (64-bit) with the LCL GTK 2 widgetse
 - Optional, for video thumbnails: `ffmpegthumbnailer` (or `ffmpeg`). Without them videos show a play-symbol tile.
 
 ## Build
+The easiest way is the build script, run in the project folder:
+```
+linux/build.sh              # debug build -> bin/linux/PhotoDownloader
+linux/build.sh release      # Release build (small) -> bin/linux-release/PhotoDownloader
+linux/build.sh run          # build, then start the program (messages appear in the terminal)
+```
+It raises the build number in `PhotoDownloader.lpi` by one (as the Lazarus IDE does; `lazbuild` alone does not), builds with GTK 2 and prints only the errors when the build fails. Commit and push `PhotoDownloader.lpi` afterwards. If Git did not keep the file executable, run `sh linux/build.sh` instead.
+
+The same by hand:
 ```
 lazbuild --ws=gtk2 PhotoDownloader.lpi
 ```
