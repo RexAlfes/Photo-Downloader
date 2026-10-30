@@ -7,11 +7,12 @@
 #   linux/build.sh release run
 #   linux/build.sh --no-git   build without pulling and pushing the build number
 #
-# Like the Lazarus IDE, it raises the build number (BuildNr in PhotoDownloader.lpi) by one before
-# each build; lazbuild does not do that itself. To keep the number in step with the other computer it
-# first pulls from GitHub (so it counts on from the newest number) and afterwards commits only
-# PhotoDownloader.lpi ("Build number N (Linux)") and pushes it (any of your own commits that were not
-# pushed yet go along). Without network it warns and builds anyway.
+# The build number: PhotoDownloader.lpi holds the number of the NEXT build. lazbuild puts it into the
+# program and then counts it up by one itself (AutoIncrementBuild), like the Lazarus IDE. To keep the
+# number in step with the other computer this script first pulls from GitHub, and afterwards commits
+# only PhotoDownloader.lpi ("Built 0.1.3.N (Linux)") and pushes it (any of your own commits that were
+# not pushed yet go along). Only the BuildNr line changes in the committed file: the other lines
+# lazbuild rewrites (LCLWidgetType entries) are left as they were. Without network it warns and builds anyway.
 # Needs Lazarus 4.8 (lazbuild) and the GTK 2 development files: sudo apt install build-essential libgtk2.0-dev
 set -e
 cd "$(dirname "$0")/.."    # the project folder (this script lies in linux/)
@@ -25,7 +26,7 @@ for A in "$@"; do
     debug|default|Default) MODE=Default ;;
     run|--run) RUN=1 ;;
     --no-git|nogit|no-git) SYNC=0 ;;
-    -h|--help|help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h|--help|help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "Unknown option: $A (use release, debug, run or --no-git)"; exit 1 ;;
   esac
 done
@@ -47,17 +48,19 @@ if ! command -v lazbuild >/dev/null 2>&1; then
   exit 1
 fi
 
-# raise the build number by one
-OLD=$(sed -n 's/.*<BuildNr Value="\([0-9]*\)".*/\1/p' "$LPI")
-if [ -z "$OLD" ]; then
+# the number this build gets (lazbuild counts the file up afterwards)
+BUILT=$(sed -n 's/.*<BuildNr Value="\([0-9]*\)".*/\1/p' "$LPI")
+if [ -z "$BUILT" ]; then
   echo "No BuildNr found in $LPI"
   exit 1
 fi
-NEW=$((OLD + 1))
-sed -i "s/<BuildNr Value=\"$OLD\"\/>/<BuildNr Value=\"$NEW\"\/>/" "$LPI"
+NEXT=$((BUILT + 1))
 MINOR=$(sed -n 's/.*<MinorVersionNr Value="\([0-9]*\)".*/\1/p' "$LPI")
 REV=$(sed -n 's/.*<RevisionNr Value="\([0-9]*\)".*/\1/p' "$LPI")
-echo "Building Photo Downloader 0.${MINOR:-0}.${REV:-0}.$NEW ($MODE, GTK 2) ..."
+VER="0.${MINOR:-0}.${REV:-0}.$BUILT"
+CLEAN=0   # 1 = the project file had no changes of your own before the build
+if [ "$SYNC" = 1 ] && git diff --quiet HEAD -- "$LPI" 2>/dev/null; then CLEAN=1; fi
+echo "Building Photo Downloader $VER ($MODE, GTK 2) ..."
 
 if [ "$MODE" = Release ]; then
   OUT=bin/linux-release/PhotoDownloader
@@ -67,13 +70,22 @@ else
   set -- -B --build-mode=Default --ws=gtk2 "$LPI"
 fi
 
-# sends the new build number to GitHub (every compile counts, also a failed one)
+# the project file after the build: the next number (every compile counts, also a failed one); when it
+# had no changes of your own, the committed file with only the BuildNr line changed
+set_next() {
+  if [ "$CLEAN" = 1 ]; then
+    git show "HEAD:$LPI" > "$LPI"   # undo the other lines lazbuild rewrote
+  fi
+  sed -i "s/<BuildNr Value=\"[0-9]*\"\/>/<BuildNr Value=\"$NEXT\"\/>/" "$LPI"
+}
+
+# sends the build number to GitHub
 push_number() {
   [ "$SYNC" = 1 ] || return 0
-  if git commit --quiet -m "Build number $NEW (Linux)" -- "$LPI" && git push --quiet; then
-    echo "Build number $NEW sent to GitHub."
+  if git commit --quiet -m "Built $VER (Linux)" -- "$LPI" && git push --quiet; then
+    echo "Build number sent to GitHub (next build: $NEXT)."
   else
-    echo "WARNING: the build number $NEW could not be sent to GitHub. Later: git push"
+    echo "WARNING: the build number could not be sent to GitHub. Later: git push"
   fi
 }
 
@@ -81,7 +93,8 @@ LOG=$(mktemp)    # the full compiler output, shown only when the build fails
 if lazbuild "$@" >"$LOG" 2>&1; then
   grep -E 'lines compiled' "$LOG" | tail -n 1
   rm -f "$LOG"
-  echo "Done: $OUT"
+  echo "Done: $OUT (version $VER)"
+  set_next
   push_number
 else
   grep -E 'Error|Fatal' "$LOG" | head -n 20
@@ -89,6 +102,7 @@ else
     echo "The program file could not be written: close Photo Downloader and build again."
   fi
   echo "Build failed (full output: $LOG)."
+  set_next
   push_number
   exit 1
 fi

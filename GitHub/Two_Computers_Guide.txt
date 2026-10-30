@@ -41,10 +41,11 @@ One-time setup on each computer
 
 The version number file (the one thing to watch)
 ------------------------------------------------
-The Lazarus IDE changes PhotoDownloader.lpi every time you compile: the build number goes up
-by one on its own. lazbuild alone does not; on Linux, linux/build.sh raises it for you and also
-keeps it in step: it pulls first, and after the build it commits and pushes PhotoDownloader.lpi
-("Build number N (Linux)"). Let it, and commit the file with your other changes. Rules:
+Lazarus (the IDE and lazbuild) changes PhotoDownloader.lpi every time you compile: the program
+gets the build number in the file, and the file then holds the next one. Never change it by
+hand. On Linux, linux/build.sh also keeps it in step: it pulls first, and after the build it
+commits and pushes PhotoDownloader.lpi ("Built 0.1.3.N (Linux)"). Let it, and commit the file
+with your other changes. Rules:
   * Always pull before you compile, and commit and push when you are done, so both computers
     count on from the same number. (linux/build.sh does this for you on Linux; in the Lazarus
     IDE on Windows, pull before and push after yourself.)
