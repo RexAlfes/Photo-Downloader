@@ -40,6 +40,8 @@ type
     Default: string;  // value used when none is stored yet
     Upper: Boolean;  // flag "upper": typed text is shown and kept in capitals
     FolderTokens: string;  // check fields, flag "folder=A;B": when checked, {A} is the last folder of the download path (B ... are removed there)
+    Editable: Boolean;  // choice fields, flag "edit": the user may edit the list (stored as List.<key>=)
+    CodeLen: Integer;  // flag "code=N": codes in an edited list have exactly N letters or digits (0 = 1 to 16)
   end;
 
   { A plug-in library found in a plugins folder }
@@ -241,6 +243,8 @@ begin
       if Length(Parts) > 5 then  // flags, separated by commas
         for T in Parts[5].Split([',']) do
           if SameText(Trim(T), 'upper') then Fields[F].Upper := True  // capitals only
+          else if SameText(Trim(T), 'edit') then Fields[F].Editable := True  // the user may edit the list
+          else if SameText(Copy(Trim(T), 1, 5), 'code=') then Fields[F].CodeLen := StrToIntDef(Copy(Trim(T), 6, 3), 0)  // code length
           else if SameText(Copy(Trim(T), 1, 7), 'folder=') then Fields[F].FolderTokens := Copy(Trim(T), 8, MaxInt);  // folder tokens
       Items := nil;  // no entries yet
       if Length(Parts) > 3 then Items := SplitText(Parts[3], ',');  // entries: value or value:label

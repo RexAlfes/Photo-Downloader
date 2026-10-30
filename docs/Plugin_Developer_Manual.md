@@ -85,7 +85,7 @@ EXPORT int pd_logo(unsigned char *buf, int bufLen);
 | `Name`, `Version`, `Description` | Shown on the Plug-ins tab; the list shows the name followed by the version (for example **Example Plug-in 1.0.0 (library example_plugin)**). The version is also shown in the title bar and at the top right of the window. |
 | `Tokens` | Token names, separated by `;` (for example `Example.Name;Example.Site`). They are used only when no built-in token has the same name. Give them a common prefix. |
 | `Title` | Title of the window. |
-| `Note` | A reminder, shown centered in red under the fields. |
+| `Note` | A reminder, shown centered in dark red under the fields. |
 | `AccentColor` | `RRGGBB`: a color bar under the logo. |
 | `FontName` | Font of the window (used when it is installed). |
 | `DestFolder=1` | The window shows the download folder (**Download to:**) and a **Destination folder…** button to choose the folder to download to. |
@@ -101,13 +101,17 @@ EXPORT int pd_logo(unsigned char *buf, int bufLen);
 | `label` | text in front of the field (right-aligned); for a check box, its text |
 | `entries` | list entries separated by `,`; each is `value` or `value:label` (the label is shown, the value is stored) |
 | `default` | value used before anything is stored |
-| `flags` | optional, separated by `,`: `upper` = typed text is shown and kept in capitals; `folder=A;B;C` (check boxes only) = while checked, `{A}` is the last folder of the download path. `{A}`, `{B}`, `{C}` at the end of the path are removed first, so the box replaces an older last folder (for example `{E}`). |
+| `flags` | optional, separated by `,`: `upper` = typed text is shown and kept in capitals; `folder=A;B;C` (check boxes only) = while checked, `{A}` is the last folder of the download path. `{A}`, `{B}`, `{C}` at the end of the path are removed first, so the box replaces an older last folder (for example `{E}`). `edit` (choice and combo fields) = an **Edit list...** button next to the field lets the user edit the list (see below); `code=N` = in an edited list, codes have exactly N letters or digits (without it: 1 to 16). |
+
+**Editable lists (flag `edit`):** **Edit list...** opens a list editor in one window: each entry is a code (the stored value; letters A-Z and digits only, in capitals) and a short descriptor (up to 30 characters, without `, : | ; = { }`), with Add, Replace selected, Remove, Move up, Move down and Defaults (your own `entries`). The field then shows `CODE - Descriptor`. The edited list is stored with the values as `List.<key>=CODE:Descriptor,CODE:Descriptor` and is sent with every `pd_check` call and in every `pd_token` context, so check codes against it: when `List.<key>` is present, accept only its codes; when it is missing, your own entries are in use. A list equal to your own entries is not stored, so a newer version of the library can still change them. Older Photo Downloader versions ignore the flag.
+
+Example: `Field=Kind|choice|Mission type|SURV:SURV - Survey,CONS:CONS - Construction||edit,code=4`.
 
 **Destination folder:** after the user chooses a folder, the download path becomes that folder plus the token part of the current path when that still holds the first token of `DestTemplate` (so the user's own layout is kept), otherwise plus `DestTemplate`. When the window opens, a download path without that token is put back to the destination plus `DestTemplate`. Then the check boxes with `folder=` add or remove their last folder. On **OK** the new path is saved and shown on the Download Path tab.
 
 ## 3.4 pd_token context
 
-The stored values of the window (`key=value`), plus details of the file:
+The stored values of the window (`key=value`, with `List.<key>=` lines for edited lists), plus details of the file:
 
 | Key | Example |
 |---|---|
@@ -123,12 +127,12 @@ Tokens are asked for often: for the Example line, for every file after a scan (t
 
 ## 3.5 pd_check
 
-Called on every change in the window with the current values, plus `_changed=<key>` (the field changed last). It returns lines:
+Called on every change in the window with the current values, the edited lists (`List.<key>=`), plus `_changed=<key>` (the field changed last). It returns lines:
 
 | Key | Meaning |
 |---|---|
 | `Preview` | text shown in bold under the fields |
-| `Error` | text shown in red; while it is not empty, **OK** is disabled |
+| `Error` | text shown in dark red; while it is not empty, **OK** is disabled |
 | `Set.<key>` | a value the window shows in that field now (for example a district filled in from a county) |
 | `Value.<key>` | the normalized value stored on OK (for example `95` stored as `0095`) |
 | `Invalid.<key>` | `1` = that field breaks its rule: its box is shown light red with dark red text until it is right |
