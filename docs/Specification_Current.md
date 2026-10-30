@@ -129,7 +129,10 @@ Re-evaluation runs after changes to destination, patterns, job code, profile or 
 | Legacy IPTC IIM, GPS geotagging | Open |
 | Backup plug-in | Removed from the Plug-ins list; replaced by the backup destination (see 3.8) |
 | Directory Maker plug-in | Done |
-| JPEG auto profile, DNG Converter, JPEG resolution plug-ins | Open – listed only |
+| JPEG auto profile (built-in): ICC profile per camera model and a default, embedded into downloaded JPEGs without recompression (`uIccEmbed.pas`) | Done |
+| DNG Converter as program plug-ins (`plugins/dng-converter`: Adobe DNG Converter on Windows, dnglab on Windows and Linux); program plug-ins in general (`uExtPlugin.pas`, `.plugin.ini`) | Done – tested with a stand-in program, not yet with the real converters |
+| Plug-in steps after each file: on the downloaded copy only (never the backup or the original), in list order; a failed step switches its plug-in off and keeps the original from deletion | Done |
+| JPEG resolution plug-in | Open – listed only |
 | Launch external program after download | Partial – custom button with %f and %d, not {file} and {folder} |
 | Log of per-file results | Partial – copy failures are written to thumbnail.log when logging is on; no full per-file report yet |
 

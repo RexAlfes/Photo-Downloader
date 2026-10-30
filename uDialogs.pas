@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Math, Types, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
-  ComCtrls, CheckLst, Spin, Clipbrd, LCLType, LCLIntf, uSettings, uItems, uExif, uDrives, uVersion, uSafeDel, uPlugins;
+  ComCtrls, CheckLst, Spin, Clipbrd, LCLType, LCLIntf, uSettings, uItems, uExif, uDrives, uVersion, uSafeDel, uPlugins, uExtPlugin, uIccEmbed;
 
 function ExecuteJobCode(S: TAppSettings; var Job: string; const CurrentCamera: string): Boolean;
 { As ExecuteJobCode, with an extra 'Source folder' line (used at start-up). Source is the
@@ -1253,6 +1253,187 @@ begin
 end;
 
 { ====================================================================== }
+{ JPEG auto profile setup                                                 }
+{ ====================================================================== }
+
+type
+  { Setup of the built-in plug-in "JPEG auto profile": one ICC profile per camera model and a default.
+    The choices are key=value lines: Default=<profile file>, Replace=0/1, Cam.<camera model>=<profile file>. }
+  TJpegProfileForm = class(TForm)
+  private
+    FCams: TStringList;  // camera model=profile file
+    FCamera: string;  // camera of the picture shown in the main window (suggested when adding)
+    lbCams: TListBox;  // the list of cameras
+    edDefault: TEdit;  // default profile
+    chkReplace: TCheckBox;  // replace a profile the camera embedded
+    procedure FillList;  // shows FCams in the list
+    function PickProfile(const Start: string; out FileName: string): Boolean;  // chooses a profile file
+    procedure AddClick(Sender: TObject);  // adds a camera
+    procedure EditClick(Sender: TObject);  // chooses another profile for the selected camera
+    procedure RemoveClick(Sender: TObject);  // removes the selected camera
+    procedure DefaultClick(Sender: TObject);  // chooses the default profile
+  public
+    constructor CreateSetup(AOwner: TComponent; const Opts, Camera: string);  // builds the window
+    destructor Destroy; override;  // frees the list
+    function Opts: string;  // the choices as key=value lines
+  end;
+
+{ Builds the window and fills it from the stored choices. }
+constructor TJpegProfileForm.CreateSetup(AOwner: TComponent; const Opts, Camera: string);
+var
+  L: TStringList;  // L: the stored choices
+  I: Integer;  // I: line index
+begin
+  inherited CreateNew(AOwner);  // create the form without a resource file
+  InitDialog(Self, 'JPEG auto profile', 560, 380);  // set the common dialog properties
+  FCamera := Camera;  // suggested camera
+  FCams := TStringList.Create;  // camera=profile lines
+  L := TStringList.Create;  // the stored choices
+  try
+    L.Text := Opts;  // split into lines
+    for I := 0 to L.Count - 1 do
+      if Copy(L.Names[I], 1, 4) = 'Cam.' then FCams.Add(Copy(L.Names[I], 5, MaxInt) + '=' + L.ValueFromIndex[I]);  // one camera
+    MkLabel(Self, 'ICC profile for each camera model (exactly as the camera writes it into the EXIF data):', 10, 10);  // label
+    lbCams := TListBox.Create(Self);  // the camera list
+    lbCams.Parent := Self;  // place it on the form
+    lbCams.SetBounds(10, 32, 430, 180);  // position and size it
+    lbCams.OnDblClick := @EditClick;  // a double click chooses another profile
+    MkButton(Self, 'Add...', 450, 32, 100).OnClick := @AddClick;  // add a camera
+    MkButton(Self, 'Profile...', 450, 64, 100).OnClick := @EditClick;  // another profile for a camera
+    MkButton(Self, 'Remove', 450, 96, 100).OnClick := @RemoveClick;  // remove a camera
+    MkLabel(Self, 'Default profile for all other cameras (empty = none):', 10, 224);  // label
+    edDefault := MkEdit(Self, 10, 244, 430);  // default profile
+    edDefault.Text := L.Values['Default'];  // stored default
+    MkButton(Self, '...', 450, 243, 30).OnClick := @DefaultClick;  // choose the default profile
+    chkReplace := MkCheck(Self, 'Replace a profile the camera already embedded in the JPEG', 10, 282);  // replace option
+    chkReplace.Checked := L.Values['Replace'] = '1';  // stored choice
+    MkWrap(Self, 'The profile is added to the downloaded copy without recompressing the picture; the backup copy and the original are not changed.',
+      10, 306, 540, 34);  // note
+  finally
+    L.Free;  // free the lines
+  end;
+  FillList;  // show the cameras
+  MkButton(Self, 'OK', 380, 344, 80, mrOK).Default := True;  // OK button, also the default button
+  MkButton(Self, 'Cancel', 470, 344, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
+end;
+
+{ Frees the camera list. }
+destructor TJpegProfileForm.Destroy;
+begin
+  FCams.Free;  // free the list
+  inherited Destroy;  // run the inherited destructor
+end;
+
+{ Shows the cameras with their profile files. }
+procedure TJpegProfileForm.FillList;
+var
+  I, Sel: Integer;  // I: line index; Sel: selected line
+begin
+  Sel := lbCams.ItemIndex;  // keep the selection
+  lbCams.Items.Clear;  // empty the list
+  for I := 0 to FCams.Count - 1 do
+    lbCams.Items.Add(FCams.Names[I] + '  ->  ' + ExtractFileName(FCams.ValueFromIndex[I]));  // camera -> profile
+  if Sel >= lbCams.Items.Count then Sel := lbCams.Items.Count - 1;  // the list got shorter
+  lbCams.ItemIndex := Sel;  // select again
+end;
+
+{ Chooses an ICC profile file and checks that it is one. }
+function TJpegProfileForm.PickProfile(const Start: string; out FileName: string): Boolean;
+var
+  OD: TOpenDialog;  // OD: file chooser
+begin
+  Result := False;  // nothing chosen yet
+  FileName := '';  // no file yet
+  OD := TOpenDialog.Create(Self);  // create the chooser
+  try
+    OD.Title := 'Choose an ICC color profile';  // window title
+    OD.Filter := 'ICC profiles (*.icc;*.icm)|*.icc;*.icm;*.ICC;*.ICM|All files|*.*';  // profile files
+    if Start <> '' then OD.InitialDir := ExtractFilePath(Start)  // start where the current one is
+    {$IFDEF WINDOWS}
+    else OD.InitialDir := GetEnvironmentVariable('SystemRoot') + '\System32\spool\drivers\color'  // the Windows profiles
+    {$ELSE}
+    else if DirectoryExists('/usr/share/color/icc') then OD.InitialDir := '/usr/share/color/icc'  // the usual Linux place
+    {$ENDIF};
+    if not OD.Execute then Exit;  // canceled
+    if not IsIccProfile(OD.FileName) then  // not a profile
+    begin
+      MessageDlg('JPEG auto profile', 'This file is not an ICC color profile:'#13#10 + OD.FileName, mtError, [mbOK], 0);  // tell the user
+      Exit;
+    end;
+    FileName := OD.FileName;  // the profile
+    Result := True;  // chosen
+  finally
+    OD.Free;  // free the chooser
+  end;
+end;
+
+{ Adds a camera: asks for its model name (the one in the main window is suggested), then for the profile. }
+procedure TJpegProfileForm.AddClick(Sender: TObject);
+var
+  Cam, Fn: string;  // Cam: camera model; Fn: profile file
+begin
+  Cam := FCamera;  // suggest the camera of the pictures shown
+  if not InputQuery('JPEG auto profile', 'Camera model (as in the EXIF data, for example NIKON D700):', Cam) then Exit;  // ask
+  Cam := Trim(Cam);  // no blanks around it
+  if (Cam = '') or (Pos('=', Cam) > 0) then Exit;  // no usable name
+  if not PickProfile('', Fn) then Exit;  // choose the profile
+  FCams.Values[Cam] := Fn;  // add or replace the camera
+  FillList;  // show it
+end;
+
+{ Chooses another profile for the selected camera. }
+procedure TJpegProfileForm.EditClick(Sender: TObject);
+var
+  Fn: string;  // Fn: profile file
+begin
+  if lbCams.ItemIndex < 0 then Exit;  // nothing selected
+  if not PickProfile(FCams.ValueFromIndex[lbCams.ItemIndex], Fn) then Exit;  // choose the profile
+  FCams.ValueFromIndex[lbCams.ItemIndex] := Fn;  // store it
+  FillList;  // show it
+end;
+
+{ Removes the selected camera. }
+procedure TJpegProfileForm.RemoveClick(Sender: TObject);
+begin
+  if lbCams.ItemIndex < 0 then Exit;  // nothing selected
+  FCams.Delete(lbCams.ItemIndex);  // remove it
+  FillList;  // show the rest
+end;
+
+{ Chooses the default profile. }
+procedure TJpegProfileForm.DefaultClick(Sender: TObject);
+var
+  Fn: string;  // Fn: profile file
+begin
+  if PickProfile(edDefault.Text, Fn) then edDefault.Text := Fn;  // store it
+end;
+
+{ The choices as key=value lines. }
+function TJpegProfileForm.Opts: string;
+var
+  I: Integer;  // I: camera index
+begin
+  Result := 'Default=' + Trim(edDefault.Text) + LineEnding +  // default profile
+    'Replace=' + IntToStr(Ord(chkReplace.Checked)) + LineEnding;  // replace option
+  for I := 0 to FCams.Count - 1 do
+    Result := Result + 'Cam.' + FCams.Names[I] + '=' + FCams.ValueFromIndex[I] + LineEnding;  // one camera
+end;
+
+{ Shows the JPEG auto profile setup; Opts (key=value lines) is updated on OK. }
+function ExecuteJpegProfileSetup(var Opts: string; const Camera: string): Boolean;
+var
+  F: TJpegProfileForm;  // F: the window
+begin
+  F := TJpegProfileForm.CreateSetup(Application, Opts, Camera);  // build the window
+  try
+    Result := F.ShowModal = mrOK;  // True when the user clicked OK
+    if Result then Opts := F.Opts;  // return the choices
+  finally
+    F.Free;  // free the window
+  end;
+end;
+
+{ ====================================================================== }
 { Preferences dialog                                                      }
 { ====================================================================== }
 
@@ -1981,6 +2162,13 @@ begin
       else
         lbPlugins.Items.Add(FindLibPlugin(FPlugins.Names[I]).DisplayName + ' - disabled');  // add the name with its state
     end
+    else if FindExtPlugin(FPlugins.Names[I]) <> nil then  // an external-program plug-in: show its own name
+    begin
+      if FPlugins.ValueFromIndex[I] = '1' then
+        lbPlugins.Items.Add(FindExtPlugin(FPlugins.Names[I]).Name + ' (program) - enabled')  // add the name with its state
+      else
+        lbPlugins.Items.Add(FindExtPlugin(FPlugins.Names[I]).Name + ' (program) - disabled');  // add the name with its state
+    end
     else if FPlugins.ValueFromIndex[I] = '1' then  // enabled plug-in
       lbPlugins.Items.Add(FPlugins.Names[I] + ' - enabled')  // add the name with its state
     else
@@ -1995,7 +2183,9 @@ var
   I: Integer;  // I: selected entry
   Nm, Info: string;  // Nm: plug-in name; Info: information text
   P: TLibPlugin;  // P: the plug-in library (nil for a built-in plug-in)
+  X: TExtPlugin;  // X: the external-program plug-in (nil for others)
   Png: TPortableNetworkGraphic;  // Png: logo of the library
+  Prog: string;  // Prog: program of an external-program plug-in
 begin
   I := lbPlugins.ItemIndex;  // selected entry
   FUpdating := True;  // do not react to the check box change
@@ -2026,15 +2216,23 @@ begin
         Png.Free;  // free the picture
       end;
     end
+    else if FindExtPlugin(Nm) <> nil then  // an external-program plug-in
+    begin
+      X := FindExtPlugin(Nm);  // the plug-in
+      Prog := X.ProgramPath(PluginValues(FPluginOpts, Nm));  // its program
+      if Prog = '' then Prog := X.ProgramSetting(PluginValues(FPluginOpts, Nm)) + '  (NOT FOUND: install it, or choose it with Setup...)';  // missing
+      Info := X.Description + #13#10 + 'Program: ' + Prog + #13#10 +
+        'Runs on: ' + StringReplace(Trim(StringReplace(X.FileTypes, ';', ' ', [rfReplaceAll])), ' ', ', ', [rfReplaceAll]) +
+        '. File: ' + X.FileName;  // what it does and with what
+      if X.FileTypes = '' then Info := StringReplace(Info, 'Runs on: .', 'Runs on: every file.', []);  // no type list
+      if not X.Available then Info := 'Not available on this system.'#13#10 + Info;  // for example a Windows-only program
+    end
     else if Nm = 'JPEG auto profile' then  // text for each known plug-in
-      Info := 'Automatically embeds color profiles in JPEGs.'#13#10 +
-              'Different color profiles can be defined for each camera model.'#13#10 +
-              '(Not yet implemented in this build.)'
+      Info := 'Embeds an ICC color profile into each downloaded JPEG, without recompressing it.'#13#10 +
+              'Choose one profile per camera model and a default with Setup...; JPEGs that already' +
+              ' carry a profile are left alone unless "Replace" is ticked.'
     else if Nm = 'Directory Maker' then
       Info := 'Creates extra sub-folders (for example Edit and Web) next to the download folder.'
-    else if Nm = 'DNG Converter' then
-      Info := 'Converts raw files to DNG after downloading.'#13#10 +
-              '(Not yet implemented in this build.)'
     else if Nm = 'JPEG resolution' then
       Info := 'Resizes JPEGs while downloading.'#13#10 + '(Not yet implemented in this build.)'
     else
@@ -2050,11 +2248,38 @@ procedure TPrefsForm.PluginToggle(Sender: TObject);
 var
   I: Integer;  // I: selected entry
   P: TLibPlugin;  // P: the plug-in library (nil for a built-in plug-in)
-  Err: string;  // Err: why a library cannot be loaded
+  X: TExtPlugin;  // X: the external-program plug-in (nil for others)
+  Err, Prog: string;  // Err: why a library cannot be loaded; Prog: program of an external-program plug-in
 begin
   if FUpdating then Exit;  // ignore changes made by the program
   I := lbPlugins.ItemIndex;  // selected entry
   if I < 0 then Exit;  // nothing selected
+  X := FindExtPlugin(FPlugins.Names[I]);  // external-program plug-in (nil for others)
+  if chkPlugin.Checked and (X <> nil) and (FPlugins.ValueFromIndex[I] <> '1') then  // a program plug-in is switched on
+  begin
+    Prog := X.ProgramPath(PluginValues(FPluginOpts, X.Key));  // its program
+    if not X.Available then
+      Err := 'This plug-in is not available on this system.'
+    else if Prog = '' then
+      Err := 'The program was not found:'#13#10 + X.ProgramSetting(PluginValues(FPluginOpts, X.Key)) + #13#10#13#10 +
+        'Install it, or choose where it is with Setup...'
+    else
+      Err := '';  // ready
+    if Err <> '' then
+    begin
+      MessageDlg('Plug-in', Err, mtError, [mbOK], 0);  // tell why
+      RefreshPlugins(I);  // put the check box back
+      Exit;
+    end;
+    // a program runs with the user's rights: start it only after the user agreed
+    if MessageDlg('Plug-in', 'Switching this plug-in on runs this program after each matching download:'#13#10#13#10 +
+      Prog + #13#10 + X.Args + #13#10#13#10 + 'Only switch it on when you trust the program.',
+      mtConfirmation, [mbOK, mbCancel], 0) <> mrOK then
+    begin
+      RefreshPlugins(I);  // put the check box back
+      Exit;
+    end;
+  end;
   P := FindLibPlugin(FPlugins.Names[I]);  // plug-in library (nil for a built-in plug-in)
   if chkPlugin.Checked and (P <> nil) and (FPlugins.ValueFromIndex[I] <> '1') then  // a library is switched on
   begin
@@ -2112,10 +2337,37 @@ var
   I: Integer;  // I: selected entry
   Nm, V, D: string;  // Nm: plug-in name; V: option value; D: download folder template
   P: TLibPlugin;  // P: the plug-in library (nil for a built-in plug-in)
+  X: TExtPlugin;  // X: the external-program plug-in (nil for others)
+  OD: TOpenDialog;  // OD: chooser for the program
 begin
   I := lbPlugins.ItemIndex;  // selected entry
   if I < 0 then Exit;  // nothing selected
   Nm := FPlugins.Names[I];  // plug-in name
+  X := FindExtPlugin(Nm);  // external-program plug-in with this key
+  if X <> nil then  // choose the program it runs
+  begin
+    OD := TOpenDialog.Create(Self);  // create the chooser
+    try
+      OD.Title := 'Program for ' + X.Name;  // window title
+      {$IFDEF WINDOWS}
+      OD.Filter := 'Programs (*.exe)|*.exe|All files|*.*';  // programs
+      {$ENDIF}
+      V := X.ProgramPath(PluginValues(FPluginOpts, Nm));  // the program now
+      if V <> '' then OD.InitialDir := ExtractFilePath(V);  // start where it is
+      if OD.Execute then  // a program was chosen
+        SetPluginValues(FPluginOpts, Nm, 'Program=' + OD.FileName);  // store it
+    finally
+      OD.Free;  // free the chooser
+    end;
+    PluginSelect(nil);  // show the new program
+    Exit;
+  end;
+  if Nm = 'JPEG auto profile' then  // one profile per camera
+  begin
+    V := PluginValues(FPluginOpts, Nm);  // stored choices
+    if ExecuteJpegProfileSetup(V, FCamera) then SetPluginValues(FPluginOpts, Nm, V);  // ask and store
+    Exit;
+  end;
   P := FindLibPlugin(Nm);  // plug-in library with this key
   if P <> nil then  // a plug-in library: its prompt window
   begin

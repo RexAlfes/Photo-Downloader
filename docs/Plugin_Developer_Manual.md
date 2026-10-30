@@ -15,7 +15,7 @@ Photo Downloader can load plug-in libraries: a **DLL** on Windows, a **.so** fil
 
 Only plain C types cross the boundary between program and library, so a library can be written in any language that can export C functions: Free Pascal, C, C++, Rust and others.
 
-Not in version 1: code that runs after each file or after the download (for example converting files). See `docs/Plugin_Plan.md`. Those will be optional additions, so version 1 libraries keep working.
+A plug-in can also be a **program plug-in**: a small `.plugin.ini` text file that names an existing program to run on each downloaded file (section 7), with no code to write. Plug-in libraries cannot yet run code after each file; see `docs/Plugin_Plan.md`.
 
 # 2. Your first plug-in in five steps
 
@@ -160,6 +160,44 @@ Do not send `Set.` for a text field the user is typing in; the cursor would jump
 - In Photo Downloader, check the **Example image** line on the Download Path tab, then download a few files to a test folder.
 - **Help > Logging** writes `plug-in <name>: loaded <path>` or the reason a library was switched off into the log.
 
-# 7. The program side (for Photo Downloader developers)
+# 7. Program plug-ins (.plugin.ini)
 
-`uPlugins.pas` finds and loads libraries, keeps their information and answers plug-in tokens through `uItems.PluginTokenHook`. `TPluginPromptForm` in `uDialogs.pas` draws the window; `AskPluginValues` shows it before a download (`TMainForm.DoDownload`).
+A program plug-in runs an existing program (for example a DNG converter) on each downloaded file. Nothing is compiled: the plug-in is a text file `<key>.plugin.ini` in a plugins folder (the same folders as for libraries). The program runs as a separate process, started directly without a shell, with its arguments passed one by one, so a file name can never start another command. Examples: `plugins/dng-converter/adobe_dng_converter.plugin.ini` and `dnglab.plugin.ini`.
+
+```ini
+[Plugin]
+Name=DNG Converter (dnglab)
+Description=Makes a DNG copy of each downloaded raw file. The raw file is kept.
+Version=1.0.0
+Hook=AfterFile
+FileTypes=.nef;.cr2;.arw
+Platforms=windows;linux
+
+[Run]
+Windows=dnglab.exe
+Linux=dnglab
+Args=convert "{file}" "{folder}{sep}{name}.dng"
+Output={folder}{sep}{name}.dng
+TimeoutSec=300
+```
+
+| Key | Meaning |
+|---|---|
+| `Name`, `Description`, `Version` | shown on the Plug-ins tab |
+| `Hook` | when it runs; `AfterFile` (after each downloaded file) is the only one so far |
+| `FileTypes` | extensions it works on, separated by `;` (empty = every file) |
+| `Platforms` | `windows`, `linux` or both (empty = both); the plug-in is not offered on other systems |
+| `Windows`, `Linux` | the program on each system: a full path, or a bare name that is looked up on the PATH. The user can choose another path with **Setup...** (stored as `Program=` in `[PluginOpts]`) |
+| `Args` | the arguments; double quotes keep a path with blanks together |
+| `Output` | optional: the file the program makes. If it already exists, the step is skipped; if it is missing afterwards, the step failed |
+| `TimeoutSec` | the program is stopped after this many seconds (failed); default 300 |
+
+**Placeholders** in `Args` and `Output`: `{file}` the downloaded file, `{folder}` its folder (without a closing separator), `{name}` its name without extension, `{ext}` its extension without the dot, `{source}` the original file on the card, `{sep}` the folder separator of the system (`\` or `/`).
+
+**Result:** exit code 0 is success; any other exit code, a missing `Output` file, a timeout or a missing program is a failure. Up to 300 characters of what the program printed are shown in the message and the log. A failed step switches the plug-in off and keeps the original on the card (not offered for deletion). Steps run on the downloaded copy only, never on the backup copy or the original.
+
+**Switching on** a program plug-in shows the program and its arguments and asks for confirmation; it cannot be switched on while its program is not found.
+
+# 8. The program side (for Photo Downloader developers)
+
+`uPlugins.pas` finds and loads libraries and `.plugin.ini` files (`uExtPlugin.pas` reads and runs those), keeps their information and answers plug-in tokens through `uItems.PluginTokenHook`. `TPluginPromptForm` in `uDialogs.pas` draws the window; `AskPluginValues` shows it before a download (`TMainForm.DoDownload`). `TMainForm.RunPluginSteps` runs the steps after each file (JPEG auto profile through `uIccEmbed.pas`, program plug-ins through `uExtPlugin.pas`).

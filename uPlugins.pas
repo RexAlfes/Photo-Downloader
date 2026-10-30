@@ -18,7 +18,7 @@ unit uPlugins;
 interface
 
 uses
-  Classes, SysUtils, Math, dynlibs, FileUtil, LazFileUtils, uSettings, uItems;
+  Classes, SysUtils, Math, dynlibs, FileUtil, LazFileUtils, uSettings, uItems, uExtPlugin;
 
 const
   PluginApiVersion = 1;  // interface version this program understands
@@ -70,6 +70,8 @@ type
 function LoadPlugins(S: TAppSettings): string;
 { The library plug-in with this key, or nil }
 function FindLibPlugin(const Key: string): TLibPlugin;
+{ The external-program plug-in (<key>.plugin.ini) with this key, or nil }
+function FindExtPlugin(const Key: string): TExtPlugin;
 { The folders searched for plug-in libraries (for messages and the manual) }
 function PluginFolders: string;
 { Stored prompt values of a plug-in as key=value lines (Opts: the plug-in options, S.PluginOpts) }
@@ -85,6 +87,7 @@ implementation
 
 var
   Libs: TList = nil;  // every library found (TLibPlugin)
+  Exts: TList = nil;  // every external-program plug-in found (TExtPlugin)
   TokenSettings: TAppSettings = nil;  // settings the token lookup uses (set by LoadPlugins)
 
 { ---- small helpers ---- }
@@ -377,6 +380,17 @@ begin
     if SameText(TLibPlugin(Libs[I]).Key, Key) then Exit(TLibPlugin(Libs[I]));  // found
 end;
 
+{ The external-program plug-in with this key, or nil. }
+function FindExtPlugin(const Key: string): TExtPlugin;
+var
+  I: Integer;  // I: list index
+begin
+  Result := nil;  // not found yet
+  if Exts = nil then Exit;  // none found
+  for I := 0 to Exts.Count - 1 do  // every one
+    if SameText(TExtPlugin(Exts[I]).Key, Key) then Exit(TExtPlugin(Exts[I]));  // found
+end;
+
 { Key of a library file: its name without "lib" prefix (Linux) and extension. }
 function LibKey(const FileName: string): string;
 begin
@@ -438,6 +452,7 @@ begin
   Result := '';  // no problems yet
   TokenSettings := S;  // token lookups use these settings
   if Libs = nil then Libs := TList.Create;  // the list of libraries
+  if Exts = nil then Exts := TList.Create;  // the list of external-program plug-ins
   {$IFDEF WINDOWS}
   Ext := '*.dll';  // Windows libraries
   {$ELSE}
@@ -454,11 +469,24 @@ begin
     finally
       Found.Free;  // free the file list
     end;
+    Found := FindAllFiles(Dir, '*.plugin.ini', False);  // external-program plug-ins
+    try
+      for I := 0 to Found.Count - 1 do
+        if FindExtPlugin(Copy(ExtractFileName(Found[I]), 1, Length(ExtractFileName(Found[I])) - 11)) = nil then  // the first file of a key wins
+        try
+          Exts.Add(TExtPlugin.Create(Copy(ExtractFileName(Found[I]), 1, Length(ExtractFileName(Found[I])) - 11), Found[I]));  // key: name without .plugin.ini
+        except
+          on E: Exception do Result := Result + ExtractFileName(Found[I]) + ': cannot be read (' + E.Message + ').' + LineEnding;  // a broken file
+        end;
+    finally
+      Found.Free;  // free the file list
+    end;
   end;
   // a library whose file was removed leaves the Plug-ins list (its values stay in [PluginOpts], so
   // they are back when it is installed again); built-in plug-ins always stay
   for I := S.Plugins.Count - 1 downto 0 do
-    if (not IsBuiltInPlugin(S.Plugins.Names[I])) and (FindLibPlugin(S.Plugins.Names[I]) = nil) then
+    if (not IsBuiltInPlugin(S.Plugins.Names[I])) and (FindLibPlugin(S.Plugins.Names[I]) = nil) and
+       (FindExtPlugin(S.Plugins.Names[I]) = nil) then
     begin
       LogThumb('plug-in ' + S.Plugins.Names[I] + ': library file not found, removed from the list');  // log it
       S.Plugins.Delete(I);  // remove the entry
@@ -468,6 +496,9 @@ begin
   for I := 0 to Libs.Count - 1 do
     if S.Plugins.IndexOfName(TLibPlugin(Libs[I]).Key) < 0 then
       S.Plugins.Add(TLibPlugin(Libs[I]).Key + '=0');  // listed, switched off
+  for I := 0 to Exts.Count - 1 do  // the same for external-program plug-ins
+    if S.Plugins.IndexOfName(TExtPlugin(Exts[I]).Key) < 0 then
+      S.Plugins.Add(TExtPlugin(Exts[I]).Key + '=0');  // listed, switched off
   for I := 0 to Libs.Count - 1 do  // load the switched-on libraries
   begin
     P := TLibPlugin(Libs[I]);  // the library
@@ -504,9 +535,12 @@ procedure FreeLibs;
 var
   I: Integer;  // I: list index
 begin
-  if Libs = nil then Exit;  // nothing to free
+  if Libs = nil then Exit;  // nothing to free (Exts is made together with Libs)
   for I := 0 to Libs.Count - 1 do TLibPlugin(Libs[I]).Free;  // free every entry
   FreeAndNil(Libs);  // free the list
+  if Exts <> nil then
+    for I := 0 to Exts.Count - 1 do TExtPlugin(Exts[I]).Free;  // free every external-program entry
+  FreeAndNil(Exts);  // free the list
 end;
 
 finalization

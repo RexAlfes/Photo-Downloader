@@ -121,10 +121,11 @@ procedure MapSplit(const Line: string; out CamName, T8, T9: string);  // splits 
 function MapJoin(const CamName, T8, T9: string): string;  // joins camera name and two templates into one mapping line
 
 const
-  DefaultPlugins: array[0..3] of string =  // names of the built-in plug-ins
-    ('JPEG auto profile', 'Directory Maker', 'DNG Converter', 'JPEG resolution');
-  // the Backup plug-in was replaced by the backup folder on the Download Path tab
-  RemovedPlugins: array[0..0] of string = ('Backup');  // names dropped from older settings files
+  DefaultPlugins: array[0..2] of string =  // names of the built-in plug-ins
+    ('JPEG auto profile', 'Directory Maker', 'JPEG resolution');
+  // the Backup plug-in was replaced by the backup folder on the Download Path tab; the DNG Converter
+  // entry by external-program plug-ins (plugins/dng-converter/*.plugin.ini)
+  RemovedPlugins: array[0..1] of string = ('Backup', 'DNG Converter');  // names dropped from older settings files
 
 { Writes a list into an ini section (Count, Item0, Item1 ...); the old section is removed first. }
 procedure SaveList(Ini: TCustomIniFile; const Sec: string; L: TStrings);
