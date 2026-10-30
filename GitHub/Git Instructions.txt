@@ -4,7 +4,7 @@ GITHUB UPDATE INSTRUCTIONS - Photo Downloader
 Repository: https://github.com/RexAlfes/Photo-Downloader
 Website:    https://rexalfes.github.io/Photo-Downloader/   (served from the docs folder on main)
 
-WHAT GOES WHERE (unzip PhotoDownloader.<version>.zip first, for example PhotoDownloader.0.1.3.1.zip)
+WHAT GOES WHERE (unzip PhotoDownloader.<version>.zip first, for example PhotoDownloader.0.1.4.1.zip)
 ------------------------------------------------------------
 See also GitHub/Two_Computers_Guide.txt (working on two computers, pull/commit/push).
 Normal upload   : *.pas, *.lpr, *.lpi (PhotoDownloader.lpi), *.ico, README.md, .gitignore, .github/FUNDING.yml, .github/workflows/build.yml
@@ -22,7 +22,7 @@ OPTION 1 - WEBSITE UPLOAD
 2. Drag in the source files and the .github folder. Dragging a folder keeps its structure.
    Do not drag in the zip's docs or GitHub folders.
    Files with the same name replace the old ones. Up to 100 files per upload.
-3. Message example: "Version 0.1.3.1: plug-in steps, DNG Converter plug-ins, JPEG resolution, Install/Remove of plug-ins"
+3. Message example: "Version 0.1.4.1: editable plug-in lists, profile in the title bar, Linux build script"
 4. The website cannot delete files. To delete: open the file, click the three dots, Delete file.
 5. If a folder starts with a dot (.github) and will not drag in, use Add file > Create new file and type
    ".github/FUNDING.yml" as the name, then paste the contents.
@@ -62,16 +62,16 @@ Build 42 is the baseline. After uploading: git tag baseline-build-42 && git push
 
 RELEASE
 -------
-Releases > Draft a new release. Tag example: v0.1.3.1. Paste the matching release notes file.
+Releases > Draft a new release. Tag example: v0.1.4.1. Paste the matching release notes file.
 Build the published programs with the Release build mode (no debug information, about 4 MB instead of 30 MB):
   Windows: lazbuild -B --build-mode=Release PhotoDownloader.lpi            -> bin\win64-release\PhotoDownloader.exe
   Linux:   lazbuild -B --build-mode=Release --ws=gtk2 PhotoDownloader.lpi  -> bin/linux-release/PhotoDownloader
 Attach these files and tick "Set as a pre-release":
-  PhotoDownloader.0.1.3.1.Win64.exe      (Windows 64-bit, single file)
-  PhotoDownloader.0.1.3.1.Win64.zip      (Windows 64-bit, zipped copy of the exe)
-  PhotoDownloader.0.1.3.1.linux64.tar.gz (Linux 64-bit; pack the executable in a tar.gz so it stays executable)
-  User_Manual.0.1.3.docx / .odt          (User Manual, editable)
-  User_Manual.0.1.3.md                   (User Manual, text)
+  PhotoDownloader.0.1.4.1.Win64.exe      (Windows 64-bit, single file)
+  PhotoDownloader.0.1.4.1.Win64.zip      (Windows 64-bit, zipped copy of the exe)
+  PhotoDownloader.0.1.4.1.linux64.tar.gz (Linux 64-bit; pack the executable in a tar.gz so it stays executable)
+  User_Manual.0.1.4.docx / .odt          (User Manual, editable)
+  User_Manual.0.1.4.md                   (User Manual, text)
 Keep "win" or "linux" in each program file name (any capitalization): the website download buttons read the newest
 release and label each file Windows or Linux from its name. Other files are listed as plain downloads.
 

@@ -22,6 +22,7 @@ DOCS = [
     'docs/Plugin_Plan.md',
     'GitHub/Release_Notes_0.1.2.1.md',
     'GitHub/Release_Notes_0.1.3.1.md',
+    'GitHub/Release_Notes_0.1.4.1.md',
 ]
 
 # copies of a document kept in a second place (the website folder)
