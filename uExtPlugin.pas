@@ -15,7 +15,8 @@ unit uExtPlugin;
   FileTypes=.nef;.cr2;...               extensions it works on ('' = every file)
   Platforms=windows;linux               systems it is offered on ('' = every system)
   [Run]
-  Windows=C:\Program Files\...\x.exe    program on Windows (a bare name is searched on the PATH)
+  Windows=C:\Program Files\...\x.exe    program on Windows (a bare name is searched on the PATH, then in
+                                        the folder of this file and its direct subfolders)
   Linux=dnglab                          program on Linux
   Args=-c -d "{folder}" "{file}"        arguments; quotes keep a path with blanks together
   Output={folder}{sep}{name}.dng        optional: the file the program makes (checked afterwards;
@@ -168,12 +169,39 @@ begin
     {$ENDIF}
 end;
 
-function TExtPlugin.ProgramPath(const Opts: string): string;
+{ A bare program name in Dir or one of its direct subfolders, for example a converter unzipped into the
+  plugins folder next to its .plugin.ini ('' = not found). }
+function FindNear(const Dir, Prog: string): string;
+var
+  SR: TSearchRec;  // SR: one entry of Dir
 begin
-  Result := ProgramSetting(Opts);  // as set
+  Result := '';  // not found yet
+  if Dir = '' then Exit;  // no folder
+  if FileExistsUTF8(Dir + Prog) then Exit(Dir + Prog);  // in the folder itself
+  if FindFirstUTF8(Dir + '*', faDirectory, SR) = 0 then
+  try
+    repeat
+      if ((SR.Attr and faDirectory) <> 0) and (SR.Name <> '.') and (SR.Name <> '..') and
+        FileExistsUTF8(Dir + SR.Name + PathDelim + Prog) then
+        Exit(Dir + SR.Name + PathDelim + Prog);  // in a subfolder
+    until FindNextUTF8(SR) <> 0;
+  finally
+    FindCloseUTF8(SR);  // end the search
+  end;
+end;
+
+function TExtPlugin.ProgramPath(const Opts: string): string;
+var
+  Prog: string;  // Prog: the program as set
+begin
+  Prog := ProgramSetting(Opts);  // as set
+  Result := Prog;
   if Result = '' then Exit;  // none
-  if Pos(PathDelim, Result) = 0 then  // a bare name: look on the PATH
-    Result := FindDefaultExecutablePath(Result)  // '' when not found
+  if Pos(PathDelim, Result) = 0 then  // a bare name: look on the PATH, then next to the .plugin.ini
+  begin
+    Result := FindDefaultExecutablePath(Prog);  // '' when not on the PATH
+    if Result = '' then Result := FindNear(ExtractFilePath(FileName), Prog);  // the plug-in's folder
+  end
   else if not FileExistsUTF8(Result) then
     Result := '';  // not there
 end;

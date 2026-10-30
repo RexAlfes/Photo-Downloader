@@ -187,7 +187,7 @@ TimeoutSec=300
 | `Hook` | when it runs; `AfterFile` (after each downloaded file) is the only one so far |
 | `FileTypes` | extensions it works on, separated by `;` (empty = every file) |
 | `Platforms` | `windows`, `linux` or both (empty = both); the plug-in is not offered on other systems |
-| `Windows`, `Linux` | the program on each system: a full path, or a bare name that is looked up on the PATH. The user can choose another path with **Setup...** (stored as `Program=` in `[PluginOpts]`) |
+| `Windows`, `Linux` | the program on each system: a full path, or a bare name that is looked up on the PATH, then in the folder of the `.plugin.ini` file and its direct subfolders (so a program unzipped next to the plug-in file is found). The user can choose another path with **Setup...** (stored as `Program=` in `[PluginOpts]`) |
 | `Args` | the arguments; double quotes keep a path with blanks together |
 | `Output` | optional: the file the program makes. If it already exists, the step is skipped; if it is missing afterwards, the step failed |
 | `TimeoutSec` | the program is stopped after this many seconds (failed); default 300 |
