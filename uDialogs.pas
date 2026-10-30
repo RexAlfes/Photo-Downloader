@@ -30,7 +30,8 @@ procedure ShowImageProperties(Item: TImageItem);
 implementation
 
 uses
-  FileUtil, LazFileUtils;  // copying and deleting plug-in files
+  FileUtil, LazFileUtils  // copying and deleting plug-in files
+  {$IFDEF LCLGTK2}, gtk2{$ENDIF};  // GTK 2: modal state of a window (ReviveAfterChooser)
 
 const
   TokenHelpText =  // help text shown for the file name tokens
@@ -141,6 +142,21 @@ begin
   F.Position := poMainFormCenter;  // center over the main window
   F.ClientWidth := W;  // inner width
   F.ClientHeight := H;  // inner height
+end;
+
+{ Makes a dialog take input again after a file chooser opened from it has closed. On GTK 2 a
+  dialog that is itself shown over another modal dialog (Preferences -> plug-in setup -> chooser)
+  could be left without input: it could be moved, but no button reacted. The window is enabled
+  again and takes the modal grab back, on top of the other modal windows. Nothing to do elsewhere. }
+procedure ReviveAfterChooser(F: TForm);
+begin
+  {$IFDEF LCLGTK2}
+  if not F.HandleAllocated then Exit;  // no window yet
+  EnableWindow(F.Handle, True);  // take input again
+  gtk_window_set_modal({%H-}PGtkWindow(F.Handle), False);  // give up its modal grab ...
+  gtk_window_set_modal({%H-}PGtkWindow(F.Handle), True);  // ... and take it again, now above the others
+  F.BringToFront;  // show it above the other windows
+  {$ENDIF}
 end;
 
 { Shows the list of file name tokens. }
@@ -1344,6 +1360,7 @@ end;
 function TJpegProfileForm.PickProfile(const Start: string; out FileName: string): Boolean;
 var
   OD: TOpenDialog;  // OD: file chooser
+  Ok: Boolean;  // Ok: a file was chosen
 begin
   Result := False;  // nothing chosen yet
   FileName := '';  // no file yet
@@ -1357,7 +1374,9 @@ begin
     {$ELSE}
     else if DirectoryExists('/usr/share/color/icc') then OD.InitialDir := '/usr/share/color/icc'  // the usual Linux place
     {$ENDIF};
-    if not OD.Execute then Exit;  // canceled
+    Ok := OD.Execute;  // ask
+    ReviveAfterChooser(Self);  // GTK 2: make this window take input again
+    if not Ok then Exit;  // canceled
     if not IsIccProfile(OD.FileName) then  // not a profile
     begin
       MessageDlg('JPEG auto profile', 'This file is not an ICC color profile:'#13#10 + OD.FileName, mtError, [mbOK], 0);  // tell the user
@@ -1564,15 +1583,16 @@ type
     chkPlugin: TCheckBox;  // plug-in on or off
     lblPluginInfo: TLabel;  // plug-in information label
     imgPluginLogo: TImage;  // logo of a plug-in library
-    procedure BuildPathTab(TS: TTabSheet);  // builds the Download Path tab
-    procedure BuildGeneralTab(TS: TTabSheet);  // builds the General tab
-    procedure BuildFileTab(TS: TTabSheet);  // builds the File Handling tab
+    function AddPage(const ACaption: string; Scroll: Boolean): TWinControl;  // adds a tab; returns where its controls go
+    procedure BuildPathTab(TS: TWinControl);  // builds the Download Path tab
+    procedure BuildGeneralTab(TS: TWinControl);  // builds the General tab
+    procedure BuildFileTab(TS: TWinControl);  // builds the File Handling tab
     procedure DupChange(Sender: TObject);  // keeps the duplicate options exclusive
     procedure LrChange(Sender: TObject);  // enables "keep the .lrprev file as well" when .jpg is chosen
-    procedure BuildAutomationTab(TS: TTabSheet);  // builds the Automation tab
-    procedure BuildCustomTab(TS: TTabSheet);  // builds the Custom button tab
-    procedure BuildMappingTab(TS: TTabSheet);  // builds the Mapping tab
-    procedure BuildPluginTab(TS: TTabSheet);  // builds the Plug-ins tab
+    procedure BuildAutomationTab(TS: TWinControl);  // builds the Automation tab
+    procedure BuildCustomTab(TS: TWinControl);  // builds the Custom button tab
+    procedure BuildMappingTab(TS: TWinControl);  // builds the Mapping tab
+    procedure BuildPluginTab(TS: TWinControl);  // builds the Plug-ins tab
     procedure LoadValues;  // fills the controls from the settings
     procedure FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);  // handles F1
     procedure ExampleChange(Sender: TObject);  // refreshes the example name
@@ -1619,6 +1639,7 @@ constructor TPrefsForm.CreatePrefs(AOwner: TComponent; AS_: TAppSettings; const 
 var
   BtnOK, BtnCancel: TButton;  // BtnOK, BtnCancel: dialog buttons
   Extra: Integer;  // Extra: pixels the dialog is widened by (Linux: so that all tab headings fit on one row)
+  Shrink: Integer;  // Shrink: pixels the dialog is made shorter by on a small screen (the tabs scroll then)
   {$IFDEF UNIX}
   Bmp: TBitmap;  // Bmp: bitmap whose canvas measures the heading texts
   NeedW, I: Integer;  // NeedW: width all headings need; I: loop counter
@@ -1632,26 +1653,27 @@ begin
   FPlugins := TStringList.Create;  // list of plug-ins
   FPluginOpts := TStringList.Create;  // list of plug-in options
   InitDialog(Self, 'Preferences', 520, 722);  // set the common dialog properties
+  // a small screen (for example 1366 x 768) cannot show the whole height: the dialog is made
+  // shorter, so that OK and Cancel stay on the screen, and every tab gets a vertical scroll bar
+  Shrink := Max(0, ClientHeight - (Screen.WorkAreaHeight - 60));  // 60 pixels for the title bar and the frame
+  if Shrink > 0 then
+  begin
+    ClientHeight := ClientHeight - Shrink;  // shorter dialog
+    Position := poWorkAreaCenter;  // in the middle of the work area, so that no part is off the screen
+  end;
   KeyPreview := True;  // let the form see keys first
   OnKeyDown := @FormKeyDown;  // handle the F1 key
   PC := TPageControl.Create(Self);  // create the tab control
   PC.Parent := Self;  // place it on the form
-  PC.SetBounds(8, 8, 504, 666);  // position and size it
+  PC.SetBounds(8, 8, 504, 666 - Shrink);  // position and size it
   PC.MultiLine := True;  // wrap the tab headings when they do not fit on one row
-  BuildPathTab(PC.AddTabSheet);  // build the first tab
-  PC.Pages[0].Caption := 'Download Path';  // tab title
-  BuildGeneralTab(PC.AddTabSheet);  // build the second tab
-  PC.Pages[1].Caption := 'General';  // tab title
-  BuildFileTab(PC.AddTabSheet);  // build the File Handling tab
-  PC.Pages[2].Caption := 'File Handling';  // tab title
-  BuildAutomationTab(PC.AddTabSheet);  // build the third tab
-  PC.Pages[3].Caption := 'Automation';  // tab title
-  BuildMappingTab(PC.AddTabSheet);  // build the fourth tab
-  PC.Pages[4].Caption := 'Mapping';  // tab title
-  BuildCustomTab(PC.AddTabSheet);  // build the fifth tab
-  PC.Pages[5].Caption := 'Custom Button';  // tab title
-  BuildPluginTab(PC.AddTabSheet);  // build the sixth tab
-  PC.Pages[6].Caption := 'Plug-ins';  // tab title
+  BuildPathTab(AddPage('Download Path', Shrink > 0));  // build the first tab
+  BuildGeneralTab(AddPage('General', Shrink > 0));  // build the second tab
+  BuildFileTab(AddPage('File Handling', Shrink > 0));  // build the File Handling tab
+  BuildAutomationTab(AddPage('Automation', Shrink > 0));  // build the third tab
+  BuildMappingTab(AddPage('Mapping', Shrink > 0));  // build the fourth tab
+  BuildCustomTab(AddPage('Custom Button', Shrink > 0));  // build the fifth tab
+  BuildPluginTab(AddPage('Plug-ins', Shrink > 0));  // build the sixth tab
   {$IFDEF UNIX}
   // GTK cannot wrap tab headings onto a second row (it shows scroll arrows instead), so the
   // dialog is widened until all headings fit on one row
@@ -1671,11 +1693,31 @@ begin
     PC.Width := PC.Width + Extra;  // wider tab control
   end;
   {$ENDIF}
-  BtnOK := MkButton(Self, 'OK', 340 + Extra, 684, 80, mrOK);  // OK button
+  BtnOK := MkButton(Self, 'OK', 340 + Extra, 684 - Shrink, 80, mrOK);  // OK button
   BtnOK.Default := True;  // OK is the default button
-  BtnCancel := MkButton(Self, 'Cancel', 430 + Extra, 684, 80, mrCancel);  // Cancel button
+  BtnCancel := MkButton(Self, 'Cancel', 430 + Extra, 684 - Shrink, 80, mrCancel);  // Cancel button
   BtnCancel.Cancel := True;  // Cancel reacts to Esc
   LoadValues;  // fill the controls from the settings
+end;
+
+{ Adds a tab with the given heading. Scroll: the controls go into a scroll box that fills the tab
+  (used when the dialog had to be made shorter than its controls need); otherwise onto the tab itself. }
+function TPrefsForm.AddPage(const ACaption: string; Scroll: Boolean): TWinControl;
+var
+  TS: TTabSheet;  // TS: the new tab
+  SB: TScrollBox;  // SB: scroll box on the tab
+begin
+  TS := PC.AddTabSheet;  // add the tab
+  TS.Caption := ACaption;  // tab title
+  Result := TS;  // the controls go onto the tab
+  if not Scroll then Exit;  // the whole tab fits
+  SB := TScrollBox.Create(Self);  // the scroll box
+  SB.Parent := TS;  // place it on the tab
+  SB.Align := alClient;  // fill the tab
+  SB.BorderStyle := bsNone;  // no extra frame inside the tab
+  SB.HorzScrollBar.Visible := False;  // the controls fit the width; only scroll up and down
+  SB.VertScrollBar.Tracking := True;  // move the contents while the bar is dragged
+  Result := SB;  // the controls go into the scroll box
 end;
 
 { Frees the lists owned by the dialog. }
@@ -1700,7 +1742,7 @@ end;
 { ---- Download Path ---- }
 
 { Builds the Download Path tab. }
-procedure TPrefsForm.BuildPathTab(TS: TTabSheet);
+procedure TPrefsForm.BuildPathTab(TS: TWinControl);
 const
   Col1 = '{d} - date'#13#10'{y} - 2-digit year'#13#10'{Y} - 4-digit year'#13#10 +  // token help, first column
          '{m} - month'#13#10'{b} - month (abbr.)'#13#10'{B} - full month'#13#10 +
@@ -1826,7 +1868,7 @@ end;
 { ---- General ---- }
 
 { Builds the General tab. }
-procedure TPrefsForm.BuildGeneralTab(TS: TTabSheet);
+procedure TPrefsForm.BuildGeneralTab(TS: TWinControl);
 var
   G: TGroupBox;  // G: group box for the image source
   Y: Integer;  // Y: vertical position of the next control
@@ -1889,7 +1931,7 @@ begin
 end;
 
 { Builds the File Handling tab (how downloaded files are named, copied and treated). }
-procedure TPrefsForm.BuildFileTab(TS: TTabSheet);
+procedure TPrefsForm.BuildFileTab(TS: TWinControl);
 var
   Y: Integer;  // Y: vertical position of the next control
 
@@ -1994,7 +2036,7 @@ end;
 { ---- Automation ---- }
 
 { Builds the Automation tab. }
-procedure TPrefsForm.BuildAutomationTab(TS: TTabSheet);
+procedure TPrefsForm.BuildAutomationTab(TS: TWinControl);
 begin
   MkWrap(TS, 'Use the settings below to enable automatic downloading of images when ' +  // explanation text
     'Downloader is run. Select "Prompt before starting auto sequence" if you want to be ' +
@@ -2044,7 +2086,7 @@ end;
 { ---- Custom button ---- }
 
 { Builds the Custom button tab. }
-procedure TPrefsForm.BuildCustomTab(TS: TTabSheet);
+procedure TPrefsForm.BuildCustomTab(TS: TWinControl);
 var
   G: TGroupBox;  // G: group box for the custom button
 begin
@@ -2091,7 +2133,7 @@ end;
 { ---- Mapping ---- }
 
 { Builds the Mapping tab. }
-procedure TPrefsForm.BuildMappingTab(TS: TTabSheet);
+procedure TPrefsForm.BuildMappingTab(TS: TWinControl);
 begin
   MkLabel(TS, 'Current camera model mappings for the {T8} and {T9} tokens:', 8, 6);  // label
   lbMaps := TListBox.Create(TS);  // create the list
@@ -2217,7 +2259,7 @@ end;
 { ---- Plug-ins ---- }
 
 { Builds the Plug-ins tab. }
-procedure TPrefsForm.BuildPluginTab(TS: TTabSheet);
+procedure TPrefsForm.BuildPluginTab(TS: TWinControl);
 begin
   lbPlugins := TListBox.Create(TS);  // create the list
   lbPlugins.Parent := TS;  // place it on the tab
