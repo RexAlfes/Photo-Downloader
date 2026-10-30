@@ -130,7 +130,7 @@ Re-evaluation runs after changes to destination, patterns, job code, profile or 
 | Backup plug-in | Removed from the Plug-ins list; replaced by the backup destination (see 3.8) |
 | Directory Maker plug-in | Done |
 | JPEG auto profile (built-in): ICC profile per camera model and a default, embedded into downloaded JPEGs without recompression (`uIccEmbed.pas`) | Done |
-| DNG Converter as program plug-ins (`plugins/dng-converter`: Adobe DNG Converter on Windows, dnglab on Windows and Linux); program plug-ins in general (`uExtPlugin.pas`, `.plugin.ini`) | Done – tested on Windows with a stand-in program and with the real converters (dnglab 0.8.0, Adobe DNG Converter 18.7: Nikon NEF and Canon CR2 to valid DNGs, raw kept, second run skipped); not yet tested inside a real download or on Linux |
+| DNG Converter as program plug-ins (`plugins/dng-converter`: Adobe DNG Converter on Windows, dnglab on Windows and Linux); program plug-ins in general (`uExtPlugin.pas`, `.plugin.ini`) | Done – tested on Windows with a stand-in program and with the real converters (dnglab 0.8.0, Adobe DNG Converter 18.7: Nikon NEF and Canon CR2 to valid DNGs, raw kept, second run skipped) and inside a real download (both plug-ins, build 9); not yet tested on Linux |
 | Plug-in steps after each file: on the downloaded copy only (never the backup or the original), in list order; a failed step switches its plug-in off and keeps the original from deletion | Done |
 | JPEG resolution plug-in | Open – listed only |
 | Launch external program after download | Partial – custom button with %f and %d, not {file} and {folder} |
