@@ -33,7 +33,7 @@ The repository contains a complete, working example: `plugins/example/example_pl
 
 Build on the system the library is meant for. Each system needs its own build, and cross compiling Windows <-> Linux is not used. Libraries must be 64-bit, like the program.
 
-**Step 2: install it.** Copy the file into a `plugins` folder:
+**Step 2: install it.** In Photo Downloader, open **File > Plug-ins…**, click **Install...** and choose the file: it is copied into the first folder below and listed switched off. Or copy the file into a `plugins` folder yourself and restart Photo Downloader:
 
 | System | Folders searched, in this order |
 |---|---|

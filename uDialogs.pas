@@ -29,6 +29,9 @@ procedure ShowImageProperties(Item: TImageItem);
 
 implementation
 
+uses
+  FileUtil, LazFileUtils;  // copying and deleting plug-in files
+
 const
   TokenHelpText =  // help text shown for the file name tokens
     '{d} - date (yyyymmdd)'#13#10 +
@@ -1478,6 +1481,7 @@ type
     edCurCam: TEdit;  // current camera box
     // Plug-ins
     lbPlugins: TListBox;  // list of plug-ins
+    btnPluginRemove: TButton;  // removes an installed plug-in (not for built-in ones)
     chkPlugin: TCheckBox;  // plug-in on or off
     lblPluginInfo: TLabel;  // plug-in information label
     imgPluginLogo: TImage;  // logo of a plug-in library
@@ -1516,6 +1520,10 @@ type
     procedure PluginUpClick(Sender: TObject);  // moves the plug-in up
     procedure PluginDownClick(Sender: TObject);  // moves the plug-in down
     procedure PluginSetupClick(Sender: TObject);  // opens the setup of the plug-in
+    procedure PluginInstallClick(Sender: TObject);  // copies a plug-in file into the plugins folder
+    procedure PluginRemoveClick(Sender: TObject);  // deletes the file of the selected plug-in
+    procedure PluginDrawItem(Control: TWinControl; Index: Integer; ARect: TRect;
+      State: TOwnerDrawState);  // draws switched-off plug-ins in gray
   public
     constructor CreatePrefs(AOwner: TComponent; AS_: TAppSettings; const ACamera: string);  // builds the dialog
     destructor Destroy; override;  // frees the lists
@@ -2136,8 +2144,14 @@ begin
   lbPlugins.Parent := TS;  // place it on the tab
   lbPlugins.SetBounds(8, 8, 380, 200);  // position and size it
   lbPlugins.OnClick := @PluginSelect;  // show the information when an entry is selected
+  lbPlugins.Style := lbOwnerDrawFixed;  // drawn by PluginDrawItem: switched-off plug-ins in gray
+  lbPlugins.ItemHeight := 20;  // room for one line of text
+  lbPlugins.OnDrawItem := @PluginDrawItem;  // draw each entry
   MkButton(TS, 'Up', 404, 8, 80).OnClick := @PluginUpClick;  // move up button
   MkButton(TS, 'Down', 404, 40, 80).OnClick := @PluginDownClick;  // move down button
+  MkButton(TS, 'Install...', 404, 112, 80).OnClick := @PluginInstallClick;  // install button
+  btnPluginRemove := MkButton(TS, 'Remove', 404, 144, 80);  // remove button
+  btnPluginRemove.OnClick := @PluginRemoveClick;  // remove the selected plug-in
   chkPlugin := MkCheck(TS, 'Enable plug-in', 8, 220);  // enable option
   chkPlugin.Width := 130;  // make room for the setup button
   chkPlugin.OnClick := @PluginToggle;  // toggle the plug-in when changed
@@ -2195,9 +2209,11 @@ begin
     begin
       chkPlugin.Checked := False;  // no entry selected
       lblPluginInfo.Caption := '';  // clear the information
+      btnPluginRemove.Enabled := False;  // nothing to remove
       Exit;
     end;
     Nm := FPlugins.Names[I];  // plug-in name
+    btnPluginRemove.Enabled := not IsBuiltInPlugin(Nm);  // built-in plug-ins cannot be removed
     chkPlugin.Checked := FPlugins.ValueFromIndex[I] = '1';  // enabled state
     P := FindLibPlugin(Nm);  // plug-in library with this key
     if P <> nil then  // a plug-in library
@@ -2303,6 +2319,161 @@ begin
   else
     FPlugins[I] := FPlugins.Names[I] + '=0';  // store disabled
   RefreshPlugins(I);  // redraw the list
+end;
+
+{ Draws one entry of the plug-in list: switched-on plug-ins in the normal text color (black),
+  switched-off ones in gray. }
+procedure TPrefsForm.PluginDrawItem(Control: TWinControl; Index: Integer; ARect: TRect;
+  State: TOwnerDrawState);
+var
+  C: TCanvas;  // C: the list's canvas
+  IsOn: Boolean;  // IsOn: the plug-in is switched on
+begin
+  C := lbPlugins.Canvas;  // draw on the list
+  IsOn := (Index >= 0) and (Index < FPlugins.Count) and (FPlugins.ValueFromIndex[Index] = '1');  // its state
+  if odSelected in State then  // the selected entry keeps the selection colors
+  begin
+    C.Brush.Color := clHighlight;  // selection background
+    C.Font.Color := clHighlightText;  // selection text
+  end
+  else
+  begin
+    C.Brush.Color := clWindow;  // normal background
+    if IsOn then C.Font.Color := clWindowText else C.Font.Color := clGrayText;  // black when on, gray when off
+  end;
+  C.FillRect(ARect);  // background
+  if (Index >= 0) and (Index < lbPlugins.Items.Count) then
+    C.TextOut(ARect.Left + 4, ARect.Top + (ARect.Bottom - ARect.Top - C.TextHeight('Ag')) div 2,
+      lbPlugins.Items[Index]);  // the text, centered in the line
+end;
+
+{ Installs a plug-in: copies a .plugin.ini file or a library into the plugins folder next to the
+  settings file and lists it switched off. Built-in plug-ins are part of the program and are never
+  installed this way. }
+procedure TPrefsForm.PluginInstallClick(Sender: TObject);
+var
+  OD: TOpenDialog;  // OD: chooser for the plug-in file
+  Src, Dst, Key, Err, Msg: string;  // Src: chosen file; Dst: its copy; Key: plug-in key; Err: problem; Msg: message
+  I: Integer;  // I: list index of the plug-in
+  P: TLibPlugin;  // P: a library with the same key
+  X: TExtPlugin;  // X: the installed program plug-in
+begin
+  OD := TOpenDialog.Create(Self);  // create the chooser
+  try
+    OD.Title := 'Install plug-in';  // window title
+    {$IFDEF WINDOWS}
+    OD.Filter := 'Plug-ins (*.plugin.ini;*.dll)|*.plugin.ini;*.dll|All files|*.*';  // plug-in files
+    {$ELSE}
+    OD.Filter := 'Plug-ins (*.plugin.ini;*.so)|*.plugin.ini;*.so|All files|*';  // plug-in files
+    {$ENDIF}
+    if not OD.Execute then Exit;  // nothing chosen
+    Src := OD.FileName;  // the chosen file
+  finally
+    OD.Free;  // free the chooser
+  end;
+  Key := PluginFileKey(Src);  // its key
+  if Key = '' then
+  begin
+    MessageDlg('Install plug-in', 'This is not a plug-in file for this system:'#13#10 + Src + #13#10#13#10 +
+      'Plug-ins are .plugin.ini files (program plug-ins) or ' +
+      {$IFDEF WINDOWS}'.dll'{$ELSE}'.so'{$ENDIF} + ' files (plug-in libraries).', mtError, [mbOK], 0);
+    Exit;
+  end;
+  if IsBuiltInPlugin(Key) then
+  begin
+    MessageDlg('Install plug-in', '"' + Key + '" is a built-in plug-in; it is part of the program and cannot be installed.',
+      mtError, [mbOK], 0);
+    Exit;
+  end;
+  P := FindLibPlugin(Key);  // a library with this name in use?
+  if (P <> nil) and P.Loaded then
+  begin
+    MessageDlg('Install plug-in', 'A plug-in library with this name is loaded:'#13#10 + P.FileName + #13#10#13#10 +
+      'Remove it first, then install the new file.', mtError, [mbOK], 0);
+    Exit;
+  end;
+  Dst := UserPluginFolder + ExtractFileName(Src);  // where it goes
+  if not SameText(ExpandFileNameUTF8(Src), ExpandFileNameUTF8(Dst)) then  // not already in the plugins folder
+  begin
+    if FileExistsUTF8(Dst) and (MessageDlg('Install plug-in', 'This plug-in is installed already:'#13#10 + Dst +
+      #13#10#13#10 + 'Replace it with the chosen file?', mtConfirmation, [mbYes, mbNo], 0) <> mrYes) then Exit;
+    ForceDirectoriesUTF8(UserPluginFolder);  // make the folder
+    if not CopyFile(Src, Dst, [cffOverwriteFile]) then  // copy the file
+    begin
+      MessageDlg('Install plug-in', 'The file cannot be copied to'#13#10 + Dst, mtError, [mbOK], 0);
+      Exit;
+    end;
+  end;
+  if not AddPluginFile(Dst, Key, Err) then  // list it
+  begin
+    MessageDlg('Install plug-in', 'The plug-in cannot be used: ' + Err + '.'#13#10 + Dst, mtError, [mbOK], 0);
+    Exit;
+  end;
+  I := FPlugins.IndexOfName(Key);  // listed before?
+  if I < 0 then
+  begin
+    FPlugins.Add(Key + '=0');  // new: listed switched off
+    I := FPlugins.Count - 1;
+  end
+  else
+    FPlugins[I] := Key + '=0';  // a replaced file is switched off until the user switches it on again
+  LogThumb('plug-in ' + Key + ': installed ' + Dst);  // log it
+  RefreshPlugins(I);  // show and select it
+  Msg := 'The plug-in was installed in'#13#10 + Dst + #13#10#13#10 + 'It is listed switched off. ';  // what happened
+  X := FindExtPlugin(Key);  // a program plug-in?
+  if (X <> nil) and (X.ProgramPath(PluginValues(FPluginOpts, Key)) = '') then
+    Msg := Msg + 'The program it runs was not found: install it, or choose it with Setup..., then tick "Enable plug-in".'
+  else
+    Msg := Msg + 'Tick "Enable plug-in" to use it.';
+  MessageDlg('Install plug-in', Msg, mtInformation, [mbOK], 0);  // tell the user
+end;
+
+{ Removes the selected plug-in: deletes its .plugin.ini or library file (a library is unloaded first).
+  Its stored values stay in the settings, so they are back when it is installed again. Built-in
+  plug-ins cannot be removed. }
+procedure TPrefsForm.PluginRemoveClick(Sender: TObject);
+var
+  I: Integer;  // I: selected entry
+  Nm, F, Err, Extra: string;  // Nm: plug-in key; F: its file; Err: problem; Extra: note about the program
+  X: TExtPlugin;  // X: a program plug-in
+  P: TLibPlugin;  // P: a library
+begin
+  I := lbPlugins.ItemIndex;  // selected entry
+  if I < 0 then Exit;  // nothing selected
+  Nm := FPlugins.Names[I];  // plug-in key
+  if IsBuiltInPlugin(Nm) then
+  begin
+    MessageDlg('Remove plug-in', 'Built-in plug-ins are part of the program and cannot be removed; switch it off instead.',
+      mtInformation, [mbOK], 0);
+    Exit;
+  end;
+  X := FindExtPlugin(Nm);  // a program plug-in?
+  P := FindLibPlugin(Nm);  // a library?
+  Extra := '';  // no note yet
+  if X <> nil then
+  begin
+    F := X.FileName;  // its .plugin.ini
+    Extra := #13#10#13#10 + 'The program it runs is not removed:'#13#10 + X.ProgramSetting(PluginValues(FPluginOpts, Nm));
+  end
+  else if P <> nil then
+    F := P.FileName  // its library file
+  else
+  begin
+    FPlugins.Delete(I);  // its file is gone already: drop the entry
+    RefreshPlugins(Min(I, FPlugins.Count - 1));
+    Exit;
+  end;
+  if MessageDlg('Remove plug-in', 'Remove this plug-in?'#13#10#13#10 + lbPlugins.Items[I] + #13#10#13#10 +
+    'Its file is deleted:'#13#10 + F + Extra + #13#10#13#10 +
+    'Its settings are kept, so they are back if you install it again.', mtConfirmation, [mbYes, mbNo], 0) <> mrYes then Exit;
+  if not RemovePluginFile(Nm, Err) then  // delete it
+  begin
+    MessageDlg('Remove plug-in', 'The plug-in was not removed: ' + Err + #13#10#13#10 +
+      'A plug-in in the folder next to the program may need administrator rights to delete.', mtError, [mbOK], 0);
+    Exit;
+  end;
+  FPlugins.Delete(I);  // drop it from the list
+  RefreshPlugins(Min(I, FPlugins.Count - 1));  // select the next entry
 end;
 
 { Moves the selected plug-in one place up. }
