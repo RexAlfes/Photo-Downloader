@@ -10,7 +10,7 @@ Read `docs/Specification_Current.md` first, then `docs/Continuation_Prompt.txt` 
 - Linux: `lazbuild -B --ws=gtk2 PhotoDownloader.lpi`. Use GTK 2: the GTK 3 widgetset of Lazarus 4.8 raised an Access Violation in the folder chooser and misplaced windows. Packages: `build-essential libgtk2.0-dev`.
 - Cross compiling Windows <-> Linux does not work. Compile on the system you are on, run the program, and report plainly what was and was not tested.
 - GitHub Actions (`.github/workflows/build.yml`) compiles Windows and Linux on every push.
-- The build number (`BuildNr` in `PhotoDownloader.lpi`) goes up by one on every compile. The IDE does this itself; `lazbuild` does not, so raise `BuildNr` by one before each `lazbuild` run. Commit the lpi with the other changes and never lower or revert the number.
+- The build number (`BuildNr` in `PhotoDownloader.lpi`) goes up by one on every compile. The IDE and `lazbuild` both do this themselves (AutoIncrementBuild): the program gets the number in the file, and the file then holds the next one. Do not raise it by hand. Pull before compiling; afterwards commit only the BuildNr line of the lpi (lazbuild also rewrites `LCLWidgetType` macro lines; keep those as committed) and push, so Windows and Linux count on from the same number. `linux/build.sh` does this on Linux. Never lower or revert the number.
 - Document and manual titles carry only the version without the build number (for example 0.1.1), never `0.1.1.1` or "build N".
 
 ## Versioning
