@@ -19,13 +19,38 @@
       <AutoIncrementBuild Value="True"/>
       <MinorVersionNr Value="1"/>
       <RevisionNr Value="3"/>
-      <BuildNr Value="6"/>
+      <BuildNr Value="10"/>
       <Attributes pvaPreRelease="True"/>
       <StringTable FileDescription="Photo Downloader" ProductName="Photo Downloader"/>
     </VersionInfo>
+    <MacroValues Count="18">
+      <Macro1 Name="LCLWidgetType" Value="gtk3"/>
+      <Macro2 Name="LCLWidgetType" Value="gtk3"/>
+      <Macro3 Name="LCLWidgetType" Value="gtk3"/>
+      <Macro4 Name="LCLWidgetType" Value="gtk3"/>
+      <Macro5 Name="LCLWidgetType" Value="gtk3"/>
+      <Macro6 Name="LCLWidgetType" Value="gtk3"/>
+      <Macro7 Name="LCLWidgetType" Value="gtk3"/>
+      <Macro8 Name="LCLWidgetType" Value="gtk2"/>
+      <Macro9 Name="LCLWidgetType" Value="gtk2"/>
+      <Macro10 Name="LCLWidgetType" Value="gtk2"/>
+      <Macro11 Name="LCLWidgetType" Value="gtk2"/>
+      <Macro12 Name="LCLWidgetType" Value="gtk2"/>
+      <Macro13 Name="LCLWidgetType" Value="gtk2"/>
+      <Macro14 Name="LCLWidgetType" Value="gtk2"/>
+      <Macro18 Name="LCLWidgetType" Value="gtk2"/>
+      <Macro19 Name="LCLWidgetType" Value="gtk2"/>
+      <Macro20 Name="LCLWidgetType" Value="gtk2"/>
+      <Macro21 Name="LCLWidgetType" Value="gtk2"/>
+    </MacroValues>
     <BuildModes>
       <Item Name="Default" Default="True"/>
       <Item Name="Release">
+        <MacroValues Count="3">
+          <Macro15 Name="LCLWidgetType" Value="gtk2"/>
+          <Macro16 Name="LCLWidgetType" Value="gtk2"/>
+          <Macro17 Name="LCLWidgetType" Value="gtk2"/>
+        </MacroValues>
         <CompilerOptions>
           <Version Value="11"/>
           <Target>
