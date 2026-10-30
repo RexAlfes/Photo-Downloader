@@ -36,13 +36,14 @@ One-time setup on each computer
   3. Get the code (once per computer; this creates the folder PhotoDownloader):
        git clone https://github.com/RexAlfes/Photo-Downloader PhotoDownloader
      GitHub asks you to sign in the first time you push (a browser window opens, or use a
-     personal access token as the password).
+     personal access token as the password; see "Signing in on Linux" below).
   4. Open PhotoDownloader.lpi in Lazarus as usual.
 
 The version number file (the one thing to watch)
 ------------------------------------------------
-Lazarus (the IDE and lazbuild) changes PhotoDownloader.lpi every time you compile: the build
-number goes up by one on its own. Let it, and commit the file with your other changes. Rules:
+The Lazarus IDE changes PhotoDownloader.lpi every time you compile: the build number goes up
+by one on its own. lazbuild alone does not; on Linux, linux/build.sh raises it for you. Let it,
+and commit the file with your other changes. Rules:
   * Always pull before you compile, and commit and push when you are done, so both computers
     count on from the same number.
   * If a pull still reports a conflict in PhotoDownloader.lpi, keep the higher BuildNr value,
@@ -66,6 +67,36 @@ commit, then tag it:
     git push origin v0.1.1.1
 Then on GitHub: Releases > Draft a new release > choose the tag, paste the release notes, attach
 the .exe / .zip / .tar.gz files (see "Git Instructions.txt").
+
+Signing in on Linux (username and password do not work)
+--------------------------------------------------------
+GitHub no longer accepts your account password on the command line. When git asks for
+"Password", it wants a PERSONAL ACCESS TOKEN instead:
+  1. On github.com: your picture (top right) > Settings > Developer settings >
+     Personal access tokens > Tokens (classic) > Generate new token (classic).
+     Note: "Linux computer"; Expiration: for example 90 days; tick the scope "repo"
+     (needed for the private plug-in repository too). Generate, then COPY the token
+     (it is shown only once).
+  2. Let git remember it, so you type it only once:
+       git config --global credential.helper store
+     (it is kept in ~/.git-credentials, readable only by you; "cache" instead of "store"
+     keeps it in memory for 15 minutes only).
+  3. git pull (or git push): Username = your GitHub user name, Password = paste the token.
+     Nothing is shown while you paste; press Enter.
+  If an old wrong password was stored, remove it first:  rm ~/.git-credentials
+  Alternative: install the GitHub command-line tool (sudo apt install gh), then
+  gh auth login  (choose HTTPS and "Login with a web browser") and  gh auth setup-git.
+
+GitHub Desktop on Linux: a pull that seems to change nothing
+--------------------------------------------------------------
+  * "Fetch origin" only LOOKS for new commits. When it then shows "Pull origin" with a
+    number, click it again: only Pull changes the files.
+  * Desktop may have opened another copy of the folder. Repository > Show in your File
+    Manager shows which folder it works on; it must be the folder you build in.
+  * The private plug-in folder (Private/PennDOT_UAS_Plugin) is a repository of its own. Add it
+    in Desktop separately (File > Add local repository) and pull it there as well.
+  * Check in a terminal, in the folder:  git status  and  git log --oneline -3
+    The newest line must match the newest commit on github.com.
 
 If something goes wrong
 -----------------------
