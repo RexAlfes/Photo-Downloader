@@ -1,6 +1,6 @@
 # Photo Downloader – Current Specification and Status
 
-**Version:** 0.1.2  **Date:** 29 Oct 2026  **License:** GNU GPL v3 or later
+**Version:** 0.1.3  **Date:** 29 Oct 2026  **License:** GNU GPL v3 or later
 
 ## 1. Purpose
 
@@ -321,6 +321,7 @@ Version numbers are major.minor.revision.build. Up to 0.1.0 build 57 only the bu
 | Build | Changes |
 |---|---|
 | 1–8 | Initial implementation from prototype application images and specification, compile and stability fixes, icon, GPL notice, date/thumbnail sync, EXIF author and copyright, RAW previews, throttled thumbnails |
+| 0.1.3.1 | Plug-in steps after each file (`RunPluginSteps`; a failed step keeps the file from deletion and switches the plug-in off); program plug-ins (`uExtPlugin.pas`, `.plugin.ini`) with DNG Converter plug-ins for Adobe DNG Converter and dnglab (`plugins/dng-converter`; program found at its usual place, on the PATH or next to the `.plugin.ini`); built-in JPEG auto profile (`uIccEmbed.pas`), JPEG resolution (`uJpegDpi.pas`) and Directory Maker documented; Plug-ins tab Install... / Remove, gray switched-off entries, version after the name; Preferences shorter with scrolling tabs on small screens; GTK 2: JPEG auto profile setup takes input again after its file chooser |
 | 0.1.2.1 | Plug-in libraries (DLL / .so, `uPlugins.pas`, interface 1 in `docs/Plugin_Developer_Manual.md`, example `plugins/example`): plug-in tokens, prompt window drawn from the library's fields (check boxes with folder tokens, Destination folder, Note, logo, version, Invalid fields in red), File > Plug-ins..., removed libraries leave the list, the Backup plug-in is removed; Download Selected and Download All buttons; extension tokens {E} {e} {ea}; user profiles keep plug-in settings, Save lists profiles and suggests the one in use, double-click loads, a download writes its path and plug-in values into the profile in use; Lightroom previews as .jpg (or both), names and dates from the Lightroom catalog (SQLite), .lrdata folders skipped by default; EXIF cache and disk thumbnail cache; Download Path tab taller for Linux; documents in .md, .docx and .odt (`docs/make_formats.py`) |
 | 0.1.1.1 | Linux builds use the GTK 2 widgetset (GTK 3 raised an Access Violation in the folder chooser and misplaced windows); main window centered after it exists and restored to its wanted height; splash closes at once on Linux; menu commands deferred on Linux; GitHub check builds Linux with GTK 2; Git two-computer guide, `.gitattributes`. |
 | 0.1.0.58 | One project file again (`PhotoDownloader.lpi`, no target system named, so it builds for the host); the build 57 Linux project file is removed. Right-click "Save .lrprev preview(s) as JPG..." (largest preview written unchanged as a .jpg in a chosen folder, never overwriting); four-digit year in the card date; text width beside the smallest thumbnail measured from the widest second line; long card names shown as first 8 + ... + last 8 characters. |
