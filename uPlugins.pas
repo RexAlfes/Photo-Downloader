@@ -59,6 +59,7 @@ type
     constructor Create(const AKey, AFileName: string);
     destructor Destroy; override;
     function Load(out Err: string): Boolean;  // loads the library and reads its information
+    procedure Unload;  // gives the library back (before its file is removed)
     function DisplayName: string;  // name shown on the Plug-ins tab
     function Description: string;  // description shown on the Plug-ins tab
     function Token(const Tok, Context: string; out Value: string): Boolean;  // value of one token
@@ -82,6 +83,19 @@ procedure SetPluginValues(Opts: TStrings; const Key, Values: string);
 function LineValue(const Lines, Key: string): string;
 { Switched-on library plug-ins that have prompt fields }
 function PromptPlugins(S: TAppSettings): TList;
+{ True for the names of the plug-ins built into the program (they cannot be installed or removed) }
+function IsBuiltInPlugin(const Name: string): Boolean;
+{ The plugins folder next to the settings file, where Install... puts plug-ins }
+function UserPluginFolder: string;
+{ Key of a plug-in file (<key>.plugin.ini, <key>.dll, lib<key>.so); '' when it is no plug-in file
+  for this system }
+function PluginFileKey(const FileName: string): string;
+{ Lists an installed plug-in file (already copied into a plugins folder); an entry with the same key
+  that is not loaded is replaced. False with Err when the file cannot be used. }
+function AddPluginFile(const FileName: string; out Key, Err: string): Boolean;
+{ Removes a plug-in: a library is unloaded first, then its file is deleted and its entry dropped.
+  False with Err when the file cannot be deleted (the entry then stays). }
+function RemovePluginFile(const Key: string; out Err: string): Boolean;
 
 implementation
 
@@ -252,6 +266,17 @@ begin
   Loaded := FToken <> nil;  // usable when it gives token values
   if not Loaded then Err := 'pd_token missing';  // tell why not
   Result := Loaded;  // done
+end;
+
+{ Gives the library back; its tokens are unknown afterwards. }
+procedure TLibPlugin.Unload;
+begin
+  if FLib <> NilHandle then UnloadLibrary(FLib);  // give the library back
+  FLib := NilHandle;  // not loaded
+  Loaded := False;  // not usable any more
+  FToken := nil;  // no functions
+  FCheck := nil;
+  Tokens.Clear;  // no tokens
 end;
 
 { Name shown on the Plug-ins tab: the library's own name, or the file name before loading. }
@@ -528,6 +553,94 @@ begin
     if (P <> nil) and P.Loaded and S.PluginEnabled(P.Key) and (Length(P.Fields) > 0) then
       Result.Add(P);  // it asks for values
   end;
+end;
+
+{ ---- installing and removing ---- }
+
+function UserPluginFolder: string;
+begin
+  Result := PluginFolderList[0];  // next to the settings file (the user can always write there)
+end;
+
+function PluginFileKey(const FileName: string): string;
+var
+  N: string;  // N: file name without folder
+begin
+  Result := '';  // not a plug-in file yet
+  N := ExtractFileName(FileName);  // file name
+  if SameText(Copy(N, Length(N) - 10, 11), '.plugin.ini') and (Length(N) > 11) then
+    Exit(Copy(N, 1, Length(N) - 11));  // external-program plug-in
+  {$IFDEF WINDOWS}
+  if SameText(ExtractFileExt(N), '.dll') then Result := LibKey(N);  // library
+  {$ELSE}
+  if SameText(ExtractFileExt(N), '.so') then Result := LibKey(N);  // library
+  {$ENDIF}
+end;
+
+function AddPluginFile(const FileName: string; out Key, Err: string): Boolean;
+var
+  X, OldX: TExtPlugin;  // X: the new program plug-in; OldX: an entry with the same key
+  P: TLibPlugin;  // P: an entry with the same key
+begin
+  Result := False;  // not yet
+  Err := '';  // no problem yet
+  Key := PluginFileKey(FileName);  // its key
+  if Key = '' then begin Err := 'not a plug-in file for this system'; Exit; end;
+  if IsBuiltInPlugin(Key) then begin Err := 'the name of a built-in plug-in'; Exit; end;
+  if Libs = nil then Libs := TList.Create;  // the lists (normally made by LoadPlugins)
+  if Exts = nil then Exts := TList.Create;
+  if SameText(Copy(FileName, Length(FileName) - 10, 11), '.plugin.ini') then  // a program plug-in
+  begin
+    try
+      X := TExtPlugin.Create(Key, FileName);  // read it
+    except
+      on E: Exception do begin Err := 'cannot be read (' + E.Message + ')'; Exit; end;
+    end;
+    OldX := FindExtPlugin(Key);  // installed before?
+    if OldX <> nil then
+    begin
+      Exts.Remove(OldX);  // replace it
+      OldX.Free;
+    end;
+    Exts.Add(X);  // list it
+  end
+  else
+  begin
+    P := FindLibPlugin(Key);  // installed before?
+    if P <> nil then
+    begin
+      if P.Loaded then begin Err := 'a library with this name is loaded; remove it first'; Exit; end;
+      P.FileName := FileName;  // the new file
+    end
+    else
+      Libs.Add(TLibPlugin.Create(Key, FileName));  // list it (loaded when it is switched on)
+  end;
+  Result := True;  // listed
+end;
+
+function RemovePluginFile(const Key: string; out Err: string): Boolean;
+var
+  X: TExtPlugin;  // X: the program plug-in
+  P: TLibPlugin;  // P: the library
+  F: string;  // F: its file
+begin
+  Result := False;  // not yet
+  Err := '';  // no problem yet
+  X := FindExtPlugin(Key);  // a program plug-in?
+  P := FindLibPlugin(Key);  // a library?
+  if X <> nil then F := X.FileName
+  else if P <> nil then F := P.FileName
+  else begin Err := 'not an installed plug-in'; Exit; end;
+  if P <> nil then P.Unload;  // a loaded file cannot be deleted on Windows
+  if FileExistsUTF8(F) and not DeleteFileUTF8(F) then  // for example a read-only folder next to the program
+  begin
+    Err := 'the file cannot be deleted: ' + F;
+    Exit;
+  end;
+  if X <> nil then begin Exts.Remove(X); X.Free; end;  // drop the entry
+  if P <> nil then begin Libs.Remove(P); P.Free; end;
+  LogThumb('plug-in ' + Key + ': removed ' + F);  // log it
+  Result := True;  // removed
 end;
 
 { Frees the library entries when the program ends. }
