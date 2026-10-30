@@ -867,6 +867,282 @@ begin
   if I > 0 then Result := ExtractFilePath(Copy(Result, 1, I - 1));  // the folders before it
 end;
 
+const
+  ListDescMax = 30;  // longest descriptor in an edited plug-in list
+  ListBadChars = [',', ':', '|', ';', '=', '{', '}'];  // characters that would break the stored list or a token
+
+type
+  { Editor for the list of a plug-in choice field with the flag "edit": each entry is a code (the value
+    that goes into folder names) and a short descriptor. Everything happens in this one window (no
+    further windows open on top of it, which GTK 2 handles badly three windows deep). }
+  TCodeListForm = class(TForm)
+  private
+    FCodes, FDescs: TStringList;  // the entries being edited
+    FDefCodes, FDefDescs: TStringArray;  // the plug-in's own list (for "Defaults")
+    FCodeLen: Integer;  // exact code length (0 = 1 to 16 characters)
+    lbItems: TListBox;  // the entries
+    edCode, edDesc: TEdit;  // code and descriptor of the entry being added or changed
+    lblMsg: TLabel;  // what is wrong with the typed entry (red)
+    procedure FillList(Sel: Integer);  // shows the entries
+    procedure ItemSelect(Sender: TObject);  // copies the selected entry into the boxes
+    procedure ItemSelChange(Sender: TObject; User: Boolean);  // the user selected another entry
+    function EntryOk(Skip: Integer): Boolean;  // checks the typed entry (Skip: index allowed to have the same code)
+    procedure AddClick(Sender: TObject);  // adds the typed entry
+    procedure ReplaceClick(Sender: TObject);  // replaces the selected entry with the typed one
+    procedure RemoveClick(Sender: TObject);  // removes the selected entry
+    procedure UpClick(Sender: TObject);  // moves the selected entry up
+    procedure DownClick(Sender: TObject);  // moves the selected entry down
+    procedure DefaultsClick(Sender: TObject);  // goes back to the plug-in's own list
+  public
+    constructor CreateEditor(AOwner: TComponent; const ACaption: string; ACodeLen: Integer;
+      const Codes, Descs, DefCodes, DefDescs: TStringArray);  // builds the window
+    destructor Destroy; override;  // frees the lists
+    procedure GetList(out Codes, Descs: TStringArray);  // the edited entries
+  end;
+
+{ Builds the window: the list with its buttons on the right, the code and descriptor boxes below. }
+constructor TCodeListForm.CreateEditor(AOwner: TComponent; const ACaption: string; ACodeLen: Integer;
+  const Codes, Descs, DefCodes, DefDescs: TStringArray);
+var
+  I: Integer;  // I: entry index
+  Lab: TLabel;  // Lab: a box label
+  CodeHint: string;  // CodeHint: the rule for codes, shown in the label
+begin
+  inherited CreateNew(AOwner);  // create the form without a resource file
+  InitDialog(Self, 'Edit list - ' + ACaption, 470, 384);  // set the common dialog properties
+  FCodeLen := ACodeLen;  // exact code length (0 = free)
+  FDefCodes := DefCodes;  // the plug-in's own list
+  FDefDescs := DefDescs;
+  FCodes := TStringList.Create;  // the entries being edited
+  FDescs := TStringList.Create;
+  for I := 0 to High(Codes) do
+  begin
+    FCodes.Add(Codes[I]);  // code
+    if I <= High(Descs) then FDescs.Add(Descs[I]) else FDescs.Add('');  // descriptor
+  end;
+  Lab := MkLabel(Self, '&Entries:', 10, 10);  // list label
+  lbItems := TListBox.Create(Self);  // the entries
+  lbItems.Parent := Self;  // place it on the form
+  lbItems.SetBounds(10, 30, 320, 200);  // position and size it
+  lbItems.OnSelectionChange := @ItemSelChange;  // a click or an arrow key copies the entry into the boxes
+  Lab.FocusControl := lbItems;  // Alt+E moves to the list
+  MkButton(Self, 'Move &up', 340, 30, 120).OnClick := @UpClick;  // move up
+  MkButton(Self, 'Move &down', 340, 62, 120).OnClick := @DownClick;  // move down
+  MkButton(Self, '&Remove', 340, 94, 120).OnClick := @RemoveClick;  // remove
+  MkButton(Self, 'De&faults', 340, 198, 120).OnClick := @DefaultsClick;  // the plug-in's own list
+  if FCodeLen > 0 then CodeHint := Format('&Code (%d letters or digits):', [FCodeLen])
+  else CodeHint := '&Code (letters or digits):';
+  Lab := MkLabel(Self, CodeHint, 10, 242);  // code label
+  edCode := MkEdit(Self, 10, 262, 180);  // the code
+  edCode.CharCase := ecUppercase;  // codes are capitals
+  if FCodeLen > 0 then edCode.MaxLength := FCodeLen else edCode.MaxLength := 16;  // no longer than allowed
+  Lab.FocusControl := edCode;  // Alt+C moves to the code
+  Lab := MkLabel(Self, Format('De&scriptor (up to %d characters):', [ListDescMax]), 200, 242);  // descriptor label
+  edDesc := MkEdit(Self, 200, 262, 260);  // the descriptor
+  edDesc.MaxLength := ListDescMax;  // short
+  Lab.FocusControl := edDesc;  // Alt+S moves to the descriptor
+  MkButton(Self, '&Add', 10, 294, 100).OnClick := @AddClick;  // add the typed entry
+  MkButton(Self, 'Re&place selected', 118, 294, 140).OnClick := @ReplaceClick;  // replace the selected entry
+  lblMsg := MkWrap(Self, '', 10, 324, 450, 20);  // what is wrong
+  lblMsg.Font.Color := RGBToColor(160, 0, 0);  // dark red (readable on the normal background)
+  MkButton(Self, 'OK', 290, 350, 80, mrOK).Default := True;  // OK button, also the default button
+  MkButton(Self, 'Cancel', 380, 350, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
+  FillList(0);  // show the entries
+  ItemSelect(nil);  // and the first one in the boxes
+end;
+
+{ Frees the lists. }
+destructor TCodeListForm.Destroy;
+begin
+  FCodes.Free;  // free the codes
+  FDescs.Free;  // free the descriptors
+  inherited Destroy;  // run the inherited destructor
+end;
+
+{ Shows the entries as "CODE - Descriptor" and selects one. }
+procedure TCodeListForm.FillList(Sel: Integer);
+var
+  I: Integer;  // I: entry index
+begin
+  lbItems.Items.BeginUpdate;  // no flicker
+  try
+    lbItems.Items.Clear;  // empty the list
+    for I := 0 to FCodes.Count - 1 do lbItems.Items.Add(FCodes[I] + ' - ' + FDescs[I]);  // one entry
+  finally
+    lbItems.Items.EndUpdate;  // show it
+  end;
+  if Sel >= lbItems.Items.Count then Sel := lbItems.Items.Count - 1;  // the list got shorter
+  lbItems.ItemIndex := Sel;  // select it
+end;
+
+{ Copies the selected entry into the code and descriptor boxes, so it can be changed. }
+procedure TCodeListForm.ItemSelect(Sender: TObject);
+begin
+  lblMsg.Caption := '';  // no message
+  if lbItems.ItemIndex < 0 then Exit;  // nothing selected
+  edCode.Text := FCodes[lbItems.ItemIndex];  // its code
+  edDesc.Text := FDescs[lbItems.ItemIndex];  // its descriptor
+end;
+
+{ The user selected another entry (mouse or keyboard): show it in the boxes. }
+procedure TCodeListForm.ItemSelChange(Sender: TObject; User: Boolean);
+begin
+  if User then ItemSelect(Sender);  // not when the program changed the selection
+end;
+
+{ Checks the typed entry; shows what is wrong and returns False. Skip: the index of the entry that may
+  keep the same code (the one being replaced), -1 when adding. }
+function TCodeListForm.EntryOk(Skip: Integer): Boolean;
+var
+  C, D: string;  // C: code; D: descriptor
+  Ch: Char;  // Ch: one character
+  I: Integer;  // I: entry index
+begin
+  Result := False;  // not checked yet
+  C := UpperCase(Trim(edCode.Text));  // the code in capitals
+  D := Trim(edDesc.Text);  // the descriptor
+  if (FCodeLen > 0) and (Length(C) <> FCodeLen) then
+    lblMsg.Caption := Format('The code needs exactly %d letters or digits.', [FCodeLen])
+  else if C = '' then
+    lblMsg.Caption := 'Type a code.'
+  else if D = '' then
+    lblMsg.Caption := 'Type a short descriptor.'
+  else
+  begin
+    for Ch in C do
+      if not (Ch in ['A'..'Z', '0'..'9']) then
+      begin
+        lblMsg.Caption := 'The code may only hold the letters A to Z and the digits 0 to 9.';
+        Exit;
+      end;
+    for Ch in D do
+      if Ch in ListBadChars then
+      begin
+        lblMsg.Caption := 'The descriptor may not hold these characters: , : | ; = { }';
+        Exit;
+      end;
+    for I := 0 to FCodes.Count - 1 do
+      if (I <> Skip) and (FCodes[I] = C) then
+      begin
+        lblMsg.Caption := 'The code ' + C + ' is in the list already.';
+        Exit;
+      end;
+    lblMsg.Caption := '';  // all right
+    edCode.Text := C;  // cleaned up
+    edDesc.Text := D;
+    Result := True;
+  end;
+end;
+
+{ Adds the typed entry at the end of the list. }
+procedure TCodeListForm.AddClick(Sender: TObject);
+begin
+  if not EntryOk(-1) then Exit;  // something is wrong (the message says what)
+  FCodes.Add(edCode.Text);  // the code
+  FDescs.Add(edDesc.Text);  // the descriptor
+  FillList(FCodes.Count - 1);  // show it, selected
+end;
+
+{ Replaces the selected entry with the typed one. }
+procedure TCodeListForm.ReplaceClick(Sender: TObject);
+var
+  I: Integer;  // I: selected entry
+begin
+  I := lbItems.ItemIndex;  // selected entry
+  if I < 0 then
+  begin
+    lblMsg.Caption := 'Select the entry to replace first.';
+    Exit;
+  end;
+  if not EntryOk(I) then Exit;  // something is wrong
+  FCodes[I] := edCode.Text;  // new code
+  FDescs[I] := edDesc.Text;  // new descriptor
+  FillList(I);  // show it
+end;
+
+{ Removes the selected entry (the list keeps at least one). }
+procedure TCodeListForm.RemoveClick(Sender: TObject);
+var
+  I: Integer;  // I: selected entry
+begin
+  I := lbItems.ItemIndex;  // selected entry
+  if I < 0 then Exit;  // nothing selected
+  if FCodes.Count <= 1 then
+  begin
+    lblMsg.Caption := 'The list needs at least one entry.';
+    Exit;
+  end;
+  FCodes.Delete(I);  // remove the code
+  FDescs.Delete(I);  // and its descriptor
+  FillList(I);  // show the rest
+  ItemSelect(nil);  // the new selection in the boxes
+end;
+
+{ Moves the selected entry one place up. }
+procedure TCodeListForm.UpClick(Sender: TObject);
+var
+  I: Integer;  // I: selected entry
+begin
+  I := lbItems.ItemIndex;  // selected entry
+  if I <= 0 then Exit;  // first already, or nothing selected
+  FCodes.Exchange(I, I - 1);  // swap the codes
+  FDescs.Exchange(I, I - 1);  // and the descriptors
+  FillList(I - 1);  // show it
+end;
+
+{ Moves the selected entry one place down. }
+procedure TCodeListForm.DownClick(Sender: TObject);
+var
+  I: Integer;  // I: selected entry
+begin
+  I := lbItems.ItemIndex;  // selected entry
+  if (I < 0) or (I >= FCodes.Count - 1) then Exit;  // last already, or nothing selected
+  FCodes.Exchange(I, I + 1);  // swap the codes
+  FDescs.Exchange(I, I + 1);  // and the descriptors
+  FillList(I + 1);  // show it
+end;
+
+{ Goes back to the plug-in's own list. }
+procedure TCodeListForm.DefaultsClick(Sender: TObject);
+var
+  I: Integer;  // I: entry index
+begin
+  FCodes.Clear;  // empty the lists
+  FDescs.Clear;
+  for I := 0 to High(FDefCodes) do
+  begin
+    FCodes.Add(FDefCodes[I]);  // code
+    if I <= High(FDefDescs) then FDescs.Add(FDefDescs[I]) else FDescs.Add('');  // descriptor
+  end;
+  FillList(0);  // show them
+  ItemSelect(nil);  // the first one in the boxes
+end;
+
+{ The edited entries. }
+procedure TCodeListForm.GetList(out Codes, Descs: TStringArray);
+var
+  I: Integer;  // I: entry index
+begin
+  Codes := nil;  // nothing yet
+  Descs := nil;
+  SetLength(Codes, FCodes.Count);  // room for them
+  SetLength(Descs, FCodes.Count);
+  for I := 0 to FCodes.Count - 1 do
+  begin
+    Codes[I] := FCodes[I];  // code
+    Descs[I] := FDescs[I];  // descriptor
+  end;
+end;
+
+{ The descriptor of a list entry: its label without a leading "CODE - " (the plug-in's own labels often
+  repeat the code; the window adds it again when it shows the entry). }
+function ListDescriptor(const Code, LabelText: string): string;
+begin
+  Result := LabelText;  // the whole label
+  if SameText(Copy(Result, 1, Length(Code) + 3), Code + ' - ') then Delete(Result, 1, Length(Code) + 3);  // without the code
+  Result := Trim(Result);  // no blanks around it
+end;
+
 type
   { Window that asks for the values of a plug-in library. It is drawn from the library's field list;
     the library checks the values (pd_check) and returns a preview, an error text and values to set. }
@@ -878,6 +1154,8 @@ type
     FChanged: string;  // key of the field changed last
     FNormal: string;  // normalized values from the last check (Value.<key>= lines)
     FDestDir: string;  // download folder template (changed by "Destination folder...")
+    FVals, FLabs: array of TStringArray;  // list entries of each field: values and the texts shown (an edited list replaces the plug-in's)
+    FEdited: array of Boolean;  // True when the field's list was edited by the user (stored as List.<key>=)
     lblDest: TLabel;  // shows the download folder template
     lblPreview, lblError: TLabel;  // preview and error text
     BtnOK: TButton;  // OK button (only enabled when the values are valid)
@@ -889,6 +1167,9 @@ type
     procedure ApplyFolderFields;  // adds or removes the folder tokens of check fields at the end of the download path
     function DestTemplate: string;  // the plug-in's suggested folders, with this system's separators
     function UsesLayout(const Rest: string): Boolean;  // True when the token part keeps the plug-in's main folder token
+    procedure SetList(I: Integer; const Codes, Descs: TStringArray);  // uses an edited list for field I
+    function ListLines: string;  // List.<key>= lines of the edited lists
+    procedure ListClick(Sender: TObject);  // edits the list of a field
   public
     constructor CreatePrompt(AOwner: TComponent; P: TLibPlugin; const Values, DestDir: string);  // builds the window
     property DestDir: string read FDestDir;  // the download folder template after the window closed
@@ -909,6 +1190,10 @@ var
   I, J, Y, HeadH, LabW, CtlX, W: Integer;  // I, J: loop counters; Y: row position; HeadH: header height; LabW: widest label; CtlX: left edge of the controls; W: window width
   Cb: TComboBox;  // Cb: a list field
   V, Fnt, Acc: string;  // V: stored value; Fnt: font name; Acc: accent color (hex RRGGBB)
+  EditW: Integer;  // EditW: room for the "Edit list..." buttons (0 when no field has one)
+  Btn: TButton;  // Btn: an "Edit list..." button
+  Codes, Descs: TStringArray;  // Codes, Descs: a stored edited list
+  Ent, Pair: TStringArray;  // Ent: entries of a stored list; Pair: code and descriptor of one entry
 begin
   inherited CreateNew(AOwner);  // create the form without a resource file
   FPlugin := P;  // remember the plug-in
@@ -968,8 +1253,34 @@ begin
     Lab.Alignment := taRightJustify;  // text against the right edge
     Lab.SetBounds(12, Y + I * 32 + 3, LabW, Lab.Height);  // same right edge for every label
   end;
-  W := Max(W, CtlX + CtlW + 14);  // window width
+  EditW := 0;  // no "Edit list..." button yet
+  for I := 0 to High(P.Fields) do
+    if P.Fields[I].Editable and (P.Fields[I].Kind <> 'check') and (P.Fields[I].Kind <> 'text') then EditW := 100;  // room for one
+  W := Max(W, CtlX + CtlW + 14 + EditW);  // window width
   SetLength(FCtrls, Length(P.Fields));  // one control per field
+  SetLength(FVals, Length(P.Fields));  // list entries per field
+  SetLength(FLabs, Length(P.Fields));
+  SetLength(FEdited, Length(P.Fields));
+  for I := 0 to High(P.Fields) do  // every field: the plug-in's list, or the list the user edited
+  begin
+    FVals[I] := Copy(P.Fields[I].Values);  // the plug-in's values
+    FLabs[I] := Copy(P.Fields[I].Labels);  // and their texts
+    FEdited[I] := False;  // not edited
+    V := LineValue(Values, 'List.' + P.Fields[I].Key);  // a stored edited list: CODE:Descriptor,CODE:Descriptor
+    if not P.Fields[I].Editable or (V = '') then Continue;  // none
+    Codes := nil;  // nothing yet
+    Descs := nil;
+    Ent := V.Split([',']);  // the entries
+    SetLength(Codes, Length(Ent));
+    SetLength(Descs, Length(Ent));
+    for J := 0 to High(Ent) do
+    begin
+      Pair := Ent[J].Split([':'], 2);  // code and descriptor
+      Codes[J] := Trim(Pair[0]);  // code
+      if Length(Pair) > 1 then Descs[J] := Trim(Pair[1]) else Descs[J] := '';  // descriptor
+    end;
+    if Length(Codes) > 0 then SetList(I, Codes, Descs);  // use it
+  end;
   for I := 0 to High(P.Fields) do  // every field
   begin
     if P.Fields[I].Kind = 'check' then  // on or off
@@ -990,9 +1301,15 @@ begin
       if P.Fields[I].Kind = 'choice' then Cb.Style := csDropDownList;  // only the listed values
       if P.Fields[I].Upper then Cb.CharCase := ecUppercase;  // capitals only
       Cb.DropDownCount := 20;  // show many entries
-      for J := 0 to High(P.Fields[I].Labels) do Cb.Items.Add(P.Fields[I].Labels[J]);  // the entries
+      for J := 0 to High(FLabs[I]) do Cb.Items.Add(FLabs[I][J]);  // the entries (an edited list when there is one)
       Cb.OnChange := @FieldChange;  // check on every change
       FCtrls[I] := Cb;  // remember it
+      if P.Fields[I].Editable then  // the user may edit the list
+      begin
+        Btn := MkButton(Self, 'Edit list...', CtlX + CtlW + 6, Y - 1, 94);  // the button right of the field
+        Btn.Tag := I;  // field index
+        Btn.OnClick := @ListClick;  // opens the list editor
+      end;
     end;
     FCtrls[I].Tag := I;  // field index
     V := LineValue(Values, P.Fields[I].Key);  // stored value
@@ -1006,7 +1323,7 @@ begin
   begin
     Lab := MkWrap(Self, P.Info.Values['Note'], 12, Y + 4, W - 24, 48);  // the reminder under the fields
     Lab.Alignment := taCenter;  // centered
-    Lab.Font.Color := clRed;  // in red, so it is noticed
+    Lab.Font.Color := RGBToColor(160, 0, 0);  // dark red, so it is noticed and still easy to read (contrast above 4.5:1)
     Inc(Y, 54);  // room for it
   end;
   if Head <> nil then Head.SetBounds(0, 0, W, HeadH - Ord(Bar <> nil) * 6);  // header over the full width
@@ -1014,7 +1331,7 @@ begin
   lblPreview := MkLabel(Self, '', 12, Y + 6);  // preview of the result
   lblPreview.Font.Style := [fsBold];  // bold
   lblError := MkWrap(Self, '', 12, Y + 28, W - 24, 36);  // error text
-  lblError.Font.Color := clRed;  // red
+  lblError.Font.Color := RGBToColor(160, 0, 0);  // dark red (contrast above 4.5:1)
   Inc(Y, 72);  // room for preview and error
   if P.Info.Values['DestFolder'] = '1' then  // the plug-in lets the user choose the destination here
   begin
@@ -1032,7 +1349,7 @@ begin
   if (Head <> nil) and (P.Info.Values['Version'] <> '') then  // and at the top right of the header
   begin
     Lab := MkLabel(Head, 'Version ' + P.Info.Values['Version'], 0, 0);  // version text
-    Lab.Font.Color := clGray;  // quiet
+    Lab.Font.Color := RGBToColor(96, 96, 96);  // quiet dark gray (contrast above 4.5:1 on white)
     Lab.SetBounds(W - Canvas.TextWidth(Lab.Caption) - 18, 18, Lab.Width, Lab.Height);  // top right, inside the clear space
   end;
   // a download path without the plug-in's layout (for example only ...\{UAS.Media}\) gets it back
@@ -1083,8 +1400,8 @@ begin
   if FCtrls[I] is TCheckBox then Exit(IntToStr(Ord(TCheckBox(FCtrls[I]).Checked)));  // 1 = checked, 0 = not
   if FCtrls[I] is TEdit then Exit(TEdit(FCtrls[I]).Text);  // typed text
   Cb := TComboBox(FCtrls[I]);  // list box
-  if (Cb.ItemIndex >= 0) and (Cb.Text = Cb.Items[Cb.ItemIndex]) then  // an entry of the list
-    Result := FPlugin.Fields[I].Values[Cb.ItemIndex]  // its value
+  if (Cb.ItemIndex >= 0) and (Cb.ItemIndex <= High(FVals[I])) and (Cb.Text = Cb.Items[Cb.ItemIndex]) then  // an entry of the list
+    Result := FVals[I][Cb.ItemIndex]  // its value
   else
     Result := Cb.Text;  // typed text (combo fields)
 end;
@@ -1106,14 +1423,100 @@ begin
     Exit;
   end;
   Cb := TComboBox(FCtrls[I]);  // list box
-  for J := 0 to High(FPlugin.Fields[I].Values) do  // look for the value
-    if SameText(FPlugin.Fields[I].Values[J], V) then
+  for J := 0 to High(FVals[I]) do  // look for the value
+    if SameText(FVals[I][J], V) then
     begin
       Cb.ItemIndex := J;  // select it
       Exit;
     end;
   Cb.ItemIndex := -1;  // not listed
   if Cb.Style <> csDropDownList then Cb.Text := V;  // combo fields show the text
+end;
+
+{ Uses an edited list for field I: the codes are the values, "CODE - Descriptor" is shown. }
+procedure TPluginPromptForm.SetList(I: Integer; const Codes, Descs: TStringArray);
+var
+  J: Integer;  // J: entry index
+begin
+  FVals[I] := Copy(Codes);  // the values
+  SetLength(FLabs[I], Length(Codes));  // room for the texts
+  for J := 0 to High(Codes) do
+    if (J <= High(Descs)) and (Descs[J] <> '') then FLabs[I][J] := Codes[J] + ' - ' + Descs[J]
+    else FLabs[I][J] := Codes[J];  // a code without descriptor
+  FEdited[I] := True;  // stored with the values
+end;
+
+{ The List.<key>= lines of the edited lists (CODE:Descriptor,CODE:Descriptor). }
+function TPluginPromptForm.ListLines: string;
+var
+  I, J: Integer;  // I: field index; J: entry index
+  S: string;  // S: one list
+begin
+  Result := '';  // nothing yet
+  for I := 0 to High(FEdited) do
+  begin
+    if not FEdited[I] then Continue;  // the plug-in's own list
+    S := '';  // build the list
+    for J := 0 to High(FVals[I]) do
+    begin
+      if S <> '' then S := S + ',';  // separator
+      S := S + FVals[I][J] + ':' + ListDescriptor(FVals[I][J], FLabs[I][J]);  // one entry
+    end;
+    Result := Result + 'List.' + FPlugin.Fields[I].Key + '=' + S + LineEnding;  // the line
+  end;
+end;
+
+{ Edits the list of a field (button "Edit list..."): code and short descriptor per entry. The value
+  chosen in the field stays chosen when its code is still in the list. }
+procedure TPluginPromptForm.ListClick(Sender: TObject);
+var
+  I, J: Integer;  // I: field index; J: entry index
+  Cur: string;  // Cur: the value chosen now
+  Codes, Descs, DefDescs: TStringArray;  // Codes, Descs: the list now; DefDescs: descriptors of the plug-in's list
+  F: TCodeListForm;  // F: the editor
+  Cb: TComboBox;  // Cb: the field
+  Same: Boolean;  // Same: the edited list is the plug-in's own list
+begin
+  I := TComponent(Sender).Tag;  // which field
+  Cur := FieldValue(I);  // keep the choice
+  Codes := Copy(FVals[I]);  // the list now
+  Descs := nil;
+  SetLength(Descs, Length(Codes));
+  for J := 0 to High(Codes) do Descs[J] := ListDescriptor(Codes[J], FLabs[I][J]);  // descriptors without the code
+  DefDescs := nil;
+  SetLength(DefDescs, Length(FPlugin.Fields[I].Values));
+  for J := 0 to High(DefDescs) do
+    DefDescs[J] := ListDescriptor(FPlugin.Fields[I].Values[J], FPlugin.Fields[I].Labels[J]);  // the plug-in's descriptors
+  F := TCodeListForm.CreateEditor(Self, FPlugin.Fields[I].Caption, FPlugin.Fields[I].CodeLen, Codes, Descs,
+    FPlugin.Fields[I].Values, DefDescs);  // build the editor
+  try
+    if F.ShowModal <> mrOK then Exit;  // canceled
+    F.GetList(Codes, Descs);  // the edited list
+  finally
+    F.Free;  // free the editor
+  end;
+  Same := Length(Codes) = Length(FPlugin.Fields[I].Values);  // the plug-in's own list again?
+  for J := 0 to High(Codes) do
+    if Same and ((Codes[J] <> FPlugin.Fields[I].Values[J]) or (Descs[J] <> DefDescs[J])) then Same := False;
+  if Same then  // nothing of the user's: the plug-in's list (a newer plug-in version may change it)
+  begin
+    FVals[I] := Copy(FPlugin.Fields[I].Values);
+    FLabs[I] := Copy(FPlugin.Fields[I].Labels);
+    FEdited[I] := False;
+  end
+  else
+    SetList(I, Codes, Descs);  // use the edited list
+  Cb := TComboBox(FCtrls[I]);  // the field
+  FUpdating := True;  // no checks while filling
+  try
+    Cb.Items.Clear;  // new entries
+    for J := 0 to High(FLabs[I]) do Cb.Items.Add(FLabs[I][J]);
+    SetFieldValue(I, Cur);  // the old choice, when it is still listed
+  finally
+    FUpdating := False;  // react to changes again
+  end;
+  FChanged := FPlugin.Fields[I].Key;  // this field changed
+  ApplyCheck('');  // let the plug-in check the values again
 end;
 
 { The field values as key=value lines. }
@@ -1129,6 +1532,7 @@ begin
     if V = '' then V := FieldValue(I);  // or the value as entered
     Result := Result + FPlugin.Fields[I].Key + '=' + V + LineEnding;  // add the line
   end;
+  Result := Result + ListLines;  // and the edited lists
 end;
 
 { Lets the plug-in check the values; shows the preview and error and applies Set.<key>= lines. }
@@ -1139,7 +1543,7 @@ var
 begin
   Cur := '';  // nothing yet
   for I := 0 to High(FCtrls) do Cur := Cur + FPlugin.Fields[I].Key + '=' + FieldValue(I) + LineEnding;  // current values
-  Cur := Cur + '_changed=' + FChanged + LineEnding + Extra;  // which field changed, and extra lines
+  Cur := Cur + ListLines + '_changed=' + FChanged + LineEnding + Extra;  // edited lists, which field changed, and extra lines
   Res := FPlugin.Check(Cur);  // ask the plug-in
   FUpdating := True;  // no checks while setting values
   try
