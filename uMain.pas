@@ -660,15 +660,21 @@ begin
   lblStatus.Caption := S;  // set the text
 end;
 
-{ Sets the window title from the source folder. }
+{ Sets the window title from the user profile in use and the source folder. The profile comes right
+  after the program name, so it stays visible when a long source path is cut off (the title also shows
+  on the taskbar button and in Alt+Tab). }
 procedure TMainForm.UpdateCaption;
+var
+  T: string;  // T: program name and profile
 begin
+  T := AppTitle;  // program name
+  if FS.ProfileName <> '' then T := T + ' - Profile: ' + FS.ProfileName;  // the profile in use
   if FSourcePath = '' then  // no source
-    Caption := AppTitle + ' - no image source'
+    Caption := T + ' - no image source'
   else if ExcludeTrailingPathDelimiter(FSourcePath) = ExcludeTrailingPathDelimiter(MountPointOf(FSourcePath)) then  // source is a card reader (a mount point)
-    Caption := AppTitle + ' - Cardreader ' + FSourcePath  // title with the card reader
+    Caption := T + ' - Cardreader ' + FSourcePath  // title with the card reader
   else
-    Caption := AppTitle + ' - Folder ' + FSourcePath;  // title with the folder
+    Caption := T + ' - Folder ' + FSourcePath;  // title with the folder
 end;
 
 { Shows the number of files found during a scan and lets the user cancel it. }
@@ -2231,6 +2237,7 @@ begin
       L.Free;  // free the list
     end;
   end;
+  UpdateCaption;  // the profile in use in the title bar
   Src := '';  // no source yet
   if FS.LoadLastAtStartup then Src := FS.LastSource;  // use the last source when asked
   Picked := False;  // nothing chosen yet
@@ -2331,6 +2338,7 @@ begin
       SaveSettingsNow;  // save the settings
       ApplyState;  // apply the settings
       Reevaluate;  // work out the names again
+      UpdateCaption;  // the new profile in the title bar
     end;
   finally
     L.Free;  // free the list
@@ -2369,6 +2377,7 @@ begin
     if FileExistsUTF8(Fn) then DeleteFileUTF8(Fn);  // remove the old one
     if not RenameFileUTF8(Fn + '.tmp', Fn) then raise Exception.Create('cannot rename ' + Fn + '.tmp');  // put the new one in place
     SaveSettingsNow;  // remember the profile in use
+    UpdateCaption;  // the profile in use in the title bar
     SetStatus('Profile "' + Nm + '" saved.');  // tell the user
   except
     on E: Exception do
@@ -2395,7 +2404,11 @@ begin
            [mbYes, mbNo], 0) = mrYes then
       begin
         DeleteFileUTF8(ProfilesDir + Choice + '.ini');  // delete the profile file
-        if Choice = FS.ProfileName then FS.ProfileName := '';  // it was the profile in use
+        if Choice = FS.ProfileName then  // it was the profile in use
+        begin
+          FS.ProfileName := '';  // no profile in use any more
+          UpdateCaption;  // take it out of the title bar
+        end;
       end;
   finally
     L.Free;  // free the list
