@@ -68,3 +68,7 @@ backup/
 *~
 lib/
 bin/
+
+# Claude Code personal settings and worktrees (local only)
+.claude/settings.local.json
+.claude/worktrees/
