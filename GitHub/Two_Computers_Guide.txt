@@ -96,7 +96,7 @@ GitHub Desktop on Linux: a pull that seems to change nothing
     number, click it again: only Pull changes the files.
   * Desktop may have opened another copy of the folder. Repository > Show in your File
     Manager shows which folder it works on; it must be the folder you build in.
-  * The private plug-in folder (Private/PennDOT_UAS_Plugin) is a repository of its own. Add it
+  * A folder under Private/ that is a repository of its own (it has its own .git) is not part of this one. Add it
     in Desktop separately (File > Add local repository) and pull it there as well.
   * Check in a terminal, in the folder:  git status  and  git log --oneline -3
     The newest line must match the newest commit on github.com.
