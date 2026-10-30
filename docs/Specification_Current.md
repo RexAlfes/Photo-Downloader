@@ -133,7 +133,7 @@ Re-evaluation runs after changes to destination, patterns, job code, profile or 
 | JPEG auto profile (built-in): ICC profile per camera model and a default, embedded into downloaded JPEGs without recompression (`uIccEmbed.pas`) | Done |
 | DNG Converter as program plug-ins (`plugins/dng-converter`: Adobe DNG Converter on Windows, dnglab on Windows and Linux); program plug-ins in general (`uExtPlugin.pas`, `.plugin.ini`) | Done – tested on Windows with a stand-in program and with the real converters (dnglab 0.8.0, Adobe DNG Converter 18.7: Nikon NEF and Canon CR2 to valid DNGs, raw kept, second run skipped) and inside a real download, including a failed step (both plug-ins, build 9); not yet tested on Linux |
 | Plug-in steps after each file: on the downloaded copy only (never the backup or the original), in list order; a failed step switches its plug-in off and keeps the original from deletion | Done |
-| JPEG resolution plug-in | Open – listed only |
+| JPEG resolution (built-in): sets the DPI or dots/cm of each downloaded JPEG without touching the image data (`uJpegDpi.pas`: EXIF IFD0 XResolution/YResolution/ResolutionUnit changed in place, JFIF APP0 densities set, a JFIF APP0 added when neither exists; temporary file + rename); Setup: value and unit, default 300 dpi | Done (build 12) – unit test on Windows (camera JPEG with EXIF, JFIF-only and bare JPEG: values read back, image data byte for byte unchanged, second run skipped); not yet run-tested in the program |
 | Launch external program after download | Partial – custom button with %f and %d, not {file} and {folder} |
 | Log of per-file results | Partial – copy failures are written to thumbnail.log when logging is on; no full per-file report yet |
 

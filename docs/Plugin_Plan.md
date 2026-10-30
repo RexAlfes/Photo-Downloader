@@ -14,7 +14,7 @@ Status: **plug-in libraries (DLL / .so) with tokens and a prompt window are buil
 | # | Question | Decision |
 |---|---|---|
 | 1 | A plug-in step fails | The file is **not offered for deletion** from the source (the same as a failed backup), **and the plug-in is switched off** (saved in the settings) with a message naming the plug-in and the reason. It must be switched on again on the Plug-ins tab after the cause is fixed. The rest of the download continues. |
-| 2 | JPEG resolution | Not needed at this time. It stays in the list, inactive. |
+| 2 | JPEG resolution | Built later (build 12): it sets the DPI or dots/cm of downloaded JPEGs without touching the image data (no resizing). |
 | 3 | DNG Converter | Keep **both** the raw file and the DNG. |
 | 4 | Native library plug-ins | **Yes**: DLL on Windows and .so on Linux (section 7). |
 | 5 | Plug-ins and the backup copy | **Never.** Plug-ins do not touch the backup copy; the backup always holds the untouched original. |
@@ -149,6 +149,6 @@ TimeoutSec=300
 | 3 | First library: a private folder-naming plug-in (kept outside this repository). | Done on Windows: its test program passes; Linux build untested. |
 | 4 | **Done:** external-program plug-ins (`uExtPlugin.pas`, `.plugin.ini`), run after each file with the failure rules of decision 1; two DNG Converter plug-ins (Adobe, dnglab) in `plugins/dng-converter`. | Tested with a stand-in program: DNG made, skipped when it exists, exit code, timeout, missing program. Tested on Windows with the real converters (dnglab 0.8.0 and Adobe DNG Converter 18.7) on Nikon and Canon raw files: valid DNGs, raw files kept, second run skipped. Both also worked inside a real download in the program, and a failed step kept the file and switched the plug-in off (build 9); not yet tested on Linux. |
 | 5 | **Done:** JPEG auto profile (built-in; `uIccEmbed.pas` writes APP2 ICC segments without re-encoding; one profile per camera model and a default). | Profiles of 560 bytes and 557 KB (9 segments) embedded; profile bytes and picture data checked; the JPEG still decodes. |
-| later | JPEG resolution (deferred); hooks for plug-in libraries (`pd_run`). | |
+| later | Hooks for plug-in libraries (`pd_run`). JPEG resolution is done (build 12, `uJpegDpi.pas`). | |
 
 Each phase is a separate commit; the manual (Plug-ins section), spec, Settings_File.md and the website are updated with each one.
