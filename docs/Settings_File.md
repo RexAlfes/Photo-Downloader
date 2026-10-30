@@ -90,7 +90,7 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 | `[JobHistory]` | Previously used job codes, newest first |
 | `[Mappings]` | One line per camera: `Camera name|T8 value|T9 value` (`Default|{T1}|{T1}` is created if empty) |
 | `[Plugins]` | `Name=0` or `Name=1` for JPEG auto profile, Directory Maker, JPEG resolution, every program plug-in (`.plugin.ini`) and every plug-in library found (key = file name without `lib` and extension; a new library is added as `=0`). The order is the order of the Plug-ins list. Old `Backup=` and `DNG Converter=` lines are removed when the file is read |
-| `[PluginOpts]` | `Name=option` settings for the plug-ins (for example the Directory Maker folder names). For a plug-in library: its prompt values as `key=value;key=value` (`%` and `;` written as `%25` and `%3B`). **JPEG auto profile:** `Default=<profile>;Replace=0/1;Cam.<camera model>=<profile>`. A program plug-in: `Program=<path>` when chosen with Setup... |
+| `[PluginOpts]` | `Name=option` settings for the plug-ins (for example `Directory Maker=Edit, Web`: the folders it creates next to the download folder). For a plug-in library: its prompt values as `key=value;key=value` (`%` and `;` written as `%25` and `%3B`). **JPEG auto profile:** `Default=<profile>;Replace=0/1;Cam.<camera model>=<profile>`. A program plug-in: `Program=<path>` when chosen with Setup... |
 | `[Iptc]` | `Name=value` details for the XMP sidecar: Creator, Copyright, Title, Description, Credit, Source |
 | `[DateJobCodes]` | `yyyy/mm/dd=job code`; written only when `SaveDateJobCodes=1`, otherwise the section is removed |
 
