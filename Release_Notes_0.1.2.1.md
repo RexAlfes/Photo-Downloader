@@ -23,7 +23,7 @@ The version is **major.minor.revision.build**. This release is `0.1.2.1` (revisi
 - `Plugin_Developer_Manual.0.1.2.docx`, `.odt` and `.md` – for writing plug-ins
 
 ### Tested
-Windows 11: all features above. Linux Mint 22.3 (GTK 2): the Linux test checklist in `docs/Linux_Build.md` passed except the cut-off token list, which is fixed in this release (the fix itself was not yet checked on Linux).
+Windows 11: all features above. Linux Mint 22.3 (GTK 2): the Linux test checklist in `docs/Linux_Build.md` passed except the cut-off token list, which is fixed in this release; the fix was checked on Linux after the release.
 
 ### Windows security warning
 The `.exe` is not code-signed, so Windows may show **Windows protected your PC** with **Publisher: Unknown publisher**. Click **More info**, then **Run anyway**. See section 1 of the User Manual.
