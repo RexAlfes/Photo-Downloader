@@ -2179,9 +2179,9 @@ begin
     else if FindExtPlugin(FPlugins.Names[I]) <> nil then  // an external-program plug-in: show its own name
     begin
       if FPlugins.ValueFromIndex[I] = '1' then
-        lbPlugins.Items.Add(FindExtPlugin(FPlugins.Names[I]).Name + ' (program) - enabled')  // add the name with its state
+        lbPlugins.Items.Add(FindExtPlugin(FPlugins.Names[I]).DisplayName + ' - enabled')  // add the name with its state
       else
-        lbPlugins.Items.Add(FindExtPlugin(FPlugins.Names[I]).Name + ' (program) - disabled');  // add the name with its state
+        lbPlugins.Items.Add(FindExtPlugin(FPlugins.Names[I]).DisplayName + ' - disabled');  // add the name with its state
     end
     else if FPlugins.ValueFromIndex[I] = '1' then  // enabled plug-in
       lbPlugins.Items.Add(FPlugins.Names[I] + ' - enabled')  // add the name with its state

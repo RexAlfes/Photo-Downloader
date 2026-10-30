@@ -279,11 +279,16 @@ begin
   Tokens.Clear;  // no tokens
 end;
 
-{ Name shown on the Plug-ins tab: the library's own name, or the file name before loading. }
+{ Name shown on the Plug-ins tab: the library's own name and version, or the file name before
+  loading (the version is known only after loading). }
 function TLibPlugin.DisplayName: string;
 begin
   if Loaded and (Info.Values['Name'] <> '') then
-    Result := Info.Values['Name'] + ' (library ' + Key + ')'  // name from the library
+  begin
+    Result := Info.Values['Name'];  // name from the library
+    if Info.Values['Version'] <> '' then Result := Result + ' ' + Info.Values['Version'];  // and its version
+    Result := Result + ' (library ' + Key + ')';  // and its key
+  end
   else
     Result := Key + ' (library)';  // not loaded yet
 end;

@@ -40,7 +40,7 @@ Build on the system the library is meant for. Each system needs its own build, a
 | Windows | `%LOCALAPPDATA%\Photo Downloader\plugins\`, then `plugins\` next to `PhotoDownloader.exe` |
 | Linux | `~/.config/Photo Downloader/plugins/`, then `plugins/` next to the program |
 
-**Step 3: switch it on.** Start Photo Downloader and open **File > Plug-ins…** (the Plug-ins tab of Preferences). The library is listed as **example_plugin (library) - disabled**. Select it, tick **Enable plug-in** and confirm the message that shows its path. The list now shows **Example Plug-in**, and the text below names its tokens.
+**Step 3: switch it on.** Start Photo Downloader and open **File > Plug-ins…** (the Plug-ins tab of Preferences). The library is listed as **example_plugin (library) - disabled**. Select it, tick **Enable plug-in** and confirm the message that shows its path. The list now shows **Example Plug-in 1.0.0 (library example_plugin)**, its name and version, and the text below names its tokens.
 
 **Step 4: give it a value.** Click **Setup…**. The window shows the field **Site name**, the red reminder and a preview. **OK** stays disabled until a site name is entered.
 
@@ -82,7 +82,7 @@ EXPORT int pd_logo(unsigned char *buf, int bufLen);
 
 | Key | Meaning |
 |---|---|
-| `Name`, `Version`, `Description` | Shown on the Plug-ins tab. The version is also shown in the title bar and at the top right of the window. |
+| `Name`, `Version`, `Description` | Shown on the Plug-ins tab; the list shows the name followed by the version (for example **Example Plug-in 1.0.0 (library example_plugin)**). The version is also shown in the title bar and at the top right of the window. |
 | `Tokens` | Token names, separated by `;` (for example `Example.Name;Example.Site`). They are used only when no built-in token has the same name. Give them a common prefix. |
 | `Title` | Title of the window. |
 | `Note` | A reminder, shown centered in red under the fields. |
@@ -183,7 +183,7 @@ TimeoutSec=300
 
 | Key | Meaning |
 |---|---|
-| `Name`, `Description`, `Version` | shown on the Plug-ins tab |
+| `Name`, `Description`, `Version` | shown on the Plug-ins tab; the list shows the name followed by the version, for example **DNG Converter (dnglab) 1.0.0 (program)** |
 | `Hook` | when it runs; `AfterFile` (after each downloaded file) is the only one so far |
 | `FileTypes` | extensions it works on, separated by `;` (empty = every file) |
 | `Platforms` | `windows`, `linux` or both (empty = both); the plug-in is not offered on other systems |
