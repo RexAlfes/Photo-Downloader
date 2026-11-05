@@ -85,7 +85,7 @@ EXPORT int pd_logo(unsigned char *buf, int bufLen);
 | `Name`, `Version`, `Description` | Shown on the Plug-ins tab; the list shows the name followed by the version (for example **Example Plug-in 1.0.0 (library example_plugin)**). The version is also shown in the title bar and at the top right of the window. |
 | `Tokens` | Token names, separated by `;` (for example `Example.Name;Example.Site`). They are used only when no built-in token has the same name. Give them a common prefix. |
 | `Title` | Title of the window. |
-| `Note` | A reminder, shown centered in dark red under the fields. |
+| `Note` | A reminder, shown centered in dark red under the fields. `pd_check` can change or hide it (section 3.5). |
 | `AccentColor` | `RRGGBB`: a color bar under the logo. |
 | `FontName` | Font of the window (used when it is installed). |
 | `DestFolder=1` | The window shows the download folder (**Download to:**) and a **Destination folder…** button to choose the folder to download to. |
@@ -140,6 +140,7 @@ Called on every change in the window with the current values, the edited lists (
 | `Set.<key>` | a value the window shows in that field now (for example a district filled in from a county) |
 | `Value.<key>` | the normalized value stored on OK (for example `95` stored as `0095`) |
 | `Invalid.<key>` | `1` = that field breaks its rule: its box is shown light red with dark red text until it is right |
+| `Note` | replaces the text of the `Note` from `pd_info`; an empty `Note=` hides the note (for example while it does not apply to the values). Without a `Note` line the note stays as it is. Needs a `Note` in `pd_info` (Photo Downloader 0.1.4.3 or later; older versions keep the `pd_info` note) |
 
 Do not send `Set.` for a text field the user is typing in; the cursor would jump. Use `Value.` to store the cleaned-up text instead.
 
