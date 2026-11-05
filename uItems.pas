@@ -96,6 +96,9 @@ var
   { Gives the value of a token from a plug-in library; set by uPlugins (nil = no plug-ins).
     Only asked when no built-in token has the name, so plug-ins cannot change built-in tokens. }
   PluginTokenHook: function(const Tok: string; Item: TImageItem; out Value: string): Boolean = nil;
+  { Gives the folders that switched-on plug-ins add after the destination folder (with a closing
+    separator, '' = none); set by uPlugins (nil = no plug-ins) }
+  PluginFoldersHook: function(S: TAppSettings): string = nil;
 { Copies Src to Dst. The MD5 of the source is computed while it is read. With Verify the copy is
   read back and compared. On any failure the incomplete or wrong copy is deleted. }
 function CopyFileChecked(const Src, Dst: string; Verify: Boolean; out Hash: string;
@@ -817,10 +820,10 @@ var
 begin
   Dir := ExpandTokens(NormMask(DirMask), Item, Job, SeqDown, SeqSess, S);  // folder with tokens replaced
   Nm := ExpandTokens(NormMask(NameMask), Item, Job, SeqDown, SeqSess, S);  // file name with tokens replaced
-  if Job = '' then  // blank job code
+  if Job = '' then  // blank job code: tidy only what uses it (an original name such as _DSC0123 keeps its underscore)
   begin
-    Dir := TidyBlankJob(Dir);  // tidy the folder
-    Nm := TidyBlankJob(Nm);  // tidy the file name
+    if Pos('{J}', DirMask) > 0 then Dir := TidyBlankJob(Dir);  // tidy the folder
+    if Pos('{J}', NameMask) > 0 then Nm := TidyBlankJob(Nm);  // tidy the file name
   end;
   Ext := SavedExt(S, Item);  // extension of the saved file
   if S.LowerExt then Ext := LowerCase(Ext);  // lower case extension when requested
@@ -829,10 +832,23 @@ begin
   Result := Dir + Nm + Ext;  // complete path
 end;
 
+{ A folder mask with the folders of the switched-on plug-ins added (for example a folder structure). }
+function WithPluginFolders(S: TAppSettings; const DirMask: string): string;
+var
+  P: string;  // P: the plug-in folders
+begin
+  Result := DirMask;  // the mask as it is
+  if not Assigned(PluginFoldersHook) then Exit;  // no plug-ins
+  P := PluginFoldersHook(S);  // folders the plug-ins add
+  if P = '' then Exit;  // none
+  if Result <> '' then Result := IncludeTrailingPathDelimiter(NormMask(Result));  // a closing separator
+  Result := Result + P;  // destination folder + plug-in folders
+end;
+
 { Builds the destination path of an item from the settings. }
 function ComputeDest(S: TAppSettings; Item: TImageItem; SeqDown, SeqSess: Integer): string;
 begin
-  Result := BuildDest(S, Item, S.DownloadDir, S.FileNameMask, JobCodeFor(S, Item),  // use the settings masks and the job code of the item
+  Result := BuildDest(S, Item, WithPluginFolders(S, S.DownloadDir), S.FileNameMask, JobCodeFor(S, Item),  // use the settings masks and the job code of the item
     SeqDown, SeqSess);
 end;
 
@@ -850,7 +866,7 @@ begin
     It.Serial := '1234567';  // sample serial number
     It.Owner := 'Owner';  // sample owner
     It.ISO := 200;  // sample ISO
-    Result := BuildDest(S, It, DirMask, NameMask, Job, S.SeqNext, 1);  // build the example path
+    Result := BuildDest(S, It, WithPluginFolders(S, DirMask), NameMask, Job, S.SeqNext, 1);  // build the example path (with plug-in folders)
   finally
     It.Free;  // free the sample
   end;
@@ -2241,7 +2257,7 @@ function BackupDestFor(S: TAppSettings; Item: TImageItem; SeqDown, SeqSess: Inte
 var
   P: string;  // P: path built from the backup mask
 begin
-  P := BuildDest(S, Item, S.BackupDir, S.FileNameMask, JobCodeFor(S, Item), SeqDown, SeqSess);  // build the path from the backup folder
+  P := BuildDest(S, Item, WithPluginFolders(S, S.BackupDir), S.FileNameMask, JobCodeFor(S, Item), SeqDown, SeqSess);  // build the path from the backup folder (with plug-in folders)
   Result := ExtractFilePath(P) + ExtractFileName(MainDest);  // folder of the backup with the file name of the main copy
 end;
 
