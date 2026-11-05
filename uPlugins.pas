@@ -84,6 +84,13 @@ function PluginValues(Opts: TStrings; const Key: string): string;
 procedure SetPluginValues(Opts: TStrings; const Key, Values: string);
 { The value of one key in key=value lines }
 function LineValue(const Lines, Key: string): string;
+{ The folders a plug-in adds after the destination folder: its layout field (flag "layout"; blank =
+  DestTemplate) and the folders of its checked "folder=" check boxes, from the values in Vals (key=value
+  lines). With this system's separators and a closing one; '' when the plug-in has no layout field. }
+function LayoutFolders(P: TLibPlugin; const Vals: string): string;
+{ A download path cut back to the folders in front of the first token of plug-in P (for paths saved
+  while the layout was still written into the download path); Dir unchanged when it has none. }
+function CutPluginTokens(P: TLibPlugin; const Dir: string): string;
 { Switched-on library plug-ins that have prompt fields }
 function PromptPlugins(S: TAppSettings): TList;
 { True for the names of the plug-ins built into the program (they cannot be installed or removed) }
@@ -467,6 +474,83 @@ begin
   end;
 end;
 
+{ The folders a plug-in adds after the destination folder (see the interface section). }
+function LayoutFolders(P: TLibPlugin; const Vals: string): string;
+var
+  I, F: Integer;  // I: field index; F: the layout field
+  T, C: string;  // T: one folder token; C: value of a check box
+  Found: Boolean;  // Found: a folder token was removed in this round
+begin
+  Result := '';  // no layout field yet
+  F := -1;  // not found yet
+  for I := 0 to High(P.Fields) do
+    if P.Fields[I].Layout and (P.Fields[I].Kind = 'text') and (F < 0) then F := I;  // the first one counts
+  if F < 0 then Exit;  // the plug-in adds no folders
+  Result := Trim(LineValue(Vals, P.Fields[F].Key));  // the typed folders
+  if Result = '' then Result := P.Info.Values['DestTemplate'];  // blank: the plug-in's suggested folders
+  Result := StringReplace(StringReplace(Result, '\', PathDelim, [rfReplaceAll]), '/', PathDelim, [rfReplaceAll]);  // this system's separators
+  while (Result <> '') and (Result[1] = PathDelim) do Delete(Result, 1, 1);  // no separator in front
+  while (Result <> '') and (Result[Length(Result)] = PathDelim) do Delete(Result, Length(Result), 1);  // none at the end
+  repeat  // the check box folders decide the last folders: remove them from the typed ones first
+    Found := False;  // nothing removed yet
+    for I := 0 to High(P.Fields) do
+      if P.Fields[I].FolderTokens <> '' then
+        for T in P.Fields[I].FolderTokens.Split([';']) do
+          if (T <> '') and (Length(Result) >= Length(T) + 2) and
+             (Copy(Result, Length(Result) - Length(T) - 1, Length(T) + 2) = '{' + T + '}') and
+             ((Length(Result) = Length(T) + 2) or (Result[Length(Result) - Length(T) - 2] = PathDelim)) then
+          begin
+            SetLength(Result, Length(Result) - Length(T) - 2);  // remove the last folder
+            while (Result <> '') and (Result[Length(Result)] = PathDelim) do Delete(Result, Length(Result), 1);  // and its separator
+            Found := True;  // look again
+          end;
+  until not Found;
+  for I := 0 to High(P.Fields) do  // checked boxes add their first folder token
+    if (P.Fields[I].Kind = 'check') and (P.Fields[I].FolderTokens <> '') then
+    begin
+      C := LineValue(Vals, P.Fields[I].Key);  // stored value
+      if C = '' then C := P.Fields[I].Default;  // or the default
+      if C = '1' then
+      begin
+        if Result <> '' then Result := Result + PathDelim;  // separator
+        Result := Result + '{' + P.Fields[I].FolderTokens.Split([';'])[0] + '}';  // for example one folder per type of file
+      end;
+    end;
+  if Result <> '' then Result := Result + PathDelim;  // a closing separator
+end;
+
+{ A download path cut back to the folders in front of the first token of plug-in P. }
+function CutPluginTokens(P: TLibPlugin; const Dir: string): string;
+var
+  I, N, First: Integer;  // I: token index; N: its position; First: the first position found
+begin
+  First := 0;  // none found yet
+  for I := 0 to P.Tokens.Count - 1 do
+  begin
+    N := Pos('{' + LowerCase(P.Tokens[I]) + '}', LowerCase(Dir));  // where the token is
+    if (N > 0) and ((First = 0) or (N < First)) then First := N;  // the first one
+  end;
+  if First = 0 then Exit(Dir);  // no token of the plug-in
+  Result := ExtractFilePath(Copy(Dir, 1, First - 1));  // the folders in front of it
+end;
+
+{ The folders all switched-on, loaded libraries add after the destination folder (installed as
+  uItems.PluginFoldersHook; S: the settings whose plug-in values are used). }
+function AllLayoutFolders(S: TAppSettings): string;
+var
+  I: Integer;  // I: list index
+  P: TLibPlugin;  // P: one library
+begin
+  Result := '';  // none yet
+  if Libs = nil then Exit;  // no plug-ins
+  for I := 0 to Libs.Count - 1 do  // in list order
+  begin
+    P := TLibPlugin(Libs[I]);  // the library
+    if P.Loaded and S.PluginEnabled(P.Key) then
+      Result := Result + LayoutFolders(P, PluginValues(S.PluginOpts, P.Key));  // its folders
+  end;
+end;
+
 { True for the names of the plug-ins built into the program. }
 function IsBuiltInPlugin(const Name: string): Boolean;
 var
@@ -549,6 +633,20 @@ begin
       end;
   end;
   PluginTokenHook := @LibTokenValue;  // plug-in tokens work from now on
+  // the folders of a layout field are added to the download path when files are copied; a path saved
+  // while they were still written into it (Photo Downloader 0.1.4.2 and 0.1.4.3) is cut back once
+  for I := 0 to Libs.Count - 1 do
+  begin
+    P := TLibPlugin(Libs[I]);  // the library
+    if P.Loaded and S.PluginEnabled(P.Key) and (LayoutFolders(P, '') <> '') and
+       (CutPluginTokens(P, S.DownloadDir) <> S.DownloadDir) then
+    begin
+      LogThumb('plug-in ' + P.Key + ': download path ' + S.DownloadDir + ' cut back to ' +
+        CutPluginTokens(P, S.DownloadDir) + ' (the plug-in adds its folders itself)');  // log it
+      S.DownloadDir := CutPluginTokens(P, S.DownloadDir);  // the destination folder only
+    end;
+  end;
+  PluginFoldersHook := @AllLayoutFolders;  // plug-in folders work from now on
 end;
 
 { Switched-on, loaded library plug-ins that have prompt fields, in list order (caller frees the list). }
@@ -669,5 +767,6 @@ end;
 
 finalization
   PluginTokenHook := nil;  // no more plug-in tokens
+  PluginFoldersHook := nil;  // no more plug-in folders
   FreeLibs;  // free the entries
 end.
