@@ -1159,6 +1159,7 @@ type
     FEdited: array of Boolean;  // True when the field's list was edited by the user (stored as List.<key>=)
     lblDest: TLabel;  // shows the download folder template
     lblPreview, lblError: TLabel;  // preview and error text
+    lblNote: TLabel;  // the plug-in's note (nil when it has none); pd_check may change or hide it
     BtnOK: TButton;  // OK button (only enabled when the values are valid)
     function FieldValue(I: Integer): string;  // value of one field
     procedure SetFieldValue(I: Integer; const V: string);  // shows a value in one field
@@ -1329,6 +1330,7 @@ begin
     Lab := MkWrap(Self, P.Info.Values['Note'], 12, Y + 4, W - 24, 48);  // the reminder under the fields
     Lab.Alignment := taCenter;  // centered
     Lab.Font.Color := RGBToColor(160, 0, 0);  // dark red, so it is noticed and still easy to read (contrast above 4.5:1)
+    lblNote := Lab;  // pd_check may change or hide it (Note= line)
     Inc(Y, 54);  // room for it
   end;
   if Head <> nil then Head.SetBounds(0, 0, W, HeadH - Ord(Bar <> nil) * 6);  // header over the full width
@@ -1550,6 +1552,7 @@ procedure TPluginPromptForm.ApplyCheck(const Extra: string);
 var
   I: Integer;  // I: field index
   Cur, Res, V: string;  // Cur: current values; Res: result lines; V: a value to set
+  Lines: TStringList;  // Lines: the result lines, to look for a Note= line
 begin
   Cur := '';  // nothing yet
   for I := 0 to High(FCtrls) do Cur := Cur + FPlugin.Fields[I].Key + '=' + FieldValue(I) + LineEnding;  // current values
@@ -1568,6 +1571,21 @@ begin
   FNormal := Res;  // keep the normalized values
   lblPreview.Caption := LineValue(Res, 'Preview');  // preview of the result
   lblError.Caption := LineValue(Res, 'Error');  // error text
+  if lblNote <> nil then  // a Note= line from the check replaces the note; an empty one hides it
+  begin
+    Lines := TStringList.Create;  // the result lines
+    try
+      Lines.Text := Res;  // split into lines
+      if Lines.IndexOfName('Note') >= 0 then  // the plug-in decides about the note
+      begin
+        V := Lines.Values['Note'];  // the new text ('' = hide)
+        if V <> '' then lblNote.Caption := V;  // show this text
+        lblNote.Visible := V <> '';  // hide the note when it is empty
+      end;
+    finally
+      Lines.Free;  // free the list
+    end;
+  end;
   BtnOK.Enabled := lblError.Caption = '';  // OK only for valid values
   for I := 0 to High(FCtrls) do  // fields the plug-in marks as wrong (Invalid.<key>=1): light red with dark red text
     if (FCtrls[I] is TEdit) or (FCtrls[I] is TComboBox) then
