@@ -90,6 +90,8 @@ EXPORT int pd_logo(unsigned char *buf, int bufLen);
 | `FontName` | Font of the window (used when it is installed). |
 | `DestFolder=1` | The window shows the download folder (**Download to:**) and a **Destination folder…** button to choose the folder to download to. |
 | `DestTemplate` | The folders the library suggests below the chosen destination, for example `{ABC}\{d}-{J}\`. |
+| `PathTokens` | Tokens (of `Tokens`, separated by `;`) whose values may hold folders, for example `Scans\Scan_001`: `\` and `/` separate folders, each folder is cleaned like any token value, and empty, `.` and `..` folders are left out (Photo Downloader 0.1.4.6 or later; other tokens have `\` and `/` replaced by `_`). Use them in folder templates only. |
+| `ScanFolders` | Top-level folders of a source (names separated by `;`, any case) that are read as well when the source has a `DCIM` folder and Preferences reads only `DCIM`, for example `scans` (0.1.4.6 or later; with the whole-disk option every folder is read anyway). |
 | `Field=key\|kind\|label\|entries\|default\|flags` | One row of the window. May appear many times; the rows keep this order. |
 
 **Fields:**
@@ -126,6 +128,7 @@ The stored values of the window (`key=value`, with `List.<key>=` lines for edite
 | `Date` | capture date `yyyymmdd` |
 | `Path` | full path of the file on the source (empty for the Example line), so a library can read the file itself, for example to tell thermal from color pictures |
 | `Size` | file size in bytes (with `Path` a good key for remembering what was read) |
+| `SourceFolder` | the file's folder inside the scanned source, for example `scans\Scan_001` or `DCIM\100MEDIA` (empty for a file at the top and for the Example line; 0.1.4.6 or later) |
 
 Tokens are asked for often: for the Example line, for every file after a scan (to find files already downloaded) and for every download. Keep `pd_token` fast. If it reads the file (`Path`), read only the start or the header, and remember the answer by path and size, so each file is read once. No network access.
 

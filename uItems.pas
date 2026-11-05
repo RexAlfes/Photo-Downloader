@@ -99,6 +99,14 @@ var
   { Gives the folders that switched-on plug-ins add after the destination folder (with a closing
     separator, '' = none); set by uPlugins (nil = no plug-ins) }
   PluginFoldersHook: function(S: TAppSettings): string = nil;
+  { True when the value of a plug-in token may hold folders (its parts are cleaned one by one);
+    set by uPlugins (nil = no plug-ins) }
+  PluginPathTokenHook: function(const Tok: string): Boolean = nil;
+  { Further top-level folders of a source with a DCIM folder that switched-on plug-ins want read
+    (names separated by ';', '' = none); set by uPlugins (nil = no plug-ins) }
+  PluginScanFoldersHook: function(S: TAppSettings): string = nil;
+  { The folder the last scan started from (the source), so plug-ins can be told where a file lies in it }
+  ScanRoot: string = '';
 { Copies Src to Dst. The MD5 of the source is computed while it is read. With Verify the copy is
   read back and compared. On any failure the incomplete or wrong copy is deleted. }
 function CopyFileChecked(const Src, Dst: string; Verify: Boolean; out Hash: string;
@@ -565,14 +573,32 @@ begin
   end;
 end;
 
+{ The subfolder of Root whose name is Name in any case ('' when there is none). }
+function FindSubFolder(const Root, Name: string): string;
+var
+  SR: TSearchRec;  // SR: directory entry
+begin
+  Result := '';  // not found yet
+  if FindFirstUTF8(IncludeTrailingPathDelimiter(Root) + '*', faDirectory, SR) <> 0 then Exit;  // nothing in the folder
+  try
+    repeat
+      if ((SR.Attr and faDirectory) <> 0) and SameText(SR.Name, Name) then
+        Exit(IncludeTrailingPathDelimiter(Root) + SR.Name);  // found (the name as on the disk)
+    until FindNextUTF8(SR) <> 0;  // next entry
+  finally
+    FindCloseUTF8(SR);  // close the search
+  end;
+end;
+
 { Scans the source: the DCIM folder when there is one, otherwise the whole root. }
 procedure ScanFolder(const Root: string; S: TAppSettings; Items: TObjectList;
   Progress: TScanProgress);
 var
   Cnt, I: Integer;  // Cnt: files found; I: loop counter
-  Dcim: string;  // Dcim: path of the DCIM folder
+  Dcim, F, D: string;  // Dcim: path of the DCIM folder; F: a further folder a plug-in wants read; D: its path
 begin
   Items.Clear;  // empty the list
+  ScanRoot := Root;  // plug-ins are told where each file lies in the source
   if LoggedMsgs <> nil then LoggedMsgs.Clear;  // a new scan may log each message again
   Cnt := 0;  // nothing found yet
   ScanAbort := False;  // clear the abort flag
@@ -581,7 +607,16 @@ begin
   ScanSkipLrData := not S.ScanLrData;  // Lightroom preview folders only when wanted
   try
     if (not S.ScanWholeDisk) and DirectoryExistsUTF8(Dcim) then  // use DCIM unless the whole disk is to be scanned
-      ScanDir(Dcim, Items, Cnt, Progress)  // scan DCIM
+    begin
+      ScanDir(Dcim, Items, Cnt, Progress);  // scan DCIM
+      if Assigned(PluginScanFoldersHook) then  // further top-level folders switched-on plug-ins want (for example scans)
+        for F in PluginScanFoldersHook(S).Split([';']) do
+        begin
+          if (Trim(F) = '') or SameText(Trim(F), 'DCIM') or ScanAbort then Continue;  // nothing, DCIM itself, or canceled
+          D := FindSubFolder(Root, Trim(F));  // the folder in any case
+          if D <> '' then ScanDir(D, Items, Cnt, Progress);  // scan it too
+        end;
+    end
     else
       ScanDir(Root, Items, Cnt, Progress);  // scan the whole root
   finally
@@ -609,6 +644,21 @@ begin
     end
     else if Result[I] in ['/', #0] then      // Linux only forbids the path separator
       Result[I] := '_';  // replace with underscore
+end;
+
+{ A token value that may hold folders: each part cleaned, empty, '.' and '..' parts left out,
+  joined with this system's separator. }
+function SanitizePath(const V: string): string;
+var
+  Part: string;  // Part: one folder
+begin
+  Result := '';  // nothing yet
+  for Part in V.Split(['\', '/']) do
+  begin
+    if (Trim(Part) = '') or (Part = '.') or (Part = '..') then Continue;  // no empty folders, no way up
+    if Result <> '' then Result := Result + PathDelim;  // separator
+    Result := Result + SanitizePart(Part);  // the folder without forbidden characters
+  end;
 end;
 
 { Converts the separators of a mask to the ones of this system. }
@@ -766,7 +816,9 @@ begin
       begin
         Tok := Copy(Mask, I + 1, J - I - 1);  // token name
         V := TokenValue(Tok, Item, Job, SeqDown, SeqSess, S, Known);  // token value
-        if Known then
+        if Known and Assigned(PluginPathTokenHook) and PluginPathTokenHook(Tok) then
+          Result := Result + SanitizePath(V)  // a plug-in token that may hold folders
+        else if Known then
           Result := Result + SanitizePart(V)  // add the value without forbidden characters
         else
           Result := Result + Copy(Mask, I, J - I + 1);   // e.g. the literal {Job Name}

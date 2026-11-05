@@ -448,7 +448,7 @@ function LibTokenValue(const Tok: string; Item: TImageItem; out Value: string): 
 var
   I: Integer;  // I: list index
   P: TLibPlugin;  // P: one library
-  Ctx: string;  // Ctx: file details and stored values as key=value lines
+  Ctx, Root: string;  // Ctx: file details and stored values as key=value lines; Root: the scanned source
 begin
   Result := False;  // no value yet
   Value := '';  // nothing yet
@@ -469,8 +469,48 @@ begin
         'Camera=' + Item.Camera + LineEnding +  // camera model
         'Serial=' + Item.Serial + LineEnding +  // camera serial number
         'Date=' + FormatDateTime('yyyymmdd', Item.CaptureTime) + LineEnding;  // capture date
+    Root := IncludeTrailingPathDelimiter(ScanRoot);  // the source the file was found in
+    if (Item <> nil) and (ScanRoot <> '') and SameText(Copy(IncludeTrailingPathDelimiter(Item.SourceDir), 1, Length(Root)), Root) then
+      Ctx := Ctx + 'SourceFolder=' + ExcludeTrailingPathDelimiter(Copy(IncludeTrailingPathDelimiter(Item.SourceDir),
+        Length(Root) + 1, MaxInt)) + LineEnding;  // its folder inside the source ('' at the top), for example scans\Scan_001
     Result := P.Token(Tok, Ctx, Value);  // ask the library
     if Result then Exit;  // value found
+  end;
+end;
+
+{ True when Tok is a token of a switched-on, loaded library that lists it in PathTokens= (its value
+  may hold folders; installed as uItems.PluginPathTokenHook). }
+function IsPathToken(const Tok: string): Boolean;
+var
+  I: Integer;  // I: list index
+  P: TLibPlugin;  // P: one library
+  T: string;  // T: one listed token
+begin
+  Result := False;  // not one yet
+  if (Libs = nil) or (TokenSettings = nil) then Exit;  // no plug-ins
+  for I := 0 to Libs.Count - 1 do
+  begin
+    P := TLibPlugin(Libs[I]);  // the library
+    if not (P.Loaded and TokenSettings.PluginEnabled(P.Key)) or (P.Tokens.IndexOf(Tok) < 0) then Continue;  // not its token
+    for T in P.Info.Values['PathTokens'].Split([';']) do
+      if SameText(Trim(T), Tok) then Exit(True);  // listed
+  end;
+end;
+
+{ The further top-level folders of a source with DCIM that switched-on, loaded libraries want read
+  (ScanFolders= lines, names separated by ';'; installed as uItems.PluginScanFoldersHook). }
+function AllScanFolders(S: TAppSettings): string;
+var
+  I: Integer;  // I: list index
+  P: TLibPlugin;  // P: one library
+begin
+  Result := '';  // none yet
+  if Libs = nil then Exit;  // no plug-ins
+  for I := 0 to Libs.Count - 1 do
+  begin
+    P := TLibPlugin(Libs[I]);  // the library
+    if P.Loaded and S.PluginEnabled(P.Key) and (P.Info.Values['ScanFolders'] <> '') then
+      Result := Result + P.Info.Values['ScanFolders'] + ';';  // its folders
   end;
 end;
 
@@ -647,6 +687,8 @@ begin
     end;
   end;
   PluginFoldersHook := @AllLayoutFolders;  // plug-in folders work from now on
+  PluginPathTokenHook := @IsPathToken;  // plug-in tokens may hold folders
+  PluginScanFoldersHook := @AllScanFolders;  // further source folders plug-ins want read
 end;
 
 { Switched-on, loaded library plug-ins that have prompt fields, in list order (caller frees the list). }
@@ -768,5 +810,7 @@ end;
 finalization
   PluginTokenHook := nil;  // no more plug-in tokens
   PluginFoldersHook := nil;  // no more plug-in folders
+  PluginPathTokenHook := nil;  // no more folder tokens
+  PluginScanFoldersHook := nil;  // no more further source folders
   FreeLibs;  // free the entries
 end.
