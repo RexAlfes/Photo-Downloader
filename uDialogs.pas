@@ -1154,6 +1154,7 @@ type
     FChanged: string;  // key of the field changed last
     FNormal: string;  // normalized values from the last check (Value.<key>= lines)
     FDestDir: string;  // download folder template (changed by "Destination folder...")
+    FDestRoot: string;  // destination folder in front of the layout field's folders ('' = not known yet)
     FVals, FLabs: array of TStringArray;  // list entries of each field: values and the texts shown (an edited list replaces the plug-in's)
     FEdited: array of Boolean;  // True when the field's list was edited by the user (stored as List.<key>=)
     lblDest: TLabel;  // shows the download folder template
@@ -1167,6 +1168,10 @@ type
     procedure ApplyFolderFields;  // adds or removes the folder tokens of check fields at the end of the download path
     function DestTemplate: string;  // the plug-in's suggested folders, with this system's separators
     function UsesLayout(const Rest: string): Boolean;  // True when the token part keeps the plug-in's main folder token
+    function LayoutIndex: Integer;  // index of the text field with the flag "layout" (-1 = none)
+    function LayoutRest: string;  // the folders of the layout field, with this system's separators and a closing one
+    function LayoutRoot(const Dir: string): string;  // the destination folder in front of the layout in a download path
+    procedure ApplyLayout;  // download path = destination folder + layout field + check box folders
     procedure SetList(I: Integer; const Codes, Descs: TStringArray);  // uses an edited list for field I
     function ListLines: string;  // List.<key>= lines of the edited lists
     procedure ListClick(Sender: TObject);  // edits the list of a field
@@ -1352,8 +1357,13 @@ begin
     Lab.Font.Color := RGBToColor(96, 96, 96);  // quiet dark gray (contrast above 4.5:1 on white)
     Lab.SetBounds(W - Canvas.TextWidth(Lab.Caption) - 18, 18, Lab.Width, Lab.Height);  // top right, inside the clear space
   end;
+  if (LayoutIndex >= 0) and (FDestDir <> '') then  // a layout field decides the folders below the destination
+  begin
+    FDestRoot := LayoutRoot(FDestDir);  // the destination folder
+    ApplyLayout;  // destination + the field's folders + check box folders
+  end
   // a download path without the plug-in's layout (for example only ...\{UAS.Media}\) gets it back
-  if (P.Info.Values['DestFolder'] = '1') and (FDestDir <> '') and
+  else if (P.Info.Values['DestFolder'] = '1') and (FDestDir <> '') and
      not UsesLayout(Copy(FDestDir, Length(DestRootOf(FDestDir)) + 1, MaxInt)) then
     FDestDir := IncludeTrailingPathDelimiter(DestRootOf(FDestDir)) + DestTemplate;  // destination + plug-in folders
   ApplyFolderFields;  // the download path follows the check boxes
@@ -1579,6 +1589,7 @@ begin
   if FUpdating then Exit;  // change made by the program
   FChanged := FPlugin.Fields[TWinControl(Sender).Tag].Key;  // which field
   if Sender is TCheckBox then ApplyFolderFields;  // a check box can change the download path
+  if (TWinControl(Sender).Tag = LayoutIndex) and (FDestRoot <> '') then ApplyLayout;  // the folder structure changed
   ApplyCheck('');  // check the values
 end;
 
@@ -1605,9 +1616,66 @@ begin
   Result := Pos(T, LowerCase(Rest)) > 0;  // the layout holds it
 end;
 
-{ Chooses the destination folder to download to. The download folder template becomes the chosen
-  folder plus the token part of the current template when that uses the plug-in's tokens, otherwise
-  plus the plug-in's suggested folder template (DestTemplate). }
+{ The index of the text field with the flag "layout" (-1 = none). }
+function TPluginPromptForm.LayoutIndex: Integer;
+var
+  I: Integer;  // I: field index
+begin
+  Result := -1;  // none yet
+  for I := 0 to High(FPlugin.Fields) do
+    if FPlugin.Fields[I].Layout and (FPlugin.Fields[I].Kind = 'text') then Exit(I);  // the first one counts
+end;
+
+{ The folders typed into the layout field (DestTemplate when it is blank), with this system's separators,
+  without separators in front and with a closing one ('' when there is nothing). }
+function TPluginPromptForm.LayoutRest: string;
+begin
+  Result := Trim(FieldValue(LayoutIndex));  // the typed folders
+  if Result = '' then Result := DestTemplate;  // blank: the plug-in's suggested folders
+  Result := StringReplace(StringReplace(Result, '\', PathDelim, [rfReplaceAll]), '/', PathDelim, [rfReplaceAll]);  // this system's separators
+  while (Result <> '') and (Result[1] = PathDelim) do Delete(Result, 1, 1);  // no separator in front
+  if Result <> '' then Result := IncludeTrailingPathDelimiter(Result);  // a closing separator
+end;
+
+{ The destination folder of a download path: the part in front of the layout field's folders (and the
+  check box folders after them); when the path does not end in them, the folders before the first token. }
+function TPluginPromptForm.LayoutRoot(const Dir: string): string;
+var
+  I: Integer;  // I: field index
+  S, T, Rest: string;  // S: the path; T: one folder token; Rest: the layout's folders
+  Found: Boolean;  // Found: a folder token was removed in this round
+begin
+  S := ExcludeTrailingPathDelimiter(Dir);  // without the closing separator
+  repeat  // remove the check box folders at the end (for example the folder token UAS.Media)
+    Found := False;  // nothing removed yet
+    for I := 0 to High(FPlugin.Fields) do
+      if FPlugin.Fields[I].FolderTokens <> '' then
+        for T in FPlugin.Fields[I].FolderTokens.Split([';']) do
+          if (T <> '') and (Length(S) > Length(T) + 3) and
+             (Copy(S, Length(S) - Length(T) - 2, Length(T) + 3) = PathDelim + '{' + T + '}') then
+          begin
+            SetLength(S, Length(S) - Length(T) - 3);  // remove the last folder
+            Found := True;  // look again
+          end;
+  until not Found;
+  Rest := ExcludeTrailingPathDelimiter(LayoutRest);  // the layout's folders
+  if (Rest <> '') and (Length(S) > Length(Rest)) and (S[Length(S) - Length(Rest)] = PathDelim) and
+     SameText(Copy(S, Length(S) - Length(Rest) + 1, MaxInt), Rest) then
+    Result := Copy(S, 1, Length(S) - Length(Rest))  // the path ends in the layout: the part in front of it
+  else
+    Result := DestRootOf(Dir);  // otherwise the folders before the first token
+end;
+
+{ The download path from the destination folder and the layout field; the check boxes add their folders. }
+procedure TPluginPromptForm.ApplyLayout;
+begin
+  FDestDir := IncludeTrailingPathDelimiter(FDestRoot) + LayoutRest;  // destination + the typed folders
+  ApplyFolderFields;  // the check boxes decide the last folders (shows the result too)
+end;
+
+{ Chooses the destination folder to download to. With a layout field the download folder template becomes
+  the chosen folder plus the field's folders; otherwise the chosen folder plus the token part of the current
+  template when that uses the plug-in's tokens, or plus the plug-in's suggested folder template (DestTemplate). }
 procedure TPluginPromptForm.FolderClick(Sender: TObject);
 var
   D: TSelectDirectoryDialog;  // D: folder chooser
@@ -1622,8 +1690,16 @@ begin
     if (Root <> '') and DirectoryExists(Root) then D.InitialDir := Root;  // start in the current destination
     if D.Execute then  // a folder was chosen
     begin
-      FDestDir := IncludeTrailingPathDelimiter(D.FileName) + Rest;  // the new download folder template
-      ApplyFolderFields;  // the check boxes decide the last folders (shows the result too)
+      if LayoutIndex >= 0 then  // a layout field gives the folders
+      begin
+        FDestRoot := IncludeTrailingPathDelimiter(D.FileName);  // the new destination folder
+        ApplyLayout;  // destination + the field's folders + check box folders
+      end
+      else
+      begin
+        FDestDir := IncludeTrailingPathDelimiter(D.FileName) + Rest;  // the new download folder template
+        ApplyFolderFields;  // the check boxes decide the last folders (shows the result too)
+      end;
     end;
   finally
     D.Free;  // free the chooser
