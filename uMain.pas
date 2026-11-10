@@ -330,7 +330,8 @@ begin
     ShortCut(VK_M, [ssCtrl]));
   miLarge := AddMenu(MView, 'Thumbnail View (large thumbnails)', @LargeViewClick,  // large thumbnails (320 pixels)
     ShortCut(VK_X, [ssCtrl]));
-  miFit := AddMenu(MView, 'Thumbnail View (fit to window)', @FitViewClick, 0);  // cards fill the window width
+  miFit := AddMenu(MView, 'Thumbnail View (fit to window)', @FitViewClick,  // cards fill the window width
+    ShortCut(VK_F, [ssCtrl]));
   AddMenu(MView, '-', nil, 0);  // separator
   miDateSel := AddMenu(MView, 'Image Date Selector', @DateSelClick, ShortCut(VK_TAB, [ssCtrl]));  // show or hide the date list
 

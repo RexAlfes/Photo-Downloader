@@ -6,7 +6,7 @@ interface
 
 uses
   Classes, SysUtils, Contnrs, Math, StrUtils, DateUtils, Graphics, FPReadJPEG,
-  LazFileUtils, md5, uSettings, uExif, uHeic, uRotate, uTiffRead, uPngFix, uWebP, uVideoThumb, uLrPrev, uLrCat;
+  LazFileUtils, md5, uSettings, uExif, uThermal, uHeic, uRotate, uTiffRead, uPngFix, uWebP, uVideoThumb, uLrPrev, uLrCat;
 
 type
   TItemStatus = (isNew, isDownloaded, isNameClash, isDuplicate);  // state of an image compared with earlier downloads
@@ -779,6 +779,12 @@ begin
     'E': Result := UpperCase(Copy(SavedExt(S, Item), 2, MaxInt));  // file extension in upper case, without the dot
     'e': Result := LowerCase(Copy(SavedExt(S, Item), 2, MaxInt));  // file extension in lower case, without the dot
     'ea': Result := Copy(SavedExt(S, Item), 2, MaxInt);  // file extension as it is, without the dot
+    'Type':  // folder per type of file: the extension in capitals, thermal files with -IR or -IR-R (JPG-IR, MP4-IR, JPG-IR-R)
+      begin
+        Result := UpperCase(Copy(SavedExt(S, Item), 2, MaxInt));  // JPG, MP4, LRV ...
+        if Result = '' then Result := 'OTHER'  // a file without extension
+        else Result := Result + ThermalSuffix(Item.FullPath, Item.Size, ExtractFileExt(Item.FileName));  // thermal camera
+      end;
     'seq#': Result := IntToStr(SeqDown);  // download sequence number
   else
     if (Length(Tok) = 2) and (Tok[1] = 'n') and (Tok[2] in ['1'..'9']) then  // n1 to n9: sequence number of this session

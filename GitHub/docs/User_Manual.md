@@ -66,7 +66,7 @@ Each picture card shows its number, file name and size, the date and time it was
 
 **Views.** View > List View shows one line per picture with column headings (File, Captured, Status, Camera, Destination). Click a heading to sort; click it again to reverse the order. The thumbnail views show a picture with its details beside it: the number and file name (without the extension) on the first line, then the capture date, the **file type** and the **size** (for example `10/28/26 11:02:00   NEF   24.1 MB`), the status, the camera and the destination. A name that is too long is shortened with "...". The order you choose also applies to the viewer.
 
-**Thumbnail size.** View > Thumbnail View offers **Small** (64 pixels, Ctrl+T), **Medium** (160 pixels, Ctrl+M), **Large** (320 pixels, Ctrl+X) and **Fit to Window**. Fit to Window is the default for new settings: it uses as few columns as keep the thumbnails at 160 pixels or less and shares the window width evenly, so nothing is left over at the right, and it follows the window when you resize it. You can also hold **Ctrl** and turn the mouse wheel over the pictures to make the thumbnails larger or smaller in small steps (64 to 320 pixels); that replaces Fit to Window with the size you stop at. The same choices are in the right-click menu. Larger sizes use more memory, so fewer thumbnails are kept at once.
+**Thumbnail size.** View > Thumbnail View offers **Small** (64 pixels, Ctrl+T), **Medium** (160 pixels, Ctrl+M), **Large** (320 pixels, Ctrl+X) and **Fit to Window** (Ctrl+F). Fit to Window is the default for new settings: it uses as few columns as keep the thumbnails at 160 pixels or less and shares the window width evenly, so nothing is left over at the right, and it follows the window when you resize it. You can also hold **Ctrl** and turn the mouse wheel over the pictures to make the thumbnails larger or smaller in small steps (64 to 320 pixels); that replaces Fit to Window with the size you stop at. The same choices are in the right-click menu. Larger sizes use more memory, so fewer thumbnails are kept at once.
 
 **Date list.** Selecting pictures highlights their dates in the list. Clicking dates selects all pictures of those dates. If a highlighted date is out of sight, the list scrolls to it. Hide or show the list with View > Image Date Selector (Ctrl+Tab).
 
@@ -212,6 +212,7 @@ Default file name template: `{o}` (the original name)
 | `{T8}`, `{T9}` | custom tokens set per camera (Mapping tab) |
 | `{J}` | job code |
 | `{E}` / `{e}` / `{ea}` | file extension in upper case / lower case / as it is, without the dot |
+| `{Type}` | folder per type of file: the extension in capitals (`JPG`, `MP4`, `LRV`), `OTHER` without one; thermal (infrared) files get `-IR` (`JPG-IR`, `MP4-IR`, `DNG-IR`), radiometric thermal photos `-IR-R` |
 | `{seq#}` | download sequence number |
 | `{n1}` … `{n9}` | sequence number for this session, padded to 1–9 digits |
 
@@ -221,6 +222,9 @@ Default file name template: `{o}` (the original name)
 - `{d}_{t}_{o}` → `20261027_140500_DSC_1234.NEF`
 - `{J}_{n4}` → `Smith_0001.NEF`, `Smith_0002.NEF` …
 - `{Y}\{E}\` → folder `2026\NEF`, so RAW and JPEG files land in separate folders
+- `{d}\{Type}\{o}` → `20261027\NEF\DSC_1234.NEF`; a drone's thermal photos of the same day go to `20261027\JPG-IR\`
+
+**File type token.** `{Type}` sorts files into one folder per type, like `{E}`, and keeps thermal (infrared) files apart: a photo or video counts as thermal when its XMP data names a camera that is not a visible-light camera (Skydio drones write this), or when it is 640 x 512 pixels, the size of common thermal cameras. A thermal photo with temperature data (Skydio RJPEG) goes to `JPG-IR-R`. Only JPEG, DNG, MP4 and MOV files are checked; other types get just the extension. The private plug-in has its own `{UAS.Media}` token; `{Type}` gives the same folders without the plug-in, except the plug-in's Scans folder.
 
 **Extension tokens.** `{E}`, `{e}` and `{ea}` give the extension of the saved file: a `.jpe` file renamed to `.jpg`, or a Lightroom preview saved as a .jpg, gives `JPG` / `jpg`. The option "Convert filename to lower case" also lowers `{E}` when it is used in the file name.
 
@@ -407,6 +411,7 @@ Help > **Logging (for troubleshooting)** writes problems to a file named `thumbn
 | Ctrl+T | Small thumbnails (64 px) |
 | Ctrl+M | Medium thumbnails (160 px) |
 | Ctrl+X | Large thumbnails (320 px) |
+| Ctrl+F | Fit to Window |
 | Ctrl + mouse wheel | Change the thumbnail size |
 | Ctrl+Tab | Show or hide the Image Date Selector |
 | F1 (in Preferences) | Token list |

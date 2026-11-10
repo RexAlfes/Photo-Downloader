@@ -63,6 +63,7 @@ const
     '{E} - file extension in upper case (JPG)'#13#10 +
     '{e} - file extension in lower case (jpg)'#13#10 +
     '{ea} - file extension as it is'#13#10 +
+    '{Type} - folder per type of file: JPG, MP4, LRV ...; thermal files JPG-IR, MP4-IR, radiometric JPG-IR-R'#13#10 +
     '{seq#} - download sequence number'#13#10 +
     '{n1} ... {n9} - download sequence number for this session, zero padded to 1-9 digits';
 
