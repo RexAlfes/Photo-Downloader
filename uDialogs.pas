@@ -2252,36 +2252,35 @@ begin
   cbJob.Items.Add('{Job Name}');  // placeholder job code
   cbJob.OnChange := @ExampleChange;  // update the example when the text changes
 
-  chkPromptJob := MkCheck(TS, 'Prompt for Job code every time Downloader is run', 8, 120);  // prompt for the job code check box
-  MkLabel(TS, 'Sequence number starting', 8, 152);  // label
+  MkLabel(TS, 'Sequence number starting', 8, 120);  // label
   seqStart := TSpinEdit.Create(TS);  // create the sequence number box
   seqStart.Parent := TS;  // place it on the tab
-  seqStart.SetBounds(170, 148, 80, 23);  // position and size it
+  seqStart.SetBounds(170, 116, 80, 23);  // position and size it
   seqStart.MinValue := 0;  // smallest value
   seqStart.MaxValue := 999999999;  // largest value
-  MkButton(TS, 'Reset', 262, 147, 70).OnClick := @ResetClick;  // button that resets the sequence number
+  MkButton(TS, 'Reset', 262, 115, 70).OnClick := @ResetClick;  // button that resets the sequence number
 
-  MkLabel(TS, 'Directory and filename tokens (press F1 for a complete list):', 8, 184);  // label
-  MkWrap(TS, Col1, 8, 204, 150, 150);  // token help, first column
-  MkWrap(TS, Col2, 168, 204, 150, 150);  // token help, second column
-  MkWrap(TS, Col3, 330, 204, 150, 150);  // token help, third column
-  MkLabel(TS, '{seq#} - download sequence', 8, 358);  // token label
-  MkLabel(TS, '{E} {e} {ea} - extension (upper, lower, as is)', 200, 358);  // token label
-  MkLabel(TS, '{n4} - download sequence number (this session)', 8, 376);  // token label
-  MkButton(TS, 'Show tokens...', 380, 380, 100).OnClick := @TokensClick;  // button that shows all tokens
+  MkLabel(TS, 'Directory and filename tokens (press F1 for a complete list):', 8, 152);  // label
+  MkWrap(TS, Col1, 8, 172, 150, 150);  // token help, first column
+  MkWrap(TS, Col2, 168, 172, 150, 150);  // token help, second column
+  MkWrap(TS, Col3, 330, 172, 150, 150);  // token help, third column
+  MkLabel(TS, '{seq#} - download sequence', 8, 326);  // token label
+  MkLabel(TS, '{E} {e} {ea} - extension (upper, lower, as is)', 200, 326);  // token label
+  MkLabel(TS, '{n4} - download sequence number (this session)', 8, 344);  // token label
+  MkButton(TS, 'Show tokens...', 380, 348, 100).OnClick := @TokensClick;  // button that shows all tokens
 
-  MkLabel(TS, 'Example image', 8, 416);  // label
-  edExample := MkEdit(TS, 8, 436, 472);  // example box
+  MkLabel(TS, 'Example image', 8, 384);  // label
+  edExample := MkEdit(TS, 8, 404, 472);  // example box
   edExample.ReadOnly := True;  // user cannot edit the example
 
-  chkVerify := MkCheck(TS, 'Verify every copy (read it back and compare checksums)', 8, 476);  // verify copies check box
-  chkBackup := MkCheck(TS, 'Also save a second copy to a backup folder', 8, 504);  // backup copy check box
+  chkVerify := MkCheck(TS, 'Verify every copy (read it back and compare checksums)', 8, 444);  // verify copies check box
+  chkBackup := MkCheck(TS, 'Also save a second copy to a backup folder', 8, 472);  // backup copy check box
   chkBackup.OnClick := @BackupChange;  // enable the backup controls when changed
-  MkLabel(TS, 'Backup directory (same patterns as above):', 26, 532);  // label
-  edBackup := MkEdit(TS, 26, 552, 418);  // backup folder box
-  btnBackupBrowse := MkButton(TS, '...', 452, 551, 28);  // button that browses for the backup folder
+  MkLabel(TS, 'Backup directory (same patterns as above):', 26, 500);  // label
+  edBackup := MkEdit(TS, 26, 520, 418);  // backup folder box
+  btnBackupBrowse := MkButton(TS, '...', 452, 519, 28);  // button that browses for the backup folder
   btnBackupBrowse.OnClick := @BackupBrowseClick;  // connect its handler
-  MkLabel(TS, 'The backup is made from the verified download, before rotation or metadata changes.', 26, 580);  // note about the backup
+  MkLabel(TS, 'The backup is made from the verified download, before rotation or metadata changes.', 26, 548);  // note about the backup
 end;
 
 { Enables the backup folder controls only when the backup is turned on. }
@@ -2372,6 +2371,8 @@ begin
   chkLoadLast := MkCheck(TS, 'Load the last used source folder at startup (otherwise nothing is scanned)', 8, Y);  // load last source option
   Inc(Y, 21);  // next row
   chkProfile := MkCheck(TS, 'Prompt for user profile at startup', 8, Y);  // profile prompt option
+  Inc(Y, 21);  // next row
+  chkPromptJob := MkCheck(TS, 'Prompt for job code at startup', 8, Y);  // job code window at start-up (moved here from the Download Path tab)
   Inc(Y, 21);  // next row
   chkSaveJobs := MkCheck(TS, 'Save date based job codes for next time Photo Downloader is run', 8, Y);  // date based job codes option
   Inc(Y, 21);  // next row

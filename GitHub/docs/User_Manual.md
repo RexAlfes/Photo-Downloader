@@ -280,13 +280,14 @@ If the file cannot be shown, the viewer says so and the log tells you why.
 Open File > Preferences (Ctrl+P). The dialog has seven tabs: Download Path, General, File Handling, Automation, Mapping, Custom Button and Plug-ins. **File > Plug-ins...** opens it directly on the Plug-ins tab.
 
 ### Download Path
-Destination folder template, file name template, default job code, "Prompt for job code every time Downloader is run", the starting sequence number with Reset, "Show tokens…", the example image, **Verify every copy**, and the **backup folder**.
+Destination folder template, file name template, default job code, the starting sequence number with Reset, "Show tokens…", the example image, **Verify every copy**, and the **backup folder**.
 
 ### General
 - **Image source:** auto-detect, camera (USB) or card reader/external storage. On Windows you can enter the drive letters of card readers or use **Locate card reader**. On Linux, removable drives are found automatically.
 - **Disable PTP downloads.**
 - Load the last used source folder at start-up.
 - Prompt for user profile at start-up.
+- Prompt for job code at start-up (the Job Code window, which also asks for the source folder; on by default).
 - Save date-based job codes.
 - Automatically eject card reader media when disconnecting.
 - Scan whole disk.

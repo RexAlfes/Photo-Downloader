@@ -18,7 +18,7 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 | `[Path]` | `DownloadDir` | text | `Pictures\Photo Downloader\{Y}\{Y}-{m}-{D}-{J}\` in the user's home folder | Destination folder template (tokens such as {Y} {m} {D} {J}) |
 | `[Path]` | `FileNameMask` | text | {o} | File name template ({o} = the original file name) |
 | `[Path]` | `JobCode` | text | {Job Name} | Current job code |
-| `[Path]` | `PromptJobCode` | True/False | 1 | Prompt for the job code every time the program is run |
+| `[Path]` | `PromptJobCode` | True/False | 1 | Prompt for the job code every time the program is run (Preferences > General, "Prompt for job code at startup") |
 | `[Path]` | `VerifyCopy` | True/False | 1 | Read every copy back and compare checksums |
 | `[Path]` | `BackupEnabled` | True/False | 0 | Also save a second copy to the backup folder |
 | `[Path]` | `BackupDir` | text | (empty) | Backup folder template (same tokens as DownloadDir) |

@@ -1,6 +1,6 @@
 # Photo Downloader – Current Specification and Status
 
-**Version:** 0.1.4  **Date:** 30 Oct 2026  **License:** GNU GPL v3 or later
+**Version:** 0.1.4  **Date:** 10 Nov 2026  **License:** GNU GPL v3 or later
 
 ## 1. Purpose
 
@@ -149,6 +149,7 @@ Re-evaluation runs after changes to destination, patterns, job code, profile or 
 | File, Edit, View, Help menus and shortcuts as in the specification | Done |
 | User Profiles Load / Save / Delete, Export Settings | Done |
 | "Prompt for user profile at startup" (Preferences > General): a list of profiles is shown at start-up; the entry **Default** is always offered and keeps the current settings, so the prompt also appears when no profile has been saved yet. Loading a profile never switches the prompt option off | Done (build 46, tested) |
+| "Prompt for job code at startup" (Preferences > General, under the profile prompt; `[Path] PromptJobCode`): the start-up Job Code window, which also asks for the source folder, can be switched off. Moved from the Download Path tab in 0.1.4.7 | Done (compiled on Windows, build 7; not yet tested in the window) |
 | Camera Settings, Check GPS Track Log | Open – disabled |
 | GPS Settings | Open – message only |
 | Preferences tabs: Download Path, General, File Handling, Automation, Mapping, Custom Button, Plug-ins | Done |
@@ -245,7 +246,7 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 | `[Path]` | `DownloadDir` | text | `Pictures\Photo Downloader\{Y}\{Y}-{m}-{D}-{J}\` in the current user's home folder (tested with a second Windows user) | Destination folder template (tokens such as {Y} {m} {D} {J}) |
 | `[Path]` | `FileNameMask` | text | {o} | File name template ({o} = the original file name; default since build 48) |
 | `[Path]` | `JobCode` | text | {Job Name} | Current job code |
-| `[Path]` | `PromptJobCode` | True/False | 1 | Prompt for the job code every time the program is run |
+| `[Path]` | `PromptJobCode` | True/False | 1 | Prompt for the job code every time the program is run (Preferences > General, "Prompt for job code at startup") |
 | `[Path]` | `VerifyCopy` | True/False | 1 | Read every copy back and compare checksums |
 | `[Path]` | `BackupEnabled` | True/False | 0 | Also save a second copy to the backup folder |
 | `[Path]` | `BackupDir` | text | (empty) | Backup folder template (same tokens as DownloadDir) |
