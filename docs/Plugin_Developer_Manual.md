@@ -99,7 +99,7 @@ EXPORT int pd_logo(unsigned char *buf, int bufLen);
 | Part | Meaning |
 |---|---|
 | `key` | name of the value (for example `Site`) |
-| `kind` | `choice` (list only), `combo` (list or typed text), `text` (typed text) or `check` (a check box; value `1` or `0`) |
+| `kind` | `choice` (list only), `combo` (list or typed text), `text` (typed text), `check` (a check box; value `1` or `0`) or `radio` (one radio button per entry, side by side; one of them is chosen; Photo Downloader 0.1.4.8 or later, older versions show a list) |
 | `label` | text in front of the field (right-aligned); for a check box, its text |
 | `entries` | list entries separated by `,`; each is `value` or `value:label` (the label is shown, the value is stored) |
 | `default` | value used before anything is stored |
@@ -141,6 +141,7 @@ Called on every change in the window with the current values, the edited lists (
 | `Preview` | text shown in bold under the fields |
 | `Error` | text shown in dark red; while it is not empty, **OK** is disabled |
 | `Set.<key>` | a value the window shows in that field now (for example a district filled in from a county) |
+| `Items.<key>` | new entries for a `choice` or `combo` field, written like `entries` (`value:label,value:label`); the chosen value stays chosen with its new label. Use it when another field changes what the list shows, for example county numbers from another code list. A list the user edited (**Edit list...**) is kept. Applied before `Set.` lines (Photo Downloader 0.1.4.8 or later) |
 | `Value.<key>` | the normalized value stored on OK (for example `95` stored as `0095`) |
 | `Invalid.<key>` | `1` = that field breaks its rule: its box is shown light red with dark red text until it is right |
 | `Note` | replaces the text of the `Note` from `pd_info`; an empty `Note=` hides the note (for example while it does not apply to the values). Without a `Note` line the note stays as it is. Needs a `Note` in `pd_info` (Photo Downloader 0.1.4.3 or later; older versions keep the `pd_info` note) |

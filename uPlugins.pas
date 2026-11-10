@@ -34,7 +34,7 @@ type
   { One field of a plug-in's prompt window }
   TPluginField = record
     Key: string;  // value name
-    Kind: string;  // choice, combo or text
+    Kind: string;  // choice, combo, text, check or radio (radio buttons side by side, 0.1.4.8)
     Caption: string;  // label shown in front of the control
     Values, Labels: TStringArray;  // list entries: value and the text shown for it
     Default: string;  // value used when none is stored yet

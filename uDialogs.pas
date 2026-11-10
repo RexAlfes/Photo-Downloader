@@ -1149,7 +1149,7 @@ type
   TPluginPromptForm = class(TForm)
   private
     FPlugin: TLibPlugin;  // the plug-in
-    FCtrls: array of TWinControl;  // one control per field (TComboBox or TEdit)
+    FCtrls: array of TWinControl;  // one control per field (TComboBox, TEdit, TCheckBox, or a TPanel of radio buttons)
     FUpdating: Boolean;  // True while the program changes the controls
     FChanged: string;  // key of the field changed last
     FNormal: string;  // normalized values from the last check (Value.<key>= lines)
@@ -1176,6 +1176,7 @@ type
     procedure SetList(I: Integer; const Codes, Descs: TStringArray);  // uses an edited list for field I
     function ListLines: string;  // List.<key>= lines of the edited lists
     procedure ListClick(Sender: TObject);  // edits the list of a field
+    procedure ReplaceItems(I: Integer; const Items: string);  // a list sent by pd_check (Items.<key>=) replaces the entries of field I
   public
     constructor CreatePrompt(AOwner: TComponent; P: TLibPlugin; const Values, DestDir: string);  // builds the window
     property DestDir: string read GetDestDir;  // the download folder template after the window closed
@@ -1197,6 +1198,9 @@ var
   Cb: TComboBox;  // Cb: a list field
   V, Fnt, Acc: string;  // V: stored value; Fnt: font name; Acc: accent color (hex RRGGBB)
   EditW: Integer;  // EditW: room for the "Edit list..." buttons (0 when no field has one)
+  RadW, X: Integer;  // RadW: width of a row of radio buttons; X: left edge of the next radio button
+  Pn: TPanel;  // Pn: holds the radio buttons of a radio field
+  Rb: TRadioButton;  // Rb: one radio button
   Btn: TButton;  // Btn: an "Edit list..." button
   Codes, Descs: TStringArray;  // Codes, Descs: a stored edited list
   Ent, Pair: TStringArray;  // Ent: entries of a stored list; Pair: code and descriptor of one entry
@@ -1262,6 +1266,13 @@ begin
   EditW := 0;  // no "Edit list..." button yet
   for I := 0 to High(P.Fields) do
     if P.Fields[I].Editable and (P.Fields[I].Kind <> 'check') and (P.Fields[I].Kind <> 'text') then EditW := 100;  // room for one
+  for I := 0 to High(P.Fields) do  // radio fields: their buttons stand side by side
+    if P.Fields[I].Kind = 'radio' then
+    begin
+      RadW := 0;  // width of the row
+      for J := 0 to High(P.Fields[I].Labels) do Inc(RadW, Canvas.TextWidth(P.Fields[I].Labels[J]) + 40);  // circle, text and gap
+      W := Max(W, CtlX + RadW + 14);  // room for the row
+    end;
   W := Max(W, CtlX + CtlW + 14 + EditW);  // window width
   SetLength(FCtrls, Length(P.Fields));  // one control per field
   SetLength(FVals, Length(P.Fields));  // list entries per field
@@ -1294,6 +1305,24 @@ begin
       FCtrls[I] := MkCheck(Self, P.Fields[I].Caption, CtlX, Y + 2);  // check box with its text
       FCtrls[I].Width := CtlW;  // as wide as the other controls
       TCheckBox(FCtrls[I]).OnClick := @FieldChange;  // react to every change
+    end
+    else if P.Fields[I].Kind = 'radio' then  // one of a few values, as radio buttons side by side (0.1.4.8)
+    begin
+      Pn := TPanel.Create(Self);  // holds the buttons, so they form their own group
+      Pn.Parent := Self;  // place it on the form
+      Pn.BevelOuter := bvNone;  // flat, no frame
+      Pn.Caption := '';  // no text of its own
+      X := 0;  // first button at the left
+      for J := 0 to High(FLabs[I]) do  // one button per entry
+      begin
+        Rb := MkRadio(Pn, FLabs[I][J], X, 2);  // the button
+        Rb.Width := Canvas.TextWidth(FLabs[I][J]) + 28;  // circle and text
+        Rb.Tag := I;  // field index (FieldChange)
+        Rb.OnClick := @FieldChange;  // check when it is chosen
+        Inc(X, Rb.Width + 12);  // next button to the right
+      end;
+      Pn.SetBounds(CtlX, Y - 1, Max(X, CtlW), 26);  // the row
+      FCtrls[I] := Pn;  // remember it
     end
     else if P.Fields[I].Kind = 'text' then  // free text
     begin
@@ -1411,9 +1440,17 @@ end;
 function TPluginPromptForm.FieldValue(I: Integer): string;
 var
   Cb: TComboBox;  // Cb: the list box
+  J: Integer;  // J: radio button index
 begin
   if FCtrls[I] is TCheckBox then Exit(IntToStr(Ord(TCheckBox(FCtrls[I]).Checked)));  // 1 = checked, 0 = not
   if FCtrls[I] is TEdit then Exit(TEdit(FCtrls[I]).Text);  // typed text
+  if FCtrls[I] is TPanel then  // radio buttons: the value of the chosen one
+  begin
+    Result := '';  // none chosen
+    for J := 0 to FCtrls[I].ControlCount - 1 do
+      if (J <= High(FVals[I])) and TRadioButton(FCtrls[I].Controls[J]).Checked then Result := FVals[I][J];
+    Exit;
+  end;
   Cb := TComboBox(FCtrls[I]);  // list box
   if (Cb.ItemIndex >= 0) and (Cb.ItemIndex <= High(FVals[I])) and (Cb.Text = Cb.Items[Cb.ItemIndex]) then  // an entry of the list
     Result := FVals[I][Cb.ItemIndex]  // its value
@@ -1435,6 +1472,12 @@ begin
   if FCtrls[I] is TEdit then  // free text
   begin
     TEdit(FCtrls[I]).Text := V;  // show it
+    Exit;
+  end;
+  if FCtrls[I] is TPanel then  // radio buttons: choose the one with that value
+  begin
+    for J := 0 to FCtrls[I].ControlCount - 1 do
+      if J <= High(FVals[I]) then TRadioButton(FCtrls[I].Controls[J]).Checked := SameText(FVals[I][J], V);
     Exit;
   end;
   Cb := TComboBox(FCtrls[I]);  // list box
@@ -1459,6 +1502,47 @@ begin
     if (J <= High(Descs)) and (Descs[J] <> '') then FLabs[I][J] := Codes[J] + ' - ' + Descs[J]
     else FLabs[I][J] := Codes[J];  // a code without descriptor
   FEdited[I] := True;  // stored with the values
+end;
+
+{ A list sent by pd_check (Items.<key>=value:text,value:text) replaces the entries of list field I, for
+  example the counties shown with the numbers of another code list. The chosen value stays chosen when it
+  is still listed. A list the user edited is kept. Called while FUpdating is True. }
+procedure TPluginPromptForm.ReplaceItems(I: Integer; const Items: string);
+var
+  J: Integer;  // J: entry index
+  Ent, Pair, NewV, NewL: TStringArray;  // Ent: the entries; Pair: value and text; NewV, NewL: the new values and texts
+  Cur: string;  // Cur: the value chosen now
+  Same: Boolean;  // Same: the list is already shown
+  Cb: TComboBox;  // Cb: the field
+begin
+  if not (FCtrls[I] is TComboBox) or FEdited[I] then Exit;  // only plug-in lists of list fields
+  Ent := Items.Split([',']);  // the entries
+  NewV := nil;
+  NewL := nil;
+  SetLength(NewV, Length(Ent));
+  SetLength(NewL, Length(Ent));
+  for J := 0 to High(Ent) do
+  begin
+    Pair := Ent[J].Split([':'], 2);  // value and text
+    NewV[J] := Pair[0];  // value
+    if Length(Pair) > 1 then NewL[J] := Pair[1] else NewL[J] := Pair[0];  // text (or the value)
+  end;
+  Same := Length(NewV) = Length(FVals[I]);  // already shown?
+  for J := 0 to High(NewV) do
+    if Same and ((NewV[J] <> FVals[I][J]) or (NewL[J] <> FLabs[I][J])) then Same := False;
+  if Same then Exit;  // nothing to change (no flicker while typing elsewhere)
+  Cur := FieldValue(I);  // keep the choice
+  FVals[I] := NewV;  // the new values
+  FLabs[I] := NewL;  // and texts
+  Cb := TComboBox(FCtrls[I]);  // the field
+  Cb.Items.BeginUpdate;  // one redraw
+  try
+    Cb.Items.Clear;  // new entries
+    for J := 0 to High(NewL) do Cb.Items.Add(NewL[J]);
+  finally
+    Cb.Items.EndUpdate;
+  end;
+  SetFieldValue(I, Cur);  // the same value, shown with its new text
 end;
 
 { The List.<key>= lines of the edited lists (CODE:Descriptor,CODE:Descriptor). }
@@ -1562,6 +1646,11 @@ begin
   Res := FPlugin.Check(Cur);  // ask the plug-in
   FUpdating := True;  // no checks while setting values
   try
+    for I := 0 to High(FCtrls) do  // lists the plug-in sends (Items.<key>=, 0.1.4.8), before the values set in them
+    begin
+      V := LineValue(Res, 'Items.' + FPlugin.Fields[I].Key);  // the new entries
+      if V <> '' then ReplaceItems(I, V);  // show them
+    end;
     for I := 0 to High(FCtrls) do  // values the plug-in sets (for example the district of a county)
     begin
       V := LineValue(Res, 'Set.' + FPlugin.Fields[I].Key);  // value to set
