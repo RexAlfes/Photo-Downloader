@@ -224,6 +224,8 @@ Default file name template: `{o}` (the original name)
 - `{Y}\{E}\` → folder `2026\NEF`, so RAW and JPEG files land in separate folders
 - `{d}\{Type}\{o}` → `20261027\NEF\DSC_1234.NEF`; a drone's thermal photos of the same day go to `20261027\JPG-IR\`
 
+**Folders copied whole.** A plug-in can ask for a folder of the card to be copied whole (the private plug-in does this for a drone's `scans` folder). Every file there is then listed and downloaded, also reports, CSV and 3D model files and hidden files, even when its type is switched off in View > File Types. Files that are no picture or video show a page with their extension, open in their default program on double-click, and are copied unchanged.
+
 **File type token.** `{Type}` sorts files into one folder per type, like `{E}`, and keeps thermal (infrared) files apart: a photo or video counts as thermal when its XMP data names a camera that is not a visible-light camera (Skydio drones write this), or when it is 640 x 512 pixels, the size of common thermal cameras. A thermal photo with temperature data (Skydio RJPEG) goes to `JPG-IR-R`. Only JPEG, DNG, MP4 and MOV files are checked; other types get just the extension. The private plug-in has its own `{UAS.Media}` token; `{Type}` gives the same folders without the plug-in, except the plug-in's Scans folder.
 
 **Extension tokens.** `{E}`, `{e}` and `{ea}` give the extension of the saved file: a `.jpe` file renamed to `.jpg`, or a Lightroom preview saved as a .jpg, gives `JPG` / `jpg`. The option "Convert filename to lower case" also lowers `{E}` when it is used in the file name.

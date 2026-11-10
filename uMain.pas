@@ -967,7 +967,7 @@ function TMainForm.ItemVisible(It: TImageItem): Boolean;
 begin
   Result := not (((It.Status = isDownloaded) and (not FS.ShowDownloaded)) or  // hide downloaded files, duplicates and file types that are turned off
                  ((It.Status = isDuplicate) and (not FS.ShowDuplicates)) or
-                 (not FS.TypeShown(It.FileName)));
+                 ((not FS.TypeShown(It.FileName)) and not It.WholeFolder));  // a folder copied whole is shown with all its files
 end;
 
 var
@@ -1614,6 +1614,11 @@ var
   I: Integer;  // I: loop counter
 begin
   Result := True;  // success unless writing the owner fields fails
+  if It.IsOther then  // a file that is no picture (scan report, CSV ...): copied unchanged, no picture steps
+  begin
+    if FS.UseCaptureTime then FileSetDateUTF8(Dest, DateTimeToFileDate(It.CaptureTime));  // its own file time
+    Exit;
+  end;
   // lossless turn first, so the owner fields are written into the final file
   if FS.AutoRotate and It.IsJpeg then  // turn JPEGs upright
     if AutoRotateJpegFile(Dest) < 0 then  // log a failure

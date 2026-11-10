@@ -383,7 +383,8 @@ var
   F: TViewerForm;  // F: the viewer form
 begin
   if (Items = nil) or (StartIndex < 0) or (StartIndex >= Items.Count) then Exit;  // nothing to show: do nothing
-  if TImageItem(Items[StartIndex]).IsVideo or TImageItem(Items[StartIndex]).IsAudio then  // video and audio are played by the system's default player
+  if TImageItem(Items[StartIndex]).IsVideo or TImageItem(Items[StartIndex]).IsAudio or
+     TImageItem(Items[StartIndex]).IsOther then  // video, audio and other files are opened by the system's default program
   begin
     OpenDocument(TImageItem(Items[StartIndex]).FullPath);  // open it in the default player outside the program
     Exit;

@@ -514,6 +514,36 @@ begin
   C.Pen.Color := clGray;  // restore the outline color
 end;
 
+{ Draws the tile of a file that is no picture, video or audio (listed in a folder copied whole): a light
+  page with a folded corner and the file's extension. }
+procedure DrawFileTile(C: TCanvas; Item: TImageItem; X, Y, W, H: Integer);
+var
+  PW, PH, PX, PY, F: Integer;  // PW, PH: page size; PX, PY: its top left; F: size of the folded corner
+  Ext: string;  // Ext: the extension shown
+begin
+  C.Brush.Style := bsSolid;  // solid fill
+  C.Brush.Color := $00EBEBEB;  // light gray tile
+  C.Pen.Color := clGray;  // gray outline
+  C.Rectangle(X, Y, X + W, Y + H);  // paint the tile
+  PH := H * 3 div 4;  // page height
+  PW := PH * 3 div 4;  // page width
+  PX := X + (W - PW) div 2;  // centered
+  PY := Y + (H - PH) div 2;
+  F := Max(4, PW div 4);  // folded corner
+  C.Brush.Color := clWhite;  // white page
+  C.Pen.Color := $00808080;  // gray outline
+  C.Polygon([Point(PX, PY), Point(PX + PW - F, PY), Point(PX + PW, PY + F), Point(PX + PW, PY + PH), Point(PX, PY + PH)]);  // the page
+  C.Polyline([Point(PX + PW - F, PY), Point(PX + PW - F, PY + F), Point(PX + PW, PY + F)]);  // the fold
+  Ext := UpperCase(Copy(ExtractFileExt(Item.FileName), 2, 6));  // for example CSV
+  if Ext = '' then Ext := 'FILE';  // no extension
+  C.Brush.Style := bsClear;  // no fill for the text
+  C.Font.Color := $00505050;  // dark gray text
+  C.TextOut(PX + (PW - C.TextWidth(Ext)) div 2, PY + (PH - C.TextHeight(Ext)) div 2, Ext);  // extension in the middle
+  C.Brush.Style := bsSolid;  // restore the fill
+  C.Font.Color := clBlack;  // restore the text color
+  C.Pen.Color := clGray;  // restore the outline color
+end;
+
 { Draws the default tile of an audio file: a dark tile with a music note, the extension and the size. }
 procedure DrawAudioTile(C: TCanvas; Item: TImageItem; X, Y, W, H: Integer);
 var
@@ -592,6 +622,8 @@ begin
   end
   else if Item.IsAudio then
     DrawAudioTile(Canvas, Item, X, Y, FThumbBox * 3 div 4, FThumbBox * 2 div 3)  // default audio tile
+  else if Item.IsOther then
+    DrawFileTile(Canvas, Item, X, Y, FThumbBox * 3 div 4, FThumbBox * 2 div 3)  // a file that is no picture
   else if Item.IsVideo then
     DrawVideoMark(Canvas, Item, X, Y, FThumbBox * 3 div 4, FThumbBox * 2 div 3, True)  // no frame: video tile instead of the gray box
   else

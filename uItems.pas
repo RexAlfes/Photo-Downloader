@@ -35,12 +35,14 @@ type
     ThumbTried: Boolean;  // True once a thumbnail was tried
     Duration: Double;               // length of a video in seconds (0 = unknown or not a video)
     CatalogName: string;            // .lrprev: file name of the photo in the Lightroom catalog ('' = unknown)
+    WholeFolder: Boolean;           // found in a folder a plug-in wants copied whole (WholeFolders=): listed whatever its type
     destructor Destroy; override;  // frees the thumbnail
     function StatusText: string;  // text for the status column
     function IsProblem: Boolean;  // True when the item has a problem
     function IsJpeg: Boolean;  // True for JPEG files
     function IsVideo: Boolean;  // True for MP4, MOV and LRV files
     function IsAudio: Boolean;  // True for MP3 files
+    function IsOther: Boolean;  // True for a file that is no picture, video or audio (only listed in a whole folder)
     function DurationText: string;  // video length as h:mm:ss or m:ss ('' when unknown)
     function SizeText: string;  // size as text
   end;
@@ -105,6 +107,9 @@ var
   { Further top-level folders of a source with a DCIM folder that switched-on plug-ins want read
     (names separated by ';', '' = none); set by uPlugins (nil = no plug-ins) }
   PluginScanFoldersHook: function(S: TAppSettings): string = nil;
+  { Top-level folders of a source that switched-on plug-ins want copied whole: every file in them, of any
+    type and also hidden ones, is listed (names separated by ';', '' = none); set by uPlugins }
+  PluginWholeFoldersHook: function(S: TAppSettings): string = nil;
   { The folder the last scan started from (the source), so plug-ins can be told where a file lies in it }
   ScanRoot: string = '';
 { Copies Src to Dst. The MD5 of the source is computed while it is read. With Verify the copy is
@@ -203,6 +208,13 @@ end;
 function TImageItem.IsAudio: Boolean;
 begin
   Result := Pos(';' + LowerCase(ExtractFileExt(FileName)) + ';', AudioExts) > 0;  // look the extension up in the audio list
+end;
+
+{ True for a file that is no picture, video or audio: such files are listed only in a folder a plug-in
+  wants copied whole (for example a drone's scan report, CSV and model files). }
+function TImageItem.IsOther: Boolean;
+begin
+  Result := Pos(';' + LowerCase(ExtractFileExt(FileName)) + ';', ImageExts) = 0;  // not a known type
 end;
 
 { Returns the length of a video as h:mm:ss or m:ss. }
@@ -474,7 +486,25 @@ begin
   end;
 end;
 
-{ Scans one folder and its subfolders for image files. }
+var
+  WholeDirs: array of string = nil;  // full paths of the folders of this scan that are copied whole
+
+{ True when Path lies in one of the folders that are copied whole (WholeDirs). }
+function InWholeDir(const Path: string): Boolean;
+var
+  D: string;  // D: one whole folder
+begin
+  Result := False;  // not in one
+  for D in WholeDirs do
+    {$IFDEF WINDOWS}
+    if SameText(Copy(IncludeTrailingPathDelimiter(Path), 1, Length(D)), D) then Exit(True);  // Windows: any case
+    {$ELSE}
+    if Copy(IncludeTrailingPathDelimiter(Path), 1, Length(D)) = D then Exit(True);  // Linux: exact
+    {$ENDIF}
+end;
+
+{ Scans one folder and its subfolders for image files. In a folder a plug-in wants copied whole every
+  file is listed, also files of other types and hidden ones (names starting with a dot). }
 procedure ScanDir(const Dir: string; Items: TObjectList; var Cnt: Integer;
   Progress: TScanProgress);
 var
@@ -486,7 +516,9 @@ var
   MovHasDate: Boolean;  // MovHasDate: True when the video has a usable creation time
   MovLen: Double;  // MovLen: length of a video in seconds
   Cat: TLrCatInfo;  // Cat: what the Lightroom catalog knows about a .lrprev file
+  Whole: Boolean;  // Whole: Dir lies in a folder that is copied whole
 begin
+  Whole := (WholeDirs <> nil) and InWholeDir(Dir);  // take every file here
   if FindFirstUTF8(IncludeTrailingPathDelimiter(Dir) + '*', faAnyFile, SR) <> 0 then Exit;  // start the search; stop if the folder is empty
   try
     repeat
@@ -500,20 +532,22 @@ begin
         Progress(Cnt);  // report the count (lets the window update and Cancel work)
       end;
       if ScanAbort then Break;  // stop when the scan was aborted
-      if (SR.Name = '.') or (SR.Name = '..') or (SR.Name[1] = '.') then Continue;  // skip dot entries and hidden names
+      if (SR.Name = '.') or (SR.Name = '..') then Continue;  // skip the dot entries
+      if (SR.Name[1] = '.') and not Whole then Continue;  // hidden names, except in a folder copied whole
       Full := IncludeTrailingPathDelimiter(Dir) + SR.Name;  // complete path
       if (SR.Attr and faDirectory) <> 0 then  // folder entry
       begin
         // skip hidden/system folders such as $RECYCLE.BIN and System Volume Information
         // also skip Lightroom preview folders unless they are wanted: they hold only .lrprev files,
         // often in tens of thousands of small folders that take long to walk through
-        if ((SR.Attr and (AttrHidden or AttrSystem)) = 0) and  // skip hidden and system folders
+        if (((SR.Attr and (AttrHidden or AttrSystem)) = 0) or Whole or InWholeDir(Full)) and  // skip hidden and system folders (not in a whole folder)
            not (ScanSkipLrData and SameText(ExtractFileExt(SR.Name), '.lrdata')) then  // and unwanted .lrdata folders
           ScanDir(Full, Items, Cnt, Progress);  // scan the subfolder
       end
-      else if IsImageFile(SR.Name) then  // file with an image extension
+      else if IsImageFile(SR.Name) or Whole then  // file with an image extension, or any file in a folder copied whole
       begin
         It := TImageItem.Create;  // create the item
+        It.WholeFolder := Whole;  // shown and downloaded whatever its type
         It.FullPath := Full;  // complete path
         It.FileName := SR.Name;  // file name
         It.SourceDir := Dir;  // folder
@@ -595,10 +629,20 @@ procedure ScanFolder(const Root: string; S: TAppSettings; Items: TObjectList;
   Progress: TScanProgress);
 var
   Cnt, I: Integer;  // Cnt: files found; I: loop counter
-  Dcim, F, D: string;  // Dcim: path of the DCIM folder; F: a further folder a plug-in wants read; D: its path
+  Dcim, F, D, Done: string;  // Dcim: path of the DCIM folder; F: a further folder a plug-in wants read; D: its path; Done: folders read
 begin
   Items.Clear;  // empty the list
   ScanRoot := Root;  // plug-ins are told where each file lies in the source
+  WholeDirs := nil;  // folders copied whole in this source
+  if Assigned(PluginWholeFoldersHook) then
+    for F in PluginWholeFoldersHook(S).Split([';']) do
+    begin
+      if Trim(F) = '' then Continue;  // nothing
+      D := FindSubFolder(Root, Trim(F));  // the folder in any case
+      if D = '' then Continue;  // not in this source
+      SetLength(WholeDirs, Length(WholeDirs) + 1);  // add it
+      WholeDirs[High(WholeDirs)] := IncludeTrailingPathDelimiter(D);
+    end;
   if LoggedMsgs <> nil then LoggedMsgs.Clear;  // a new scan may log each message again
   Cnt := 0;  // nothing found yet
   ScanAbort := False;  // clear the abort flag
@@ -609,13 +653,18 @@ begin
     if (not S.ScanWholeDisk) and DirectoryExistsUTF8(Dcim) then  // use DCIM unless the whole disk is to be scanned
     begin
       ScanDir(Dcim, Items, Cnt, Progress);  // scan DCIM
+      Done := ';dcim;';  // folders read so far
       if Assigned(PluginScanFoldersHook) then  // further top-level folders switched-on plug-ins want (for example scans)
         for F in PluginScanFoldersHook(S).Split([';']) do
         begin
-          if (Trim(F) = '') or SameText(Trim(F), 'DCIM') or ScanAbort then Continue;  // nothing, DCIM itself, or canceled
+          if (Trim(F) = '') or (Pos(';' + LowerCase(Trim(F)) + ';', Done) > 0) or ScanAbort then Continue;  // nothing, read already, or canceled
+          Done := Done + LowerCase(Trim(F)) + ';';  // read once
           D := FindSubFolder(Root, Trim(F));  // the folder in any case
           if D <> '' then ScanDir(D, Items, Cnt, Progress);  // scan it too
         end;
+      for D in WholeDirs do  // folders copied whole are always read
+        if (Pos(';' + LowerCase(ExtractFileName(ExcludeTrailingPathDelimiter(D))) + ';', Done) = 0) and not ScanAbort then
+          ScanDir(ExcludeTrailingPathDelimiter(D), Items, Cnt, Progress);
     end
     else
       ScanDir(Root, Items, Cnt, Progress);  // scan the whole root
@@ -1042,13 +1091,14 @@ begin
       It.DestPath := ComputeDest(S, It, S.SeqNext + I, I + 1);  // planned destination
       It.ClashInfo := '';  // no clash information yet
       // the same photo found twice (copies in other folders, renamed copies):
-      // identical size, capture time and camera
+      // identical size, capture time and camera. Files of a folder copied whole are never duplicates: they
+      // are kept together as they are (small report and lock files often share size and time)
       Key := IntToStr(It.Size) + '|' + FloatToStr(It.CaptureTime) + '|' + It.Camera;  // key from size, capture time and camera
-      if Dups.IndexOf(Key) >= 0 then  // the picture was seen before
+      if (not It.WholeFolder) and (Dups.IndexOf(Key) >= 0) then  // the picture was seen before
         It.Status := isDuplicate  // mark it as a duplicate
       else
       begin
-        Dups.Add(Key);  // remember the key
+        if not It.WholeFolder then Dups.Add(Key);  // remember the key
         It.Status := isNew;  // new file for now
         P := Groups.IndexOf(It.DestPath);  // find the destination in the list
         if P < 0 then
@@ -1736,6 +1786,7 @@ begin
   TiffErr := '';  // no TIFF error yet
   if Item.ThumbTried then Exit;  // already tried
   Item.ThumbTried := True;  // remember the attempt
+  if Item.IsOther then Exit;  // no picture in it: the view draws a file tile
   Ext := LowerCase(ExtractFileExt(Item.FileName));  // extension in lower case
   // slow-to-decode types are kept in a small on-disk cache
   Heavy := (Pos(';' + Ext + ';', HeicExts) > 0) or (Pos(';' + Ext + ';', TiffExts) > 0) or  // HEIC, TIFF, DNG and WebP are slow to decode

@@ -514,6 +514,23 @@ begin
   end;
 end;
 
+{ The top-level folders of a source that switched-on, loaded libraries want copied whole (WholeFolders=
+  lines, names separated by ';'; installed as uItems.PluginWholeFoldersHook). }
+function AllWholeFolders(S: TAppSettings): string;
+var
+  I: Integer;  // I: list index
+  P: TLibPlugin;  // P: one library
+begin
+  Result := '';  // none yet
+  if Libs = nil then Exit;  // no plug-ins
+  for I := 0 to Libs.Count - 1 do
+  begin
+    P := TLibPlugin(Libs[I]);  // the library
+    if P.Loaded and S.PluginEnabled(P.Key) and (P.Info.Values['WholeFolders'] <> '') then
+      Result := Result + P.Info.Values['WholeFolders'] + ';';  // its folders
+  end;
+end;
+
 { The folders a plug-in adds after the destination folder (see the interface section). }
 function LayoutFolders(P: TLibPlugin; const Vals: string): string;
 var
@@ -689,6 +706,7 @@ begin
   PluginFoldersHook := @AllLayoutFolders;  // plug-in folders work from now on
   PluginPathTokenHook := @IsPathToken;  // plug-in tokens may hold folders
   PluginScanFoldersHook := @AllScanFolders;  // further source folders plug-ins want read
+  PluginWholeFoldersHook := @AllWholeFolders;  // source folders plug-ins want copied whole
 end;
 
 { Switched-on, loaded library plug-ins that have prompt fields, in list order (caller frees the list). }
@@ -812,5 +830,6 @@ finalization
   PluginFoldersHook := nil;  // no more plug-in folders
   PluginPathTokenHook := nil;  // no more folder tokens
   PluginScanFoldersHook := nil;  // no more further source folders
+  PluginWholeFoldersHook := nil;  // no more folders copied whole
   FreeLibs;  // free the entries
 end.
