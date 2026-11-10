@@ -21,6 +21,7 @@ DOCS = [
     'docs/Plugin_Developer_Manual.md',
     'docs/Plugin_Plan.md',
     'docs/Feature_Summary.md',
+    'docs/MTP_Plan.md',
     'GitHub/Release_Notes_0.1.2.1.md',
     'GitHub/Release_Notes_0.1.3.1.md',
     'GitHub/Release_Notes_0.1.4.1.md',

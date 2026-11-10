@@ -36,7 +36,7 @@ Units: `uMain` (main form), `uDialogs` (Job Code, Preferences, IPTC, Register, A
 | Nothing is scanned at start-up; optional "load last used folder at startup" | Done |
 | Card reader drive letters, Locate card reader | Done (Windows) |
 | UNC paths (\\NAS\Photos) | Partial – work as ordinary paths, untested |
-| MTP devices, direct USB cameras | Open |
+| MTP devices, direct USB cameras | Open – plan in `docs/MTP_Plan.md` (staging import through the Windows Shell first) |
 | Watch mode (automatic download of new files) | Open |
 | Refresh (F5), Eject (F6) | Done – eject uses PowerShell on Windows |
 | Single or multiple instances (Preferences > General, default single) | Done – Windows only; takes effect at the next start |
