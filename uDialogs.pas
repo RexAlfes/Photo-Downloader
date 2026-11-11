@@ -18,9 +18,16 @@ function AskPluginValues(S: TAppSettings): Boolean;
 function ExecuteIptc(L: TStringList): Boolean;
 function ExecuteFileTypes(S: TAppSettings): Boolean;
 function ChooseFromList(const ATitle, APrompt: string; Items: TStrings; out Choice: string): Boolean;
-{ Asks for the name to save a user profile under; Items are the saved profiles (clicking one picks it to
-  save over). Name comes in as the suggested name (the profile in use) and goes out as the chosen one. }
-function AskProfileName(Items: TStrings; var Name: string): Boolean;
+
+type
+  TProfileAction = (paLoad, paSave, paSaveAs, paNew, paDelete);  // what the User Profiles window asks the program to do
+  { Does a profile action for the User Profiles window; False when it was not done (canceled or failed). }
+  TProfileHandler = function(Action: TProfileAction; const Name: string): Boolean of object;
+  TProfileListProc = procedure(L: TStrings) of object;  // fills L with the saved profile names
+  TProfileInUseFunc = function: string of object;  // the name of the profile in use
+
+{ The User Profiles window: the saved profiles with Load, Save, Save As..., New... and Delete. }
+procedure ExecuteProfiles(Handler: TProfileHandler; ListProc: TProfileListProc; InUse: TProfileInUseFunc);
 procedure ShowTokenHelp;
 procedure ShowAbout;
 procedure ShowRegister;
@@ -646,60 +653,153 @@ begin
 end;
 
 type
-  { Helper of the Save User Profile dialog: a click in the list puts the name into the box. }
-  TProfileNameHelper = class
+  { Helper of the User Profiles window: the list, the buttons and what they do. }
+  TProfilesHelper = class
+    Form: TForm;  // the window
     List: TListBox;  // saved profiles
-    Edit: TEdit;  // name to save under
-    Form: TForm;  // the dialog
-    procedure ListClick(Sender: TObject);  // copies the chosen profile into the box
-    procedure ListDblClick(Sender: TObject);  // picks the profile and saves
+    InUseLbl: TLabel;  // "Profile in use: ..."
+    BLoad, BSave, BDelete: TButton;  // buttons that depend on the selection or the profile in use
+    Handler: TProfileHandler;  // does the actions (main window)
+    ListProc: TProfileListProc;  // lists the saved profiles
+    InUse: TProfileInUseFunc;  // the profile in use
+    procedure Refresh(const Select: string);  // fills the list again and selects Select
+    procedure UpdateButtons(Sender: TObject);  // enables the buttons for the selection
+    function Selected: string;  // the selected profile ('' = none)
+    function AskName(const ATitle: string; out Nm: string): Boolean;  // asks for a new profile name
+    procedure LoadClick(Sender: TObject);
+    procedure SaveClick(Sender: TObject);
+    procedure SaveAsClick(Sender: TObject);
+    procedure NewClick(Sender: TObject);
+    procedure DeleteClick(Sender: TObject);
   end;
 
-{ Copies the chosen profile name into the name box. }
-procedure TProfileNameHelper.ListClick(Sender: TObject);
-begin
-  if List.ItemIndex >= 0 then Edit.Text := List.Items[List.ItemIndex];  // save over this profile
-end;
-
-{ Picks the double-clicked profile and closes the dialog with Save. }
-procedure TProfileNameHelper.ListDblClick(Sender: TObject);
-begin
-  ListClick(Sender);  // copy the name
-  if List.ItemIndex >= 0 then Form.ModalResult := mrOK;  // save
-end;
-
-{ Asks for the name to save a user profile under: a list of the saved profiles and a name box that
-  starts with the profile in use. Double-clicking a profile saves over it. }
-function AskProfileName(Items: TStrings; var Name: string): Boolean;
+{ Fills the list with the saved profiles, shows the profile in use and selects Select (or the profile in use). }
+procedure TProfilesHelper.Refresh(const Select: string);
 var
-  F: TForm;  // F: the dialog
-  H: TProfileNameHelper;  // H: event helper
+  Cur: string;  // Cur: the profile in use
+begin
+  Cur := InUse();  // the profile in use
+  ListProc(List.Items);  // the saved profiles
+  InUseLbl.Caption := 'Profile in use: ' + Cur;  // shown above the list
+  if Select <> '' then List.ItemIndex := List.Items.IndexOf(Select)  // the profile just worked on
+  else List.ItemIndex := List.Items.IndexOf(Cur);  // the profile in use
+  UpdateButtons(nil);  // buttons for the selection
+end;
+
+{ Load and Delete need a selected profile; the profile in use cannot be deleted; Save needs a profile in use. }
+procedure TProfilesHelper.UpdateButtons(Sender: TObject);
+begin
+  BLoad.Enabled := Selected <> '';  // a profile to load
+  BDelete.Enabled := (Selected <> '') and (Selected <> InUse());  // load another profile first to delete this one
+  BSave.Enabled := InUse() <> '';  // a profile to save to
+end;
+
+{ The selected profile, or '' when none is selected. }
+function TProfilesHelper.Selected: string;
+begin
+  if List.ItemIndex >= 0 then Result := List.Items[List.ItemIndex] else Result := '';
+end;
+
+{ Asks for a profile name; characters that cannot be in a file name become '_'. Saving over an existing
+  profile needs a confirmation. False when canceled. }
+function TProfilesHelper.AskName(const ATitle: string; out Nm: string): Boolean;
+var
+  I: Integer;  // I: loop counter
+begin
+  Result := False;  // not yet
+  Nm := '';  // no name yet
+  if not InputQuery(ATitle, 'Profile name:', Nm) then Exit;  // canceled
+  Nm := Trim(Nm);  // without blanks around it
+  for I := 1 to Length(Nm) do  // every character
+    if Nm[I] in ['\', '/', ':', '*', '?', '"', '<', '>', '|'] then Nm[I] := '_';  // replace forbidden characters
+  if Nm = '' then Exit;  // empty name
+  if (List.Items.IndexOf(Nm) >= 0) and  // a profile of that name exists
+     (MessageDlg(ATitle, 'Replace the profile "' + Nm + '"?', mtConfirmation, [mbYes, mbNo], 0) <> mrYes) then Exit;
+  Result := True;  // a name to use
+end;
+
+{ Loads the selected profile (asks about unsaved changes of the profile in use first). }
+procedure TProfilesHelper.LoadClick(Sender: TObject);
+var
+  Nm: string;  // Nm: the profile
+begin
+  Nm := Selected;  // the selected profile
+  if Nm = '' then Exit;  // none
+  if Handler(paLoad, Nm) then Refresh(Nm);  // loaded
+end;
+
+{ Saves the settings to the profile in use. }
+procedure TProfilesHelper.SaveClick(Sender: TObject);
+begin
+  if Handler(paSave, InUse()) then Refresh('');  // saved
+end;
+
+{ Saves the settings under a new name; that profile is then in use. }
+procedure TProfilesHelper.SaveAsClick(Sender: TObject);
+var
+  Nm: string;  // Nm: the new name
+begin
+  if AskName('Save Profile As', Nm) and Handler(paSaveAs, Nm) then Refresh(Nm);  // saved
+end;
+
+{ Starts a new profile from the program's default settings; it is then in use. }
+procedure TProfilesHelper.NewClick(Sender: TObject);
+var
+  Nm: string;  // Nm: the new name
+begin
+  if AskName('New Profile', Nm) and Handler(paNew, Nm) then Refresh(Nm);  // created
+end;
+
+{ Deletes the selected profile after a confirmation. }
+procedure TProfilesHelper.DeleteClick(Sender: TObject);
+var
+  Nm: string;  // Nm: the profile
+begin
+  Nm := Selected;  // the selected profile
+  if (Nm = '') or (Nm = InUse()) then Exit;  // nothing to delete, or the profile in use
+  if MessageDlg('Delete Profile', 'Delete the profile "' + Nm + '"? This cannot be undone.', mtConfirmation,
+       [mbYes, mbNo], 0) <> mrYes then Exit;  // only when the user agrees
+  if Handler(paDelete, Nm) then Refresh('');  // deleted
+end;
+
+{ The User Profiles window: the saved profiles (the profile in use named above the list) and buttons to
+  load, save, save under another name, start a new profile and delete one. Double-click loads. }
+procedure ExecuteProfiles(Handler: TProfileHandler; ListProc: TProfileListProc; InUse: TProfileInUseFunc);
+var
+  F: TForm;  // F: the window
+  H: TProfilesHelper;  // H: event helper
 begin
   F := TForm.CreateNew(Application);  // create the form
-  H := TProfileNameHelper.Create;  // create the helper
-  H.Form := F;  // the dialog it closes
+  H := TProfilesHelper.Create;  // create the helper
   try
-    InitDialog(F, 'Save User Profile', 340, 330);  // set the common dialog properties
-    MkLabel(F, 'Saved profiles (click one to save over it):', 10, 10);  // prompt for the list
+    InitDialog(F, 'User Profiles', 420, 320);  // set the common dialog properties
+    H.Form := F;  // the window
+    H.Handler := Handler;  // the actions
+    H.ListProc := ListProc;  // the profile list
+    H.InUse := InUse;  // the profile in use
+    H.InUseLbl := MkLabel(F, 'Profile in use:', 10, 10);  // the profile in use
+    H.InUseLbl.Font.Style := [fsBold];  // stands out
     H.List := TListBox.Create(F);  // create the list
     H.List.Parent := F;  // place it on the form
-    H.List.SetBounds(10, 32, 320, 200);  // position and size it
-    H.List.Items.Assign(Items);  // the saved profiles
-    H.List.ItemIndex := H.List.Items.IndexOf(Name);  // highlight the profile in use
-    MkLabel(F, 'Profile name:', 10, 244);  // prompt for the name
-    H.Edit := MkEdit(F, 10, 264, 320);  // name box
-    H.Edit.Text := Name;  // the profile in use (or empty)
-    H.List.OnClick := @H.ListClick;  // a click picks the profile
-    H.List.OnDblClick := @H.ListDblClick;  // a double click saves over it
-    MkButton(F, 'Save', 160, 296, 80, mrOK).Default := True;  // Save button, also the default button
-    MkButton(F, 'Cancel', 250, 296, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
-    F.ActiveControl := H.Edit;  // typing goes into the name box
-    H.Edit.SelectAll;  // a new name replaces the suggestion
-    Result := F.ShowModal = mrOK;  // True when the user clicked Save
-    if Result then Name := Trim(H.Edit.Text);  // return the name
+    H.List.SetBounds(10, 36, 270, 248);  // position and size it
+    H.List.OnClick := @H.UpdateButtons;  // buttons follow the selection
+    H.List.OnDblClick := @H.LoadClick;  // double-click loads
+    MkLabel(F, 'Double-click a profile to load it.', 10, 292);  // hint
+    H.BLoad := MkButton(F, '&Load', 295, 36, 115);  // load the selected profile
+    H.BLoad.OnClick := @H.LoadClick;
+    H.BSave := MkButton(F, '&Save', 295, 68, 115);  // save to the profile in use
+    H.BSave.OnClick := @H.SaveClick;
+    MkButton(F, 'Save &As...', 295, 100, 115).OnClick := @H.SaveAsClick;  // save under another name
+    MkButton(F, '&New...', 295, 132, 115).OnClick := @H.NewClick;  // a new profile from the default settings
+    H.BDelete := MkButton(F, '&Delete', 295, 176, 115);  // delete the selected profile
+    H.BDelete.OnClick := @H.DeleteClick;
+    MkButton(F, 'Close', 295, 288, 115, mrClose).Cancel := True;  // close, also with Esc
+    H.Refresh('');  // fill the list
+    F.ActiveControl := H.List;  // arrow keys move in the list
+    F.ShowModal;  // until Close
   finally
     H.Free;  // free the helper
-    F.Free;  // free the dialog
+    F.Free;  // free the window
   end;
 end;
 

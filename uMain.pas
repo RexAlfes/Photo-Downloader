@@ -118,9 +118,10 @@ type
     procedure ProgCancelClick(Sender: TObject);
     procedure CopyTick;
     procedure OpenSourceClick(Sender: TObject);
-    procedure ProfileLoadClick(Sender: TObject);
-    procedure ProfileSaveClick(Sender: TObject);
-    procedure ProfileDeleteClick(Sender: TObject);
+    procedure ProfilesClick(Sender: TObject);  // File > User Profiles...: the profiles window
+    function ProfileAction(Act: TProfileAction; const Nm: string): Boolean;  // does what the profiles window asks
+    function ProfileInUse: string;  // the profile in use (for the profiles window)
+    procedure LoadProfileNamed(const Nm: string);  // loads a saved profile and makes it the profile in use
     function WriteProfile(const Nm: string): Boolean;  // saves the settings as the profile Nm (no questions)
     function ProfileChanged: Boolean;  // True when the settings differ from the saved profile in use
     function AskSaveProfile: Boolean;  // asks to save unsaved profile changes; False when the user canceled
@@ -283,7 +284,7 @@ end;
 procedure TMainForm.BuildMenu;
 var
   MM: TMainMenu;  // MM: the main menu
-  MFile, MEdit, MView, MHelp, MProf, Cam: TMenuItem;  // menu items that are used below
+  MFile, MEdit, MView, MHelp, Cam: TMenuItem;  // menu items that are used below
 begin
   MM := TMainMenu.Create(Self);  // create the main menu
   Menu := MM;  // attach it to the form
@@ -291,10 +292,7 @@ begin
   MFile := AddMenu(MM.Items, '&File', nil, 0);  // File menu
   AddMenu(MFile, 'Open Source Folder', @OpenSourceClick, ShortCut(VK_O, [ssCtrl]));  // open a source folder
   AddMenu(MFile, '-', nil, 0);  // separator
-  MProf := AddMenu(MFile, 'User Profiles', nil, 0);  // user profiles submenu
-  AddMenu(MProf, 'Load', @ProfileLoadClick, 0);  // load a profile
-  AddMenu(MProf, 'Save', @ProfileSaveClick, 0);  // save a profile
-  AddMenu(MProf, 'Delete', @ProfileDeleteClick, 0);  // delete a profile
+  AddMenu(MFile, 'User Profiles...', @ProfilesClick, 0);  // the profiles window: load, save, save as, new, delete
   AddMenu(MFile, '-', nil, 0);  // separator
   Cam := AddMenu(MFile, 'Camera Settings', nil, ShortCut(VK_S, [ssCtrl]));  // camera settings
   Cam.Enabled := False;            // direct camera (PTP) control is not supported
@@ -2384,63 +2382,70 @@ begin
   end;
 end;
 
-{ Loads a user profile chosen from a list. }
-procedure TMainForm.ProfileLoadClick(Sender: TObject);
+{ File > User Profiles...: the window with the saved profiles and Load, Save, Save As..., New... and Delete. }
+procedure TMainForm.ProfilesClick(Sender: TObject);
+begin
+  ExecuteProfiles(@ProfileAction, @ListProfiles, @ProfileInUse);  // the window calls back for each action
+end;
+
+{ The profile in use. }
+function TMainForm.ProfileInUse: string;
+begin
+  Result := FS.ProfileName;  // loaded, saved or created last
+end;
+
+{ Loads the saved profile Nm and makes it the profile in use (the start-up prompt setting stays). }
+procedure TMainForm.LoadProfileNamed(const Nm: string);
 var
-  L: TStringList;  // L: profile names
-  Choice: string;  // Choice: chosen profile
   PromptWas: Boolean;  // PromptWas: start-up prompt setting before loading
 begin
   PromptWas := FS.PromptProfile;  // remember the prompt setting
-  L := TStringList.Create;  // create the list
-  try
-    ListProfiles(L);  // find the profiles
-    if L.Count = 0 then  // none saved
-    begin
-      MessageDlg(AppTitle, 'There are no saved user profiles.', mtInformation, [mbOK], 0);  // tell the user
-      Exit;  // done
-    end;
-    if ChooseFromList('Load User Profile', 'Select a profile to load:', L, Choice) then  // ask the user
-    begin
-      if not AskSaveProfile then Exit;  // unsaved changes of the profile in use: save them first, or canceled
-      FS.LoadFromFile(ProfilesDir + Choice + '.ini');  // load the profile
-      FS.PromptProfile := PromptWas;      // a profile must not change the start-up prompt setting
-      FS.ProfileName := Choice;  // the profile in use
-      ReloadPlugins;  // the profile may switch other plug-ins on
-      SaveSettingsNow;  // save the settings
-      ApplyState;  // apply the settings
-      Reevaluate;  // work out the names again
-      UpdateCaption;  // the new profile in the title bar
-    end;
-  finally
-    L.Free;  // free the list
-  end;
+  FS.LoadFromFile(ProfilesDir + Nm + '.ini');  // load the profile
+  FS.PromptProfile := PromptWas;      // a profile must not change the start-up prompt setting
+  FS.ProfileName := Nm;  // the profile in use
+  ReloadPlugins;  // the profile may switch other plug-ins on
+  SaveSettingsNow;  // save the settings
+  ApplyState;  // apply the settings
+  Reevaluate;  // work out the names again
+  UpdateCaption;  // the new profile in the title bar
 end;
 
-{ Saves the settings as a user profile. }
-procedure TMainForm.ProfileSaveClick(Sender: TObject);
-var
-  Nm, Fn: string;  // Nm: profile name; Fn: profile file
-  I: Integer;  // I: loop counter
-  L: TStringList;  // L: saved profiles
+{ Does what the User Profiles window asks; False when it was not done. Load and New first ask about
+  unsaved changes of the profile in use (AskSaveProfile); the window has already asked for names and
+  confirmations. }
+function TMainForm.ProfileAction(Act: TProfileAction; const Nm: string): Boolean;
 begin
-  Nm := FS.ProfileName;  // suggest the profile in use
-  L := TStringList.Create;  // create the list
-  try
-    ListProfiles(L);  // the saved profiles
-    if L.IndexOf(Nm) < 0 then Nm := '';  // the profile in use no longer exists
-    if not AskProfileName(L, Nm) then Exit;  // ask for the name
-  finally
-    L.Free;  // free the list
+  Result := False;  // not done yet
+  case Act of
+    paLoad:
+      begin
+        if not FileExistsUTF8(ProfilesDir + Nm + '.ini') then Exit;  // gone meanwhile
+        if not AskSaveProfile then Exit;  // canceled
+        LoadProfileNamed(Nm);  // load it
+        Result := True;
+      end;
+    paSave:
+      Result := WriteProfile(Nm);  // the settings into the profile in use
+    paSaveAs:
+      Result := WriteProfile(Nm);  // the settings under the new name, now the profile in use
+    paNew:
+      begin
+        if not AskSaveProfile then Exit;  // canceled
+        FS.DefaultsKeepSession;  // the program's default settings (last source, job code, view stay)
+        Result := WriteProfile(Nm);  // saved as the new profile, now in use
+        ReloadPlugins;  // plug-ins as the defaults have them
+        SaveSettingsNow;  // the settings file follows
+        ApplyState;  // apply the settings
+        Reevaluate;  // work out the names again
+      end;
+    paDelete:
+      begin
+        if Nm = FS.ProfileName then Exit;  // never the profile in use (the window does not offer it)
+        Result := DeleteFileUTF8(ProfilesDir + Nm + '.ini');  // delete the profile file
+        if not Result then
+          MessageDlg(AppTitle, 'Could not delete the profile "' + Nm + '".', mtError, [mbOK], 0);  // tell the user
+      end;
   end;
-  for I := 1 to Length(Nm) do  // every character
-    if Nm[I] in ['\', '/', ':', '*', '?', '"', '<', '>', '|'] then Nm[I] := '_';  // replace forbidden characters
-  if Nm = '' then Exit;  // empty name
-  Fn := ProfilesDir + Nm + '.ini';  // the profile file
-  if FileExistsUTF8(Fn) and  // saving over a profile
-     (MessageDlg(AppTitle, 'Replace the profile "' + Nm + '" with the current settings?', mtConfirmation,
-       [mbYes, mbNo], 0) <> mrYes) then Exit;  // only when the user agrees
-  WriteProfile(Nm);  // save it (tells the user when it fails)
 end;
 
 { Saves the settings as the profile Nm without questions and makes it the profile in use. A new file is
@@ -2541,36 +2546,6 @@ procedure TMainForm.FormCloseQuery(Sender: TObject; var CanClose: Boolean);
 begin
   if FAutoClosing then Exit;  // hands-free exit: no questions
   CanClose := AskSaveProfile;  // Cancel keeps the program open
-end;
-
-{ Deletes a user profile chosen from a list. }
-procedure TMainForm.ProfileDeleteClick(Sender: TObject);
-var
-  L: TStringList;  // L: profile names
-  Choice: string;  // Choice: chosen profile
-begin
-  L := TStringList.Create;  // create the list
-  try
-    ListProfiles(L);  // find the profiles
-    if L.Count = 0 then  // none saved
-    begin
-      MessageDlg(AppTitle, 'There are no saved user profiles.', mtInformation, [mbOK], 0);  // tell the user
-      Exit;  // done
-    end;
-    if ChooseFromList('Delete User Profile', 'Select a profile to delete:', L, Choice) then  // ask the user
-      if MessageDlg(AppTitle, 'Delete the profile "' + Choice + '"?', mtConfirmation,  // ask for confirmation
-           [mbYes, mbNo], 0) = mrYes then
-      begin
-        DeleteFileUTF8(ProfilesDir + Choice + '.ini');  // delete the profile file
-        if Choice = FS.ProfileName then  // it was the profile in use
-        begin
-          FS.ProfileName := '';  // no profile in use any more
-          UpdateCaption;  // take it out of the title bar
-        end;
-      end;
-  finally
-    L.Free;  // free the list
-  end;
 end;
 
 { Shows the status window with counts and settings. }

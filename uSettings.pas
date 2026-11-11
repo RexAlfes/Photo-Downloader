@@ -111,6 +111,7 @@ type
     function ProfileText: string;  // the options a profile keeps, as text (session values left out), for comparing
     procedure AssignFrom(Src: TAppSettings);  // copies every option of Src
     function WithProfile(const AFileName: string): TAppSettings;  // a copy with that profile loaded, session values kept (caller frees)
+    procedure DefaultsKeepSession;  // every option back to its default, session values kept (a new profile)
   end;
 
 function ConfigDir: string;  // folder for the settings file
@@ -740,6 +741,26 @@ begin
     Result.LoadFrom(Prof);  // read back
   finally
     Prof.Free;  // free the ini objects
+    Cur.Free;
+  end;
+end;
+
+{ Sets every option back to the program's default but keeps the session values (last source, job code,
+  view options ...); used for a new profile. }
+procedure TAppSettings.DefaultsKeepSession;
+var
+  Cur, Def: TMemIniFile;  // Cur: these settings; Def: the defaults
+begin
+  Cur := TMemIniFile.Create('');  // no file
+  Def := TMemIniFile.Create('');  // no file
+  try
+    SaveTo(Cur);  // these settings
+    SetDefaults;  // every option to its default
+    SaveTo(Def);  // as ini
+    CopySession(Cur, Def);  // with the session values of before
+    LoadFrom(Def);  // read back
+  finally
+    Def.Free;  // free the ini objects
     Cur.Free;
   end;
 end;

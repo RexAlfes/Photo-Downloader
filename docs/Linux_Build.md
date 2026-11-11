@@ -73,5 +73,5 @@ Build with `lazbuild -B --ws=gtk2 PhotoDownloader.lpi`, start `bin/linux/PhotoDo
 | 8 | Install the example plug-in (above), restart, switch it on | Confirmation with the `.so` path; the list shows "Example Plug-in"; Setup... opens its window (labels right-aligned, red centered reminder, version in the title) |
 | 9 | Use `{Example.Site}-{Example.Name}` as file name and download | Files named for example `NORTH-DJI_0001.JPG` |
 | 10 | Delete the `.so` file and restart | The plug-in leaves the list |
-| 11 | File > User Profiles > Save, then Load (double-click) | Save lists the profiles and suggests the one in use; replacing asks first; Load restores the plug-in settings |
+| 11 | File > User Profiles...: Save As..., then Load (double-click) | the window lists the profiles and names the one in use; replacing asks first; Load restores the plug-in settings |
 | 12 | Settings with a `{T}` or `{q}` folder and a non-ASCII folder name (for example `Ü`) | Folders are made and files copied |

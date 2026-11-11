@@ -360,14 +360,21 @@ The interface for writing libraries is described in `docs/Plugin_Developer_Manua
 
 A **profile** is a saved set of preferences – useful if you use several cameras, clients or computers.
 
-- File > User Profiles > **Save** stores the current settings under a name; **Load** applies one; **Delete** removes one. In the Load window (and the start-up profile list), double-clicking a profile loads it.
-- **Save** lists the saved profiles and fills in the name of the profile in use (the one loaded or saved last). Click **Save** to update that profile, click another profile in the list (double-click saves at once) to save over it, or type a new name. Saving over a profile asks for confirmation first.
+- **File > User Profiles...** opens the **User Profiles** window: the saved profiles, with the profile in use named above the list, and these buttons:
+  - **Load** applies the selected profile (double-clicking a profile does the same).
+  - **Save** stores the current settings in the profile in use.
+  - **Save As...** stores the current settings under another name; that profile is then in use.
+  - **New...** starts a new profile from the program's default settings and makes it the profile in use (the last source folder, job code and view options stay).
+  - **Delete** removes the selected profile after a confirmation. The profile in use cannot be deleted: load another one first.
+  - **Close** closes the window.
+
+  Saving over an existing profile with **Save As...** or **New...** asks for confirmation first. **Load** and **New...** first ask about unsaved changes of the profile in use (below). In the start-up profile list, double-clicking a profile loads it.
 - **The title bar shows the profile in use**, right after the program name, for example **Photo Downloader - Profile: Bridges - Folder E:\DCIM**. It changes when you load, save or delete a profile.
-- **The download path and plug-in values follow the profile.** After each download, the download path and the plug-in values that were used are written into the profile in use, so loading that profile later downloads to the same place with the same plug-in values, even when they were changed after the profile was saved (for example in a plug-in's window). Only these are updated; other changes still need **Save**. Choosing **Default** at start-up means no profile is in use.
+- **The download path and plug-in values follow the profile.** After each download, the download path and the plug-in values that were used are written into the profile in use, so loading that profile later downloads to the same place with the same plug-in values, even when they were changed after the profile was saved (for example in a plug-in's window). Only these are updated; other changes still need **Save**. Choosing **Default** at start-up uses the Default profile.
 - A profile holds all preferences, including the **plug-ins**: which are switched on, their order, and the values entered in a plug-in's window (with the download path it set). Loading a profile switches the plug-ins on or off as saved; a plug-in library that is missing on this computer is switched off with a message.
 - With "Prompt for user profile at start-up", a list appears each time the program starts.
 - **There is always a profile in use.** When no profile is chosen at start-up (the list is closed without a choice, or the prompt is off and no profile is in use or its file was deleted), Photo Downloader uses the profile **Default**. If there is no Default profile yet, your current settings are saved as Default.
-- **Unsaved changes.** When you exit, or load another profile, after changing settings that a profile keeps, Photo Downloader asks whether to save the changes to the profile in use: **Yes** saves them, **No** drops them (the profile's saved settings come back), **Cancel** keeps the program open. Not counted as changes: the last source folder, the job code and job code history, the next sequence number, the view options (list or cards, thumbnail size, Fit to Window, shown files and date list) and logging. The automatic sequence's exit step closes the program without asking.
+- **Unsaved changes.** When you exit, load another profile or start a new one, after changing settings that a profile keeps, Photo Downloader asks whether to save the changes to the profile in use: **Yes** saves them, **No** drops them (the profile's saved settings come back), **Cancel** keeps the program open. Not counted as changes: the last source folder, the job code and job code history, the next sequence number, the view options (list or cards, thumbnail size, Fit to Window, shown files and date list) and logging. The automatic sequence's exit step closes the program without asking.
 - File > **Export Settings** saves a copy of your settings to a file you choose.
 
 ## 14. Choosing file types
