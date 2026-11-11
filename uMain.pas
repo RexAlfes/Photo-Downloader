@@ -1605,7 +1605,7 @@ begin
       Application.ProcessMessages;  // let the window update
       R := X.Run(PluginValues(FS.PluginOpts, Key), Dest, It.FullPath, @CopyTick, OutFile, Msg);  // run the program
       if (R = 1) and FS.UseCaptureTime and (OutFile <> '') and FileExistsUTF8(OutFile) then
-        FileSetDateUTF8(OutFile, DateTimeToFileDate(It.CaptureTime));  // the new file gets the capture time too
+        FileSetDateUTF8(OutFile, FileDateFor(It.CaptureTime));  // the new file gets the capture time too
     end;
     case R of
       1: if Msg <> '' then LogThumb('plug-in ' + Key + ': ' + Dest + ': done (' + Msg + ')')  // log it
@@ -1632,7 +1632,7 @@ begin
   Result := True;  // success unless writing the owner fields fails
   if It.IsOther then  // a file that is no picture (scan report, CSV ...): copied unchanged, no picture steps
   begin
-    if FS.UseCaptureTime then FileSetDateUTF8(Dest, DateTimeToFileDate(It.CaptureTime));  // its own file time
+    if FS.UseCaptureTime then FileSetDateUTF8(Dest, FileDateFor(It.CaptureTime));  // its own file time
     Exit;
   end;
   // lossless turn first, so the owner fields are written into the final file
@@ -1646,7 +1646,7 @@ begin
   RunPluginSteps(It, Dest);  // for example a color profile or a DNG copy
 
   if FS.UseCaptureTime then  // use the capture time as file time
-    FileSetDateUTF8(Dest, DateTimeToFileDate(It.CaptureTime));  // set the file time
+    FileSetDateUTF8(Dest, FileDateFor(It.CaptureTime));  // set the file time
 
   if FS.WriteExifText then  // write the EXIF text file
   begin
@@ -1923,7 +1923,7 @@ begin
           if SaveLrPrevJpg(It.FullPath, JDest, FS.VerifyCopy, JHash, JErr) = crOk then  // write the preview picture
           begin
             if FS.UseCaptureTime then  // same file time as the .lrprev file
-              FileSetDateUTF8(JDest, DateTimeToFileDate(It.CaptureTime));  // set the file time
+              FileSetDateUTF8(JDest, FileDateFor(It.CaptureTime));  // set the file time
           end
           else
           begin

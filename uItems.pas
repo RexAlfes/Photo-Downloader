@@ -61,6 +61,10 @@ var
 procedure ScanFolder(const Root: string; S: TAppSettings; Items: TObjectList;  // Scans a folder (DCIM when present) for images and fills Items.
   Progress: TScanProgress);
 procedure EvaluateItems(Items: TObjectList; S: TAppSettings);  // Works out the status and destination of every item.
+{ The file date value for FileSetDate that gives a file the local time LocalTime of its own date (Windows
+  converts file dates with today's offset from UTC, which is an hour off for a date in the other half of the
+  summer time year) }
+function FileDateFor(LocalTime: TDateTime): LongInt;
 const
   BlankJobMark = '{no job}';        // stored in DateJobCodes for a date whose job code is blank
 
@@ -290,6 +294,75 @@ begin
     Result := CompareText(X.FileName, Y.FileName);  // same time: compare the names
 end;
 
+{ Converts a UTC time to the local time of this computer on that date (summer time included on Windows). }
+{$IFDEF WINDOWS}
+type
+  TWinSystemTime = record  // the Windows SYSTEMTIME layout
+    wYear, wMonth, wDayOfWeek, wDay, wHour, wMinute, wSecond, wMilliseconds: Word;
+  end;
+
+function SystemTimeToTzSpecificLocalTime(lpTimeZone: Pointer; var lpUniversalTime, lpLocalTime: TWinSystemTime): LongBool;
+  stdcall; external 'kernel32.dll';
+function TzSpecificLocalTimeToSystemTime(lpTimeZone: Pointer; var lpLocalTime, lpUniversalTime: TWinSystemTime): LongBool;
+  stdcall; external 'kernel32.dll';
+{$ENDIF}
+
+function UtcToLocal(UT: TDateTime): TDateTime;
+{$IFDEF WINDOWS}
+var
+  U, L: TWinSystemTime;  // U: the UTC time; L: the local time
+  Y, Mo, D, H, Mi, Se, Ms: Word;  // parts of the time
+{$ENDIF}
+begin
+  {$IFDEF WINDOWS}
+  DecodeDateTime(UT, Y, Mo, D, H, Mi, Se, Ms);  // split the time
+  FillChar(U, SizeOf(U), 0);
+  U.wYear := Y; U.wMonth := Mo; U.wDay := D; U.wHour := H; U.wMinute := Mi; U.wSecond := Se; U.wMilliseconds := Ms;
+  if SystemTimeToTzSpecificLocalTime(nil, U, L) then  // Windows knows the summer time rules of that date
+    Exit(EncodeDateTime(L.wYear, L.wMonth, L.wDay, L.wHour, L.wMinute, L.wSecond, L.wMilliseconds));
+  {$ENDIF}
+  Result := UniversalTimeToLocal(UT);  // the current offset of this computer
+end;
+
+{ Converts a local time of this computer to UTC, with the summer time rules of that date on Windows. }
+function LocalToUtc(LT: TDateTime): TDateTime;
+{$IFDEF WINDOWS}
+var
+  L, U: TWinSystemTime;  // L: the local time; U: the UTC time
+  Y, Mo, D, H, Mi, Se, Ms: Word;  // parts of the time
+{$ENDIF}
+begin
+  {$IFDEF WINDOWS}
+  DecodeDateTime(LT, Y, Mo, D, H, Mi, Se, Ms);
+  FillChar(L, SizeOf(L), 0);
+  L.wYear := Y; L.wMonth := Mo; L.wDay := D; L.wHour := H; L.wMinute := Mi; L.wSecond := Se; L.wMilliseconds := Ms;
+  if TzSpecificLocalTimeToSystemTime(nil, L, U) then
+    Exit(EncodeDateTime(U.wYear, U.wMonth, U.wDay, U.wHour, U.wMinute, U.wSecond, U.wMilliseconds));
+  {$ENDIF}
+  Result := LocalTimeToUniversal(LT);  // the current offset of this computer
+end;
+
+function FileDateFor(LocalTime: TDateTime): LongInt;
+begin
+  // FileSetDate turns the value into UTC with today's offset; hand it the UTC time seen with today's offset
+  Result := DateTimeToFileDate(UniversalTimeToLocal(LocalToUtc(LocalTime)));
+end;
+
+{ The time a found file was last written, in local time of that date (Windows: from the UTC file time, so
+  summer time is right also for files written in the other half of the year). }
+function SearchRecTime(const SR: TSearchRec): TDateTime;
+{$IFDEF WINDOWS}
+var
+  Q: Int64;  // Q: 100-nanosecond steps since 1 January 1601 (UTC)
+{$ENDIF}
+begin
+  {$IFDEF WINDOWS}
+  Q := (Int64(SR.FindData.ftLastWriteTime.dwHighDateTime) shl 32) or SR.FindData.ftLastWriteTime.dwLowDateTime;
+  if Q > 0 then Exit(UtcToLocal(Q / 864000000000.0 - 109205.0));  // 1601-01-01 is day -109205
+  {$ENDIF}
+  Result := FileDateToDateTime(SR.Time);
+end;
+
 { Chooses the capture time of a video. The creation time in an MP4/MOV header is Universal Time on
   phones but the camera's own clock time on many cameras. The file time (the end of the recording)
   tells which reading is right: the one that puts the start of the clip closest to it wins. When
@@ -300,7 +373,7 @@ var
   Start: TDateTime;  // Start: start of the recording according to the file time
   DiffRaw, DiffLocal: Double;  // DiffRaw, DiffLocal: distance of each reading from Start
 begin
-  AsLocal := UniversalTimeToLocal(Created);  // Universal Time reading
+  AsLocal := UtcToLocal(Created);  // Universal Time reading, with the summer time rules of that date
   Start := FileTime - Duration / 86400;  // file time is the end of the recording
   DiffRaw := Abs(Created - Start);  // distance of the stored time used as it is
   DiffLocal := Abs(AsLocal - Start);  // distance of the converted time
@@ -322,7 +395,7 @@ var
 
 const
   { Change when ReadExifFromFile changes so that values kept from an older version are read again }
-  ExifCacheVersion = 'PhotoDownloader EXIF cache 1';  // first line of the cache file
+  ExifCacheVersion = 'PhotoDownloader EXIF cache 2';  // first line of the cache file (2: with the time zone)
   ExifCacheMax = 100000;  // largest number of files kept in the cache
 
 type
@@ -433,7 +506,8 @@ begin
   D := Info.DateTaken;  // capture time
   Data := IntToStr(Ord(Res)) + #9 + IntToStr(Ord(Info.Valid)) + #9 + Info.Make + #9 + Info.Model + #9 +  // result and texts
     Info.Artist + #9 + Info.Owner + #9 + Info.Serial + #9 + IntToStr(Ord(Info.HasDate)) + #9 +
-    IntToHex(PInt64(@D)^, 16) + #9 + IntToStr(Info.ISO) + #9 + IntToStr(Info.Orientation);  // date (exact) and numbers
+    IntToHex(PInt64(@D)^, 16) + #9 + IntToStr(Info.ISO) + #9 + IntToStr(Info.Orientation) + #9 +  // date (exact) and numbers
+    IntToStr(Ord(Info.HasTz)) + #9 + IntToStr(Info.TzMinutes);  // time zone of the date
   Result := False;  // assume an unusable text
   Tabs := 0;  // no tab yet
   for I := 1 to Length(Data) do  // every character
@@ -441,7 +515,7 @@ begin
     if Data[I] in [#10, #13] then Exit;  // a line break would split the line
     if Data[I] = #9 then Inc(Tabs);  // count the separators
   end;
-  Result := Tabs = 10;  // a tab inside a text would add a field
+  Result := Tabs = 12;  // a tab inside a text would add a field
 end;
 
 { Turns the cache data text back into EXIF fields; False when it is broken. }
@@ -456,8 +530,9 @@ begin
   Info.Valid := False;  // clear the fields
   Info.Make := ''; Info.Model := ''; Info.Artist := ''; Info.Owner := ''; Info.Serial := '';
   Info.DateTaken := 0; Info.HasDate := False; Info.ISO := 0; Info.Orientation := 0;
+  Info.HasTz := False; Info.TzMinutes := 0; Info.TzFromOriginal := False;
   F := Data.Split([#9]);  // split into fields
-  if Length(F) <> 11 then Exit;  // wrong number of fields
+  if Length(F) <> 13 then Exit;  // wrong number of fields
   if not TryStrToInt64('$' + F[8], Bits) then Exit;  // broken date
   D := PDouble(@Bits)^;  // the exact capture time
   Res := F[0] = '1';  // result of ReadExifFromFile
@@ -467,6 +542,8 @@ begin
   Info.DateTaken := D;  // capture time
   Info.ISO := StrToIntDef(F[9], 0);  // ISO speed
   Info.Orientation := StrToIntDef(F[10], 0);  // orientation
+  Info.HasTz := F[11] = '1';  // time zone flag
+  Info.TzMinutes := StrToIntDef(F[12], 0);  // time zone in minutes
   Result := True;  // success
 end;
 
@@ -571,7 +648,7 @@ begin
         It.SourceDir := Dir;  // folder
         It.Size := SR.Size;  // file size
         try
-          It.FileTime := FileDateToDateTime(SR.Time);  // file modification time
+          It.FileTime := SearchRecTime(SR);  // file modification time, in local time of its date
         except
           It.FileTime := Now;  // use the current time if invalid
         end;
@@ -583,7 +660,11 @@ begin
           if Pos(';' + LowerCase(ExtractFileExt(SR.Name)) + ';', ExifExts) > 0 then  // file type may carry EXIF data
             if CachedExif(Full, SR.Size, SR.Time, Info) then  // read the EXIF data (from the cache when the file is unchanged)
             begin
-              if Info.HasDate then It.CaptureTime := Info.DateTaken;  // capture date
+              if Info.HasDate then  // capture date
+                if Info.HasTz then  // the file says its time zone (drones often write UTC): show it in local time
+                  It.CaptureTime := UtcToLocal(Info.DateTaken - Info.TzMinutes / (24 * 60))
+                else
+                  It.CaptureTime := Info.DateTaken;  // a camera's own clock time, as it is
               It.Camera := Info.Model;  // camera model
               It.Make := Info.Make;  // camera maker
               It.Serial := Info.Serial;  // camera serial number
@@ -640,34 +721,6 @@ begin
   finally
     FindCloseUTF8(SR);  // close the search
   end;
-end;
-
-{ Converts a UTC time to the local time of this computer on that date (summer time included on Windows). }
-{$IFDEF WINDOWS}
-type
-  TWinSystemTime = record  // the Windows SYSTEMTIME layout
-    wYear, wMonth, wDayOfWeek, wDay, wHour, wMinute, wSecond, wMilliseconds: Word;
-  end;
-
-function SystemTimeToTzSpecificLocalTime(lpTimeZone: Pointer; var lpUniversalTime, lpLocalTime: TWinSystemTime): LongBool;
-  stdcall; external 'kernel32.dll';
-{$ENDIF}
-
-function UtcToLocal(UT: TDateTime): TDateTime;
-{$IFDEF WINDOWS}
-var
-  U, L: TWinSystemTime;  // U: the UTC time; L: the local time
-  Y, Mo, D, H, Mi, Se, Ms: Word;  // parts of the time
-{$ENDIF}
-begin
-  {$IFDEF WINDOWS}
-  DecodeDateTime(UT, Y, Mo, D, H, Mi, Se, Ms);  // split the time
-  FillChar(U, SizeOf(U), 0);
-  U.wYear := Y; U.wMonth := Mo; U.wDay := D; U.wHour := H; U.wMinute := Mi; U.wSecond := Se; U.wMilliseconds := Ms;
-  if SystemTimeToTzSpecificLocalTime(nil, U, L) then  // Windows knows the summer time rules of that date
-    Exit(EncodeDateTime(L.wYear, L.wMonth, L.wDay, L.wHour, L.wMinute, L.wSecond, L.wMilliseconds));
-  {$ENDIF}
-  Result := UniversalTimeToLocal(UT);  // the current offset of this computer
 end;
 
 { The start time of a scan from its folder name, in local time. Skydio names a scan folder like

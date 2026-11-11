@@ -16,6 +16,9 @@ type
     Make, Model, Artist, Owner, Serial: string;  // Make: camera maker; Model: camera model; Artist: artist; Owner: owner; Serial: camera serial number
     DateTaken: TDateTime;  // capture date and time
     HasDate: Boolean;  // True when a capture date was found
+    HasTz: Boolean;  // True when the file says the time zone of DateTaken (EXIF OffsetTimeOriginal or OffsetTime)
+    TzMinutes: Integer;  // that time zone as minutes from UTC (for example -240 for -04:00, 0 for +00:00)
+    TzFromOriginal: Boolean;  // the zone came from OffsetTimeOriginal (preferred over OffsetTime)
     ISO: Integer;  // ISO speed
     Orientation: Integer;  // orientation 1..8 (0 = unknown)
   end;
@@ -154,6 +157,23 @@ begin
 end;
 
 { Converts an EXIF date text (yyyy:mm:dd hh:nn:ss) to a date; False when invalid. }
+{ Reads an EXIF time zone such as +00:00 or -04:00 as minutes from UTC; False when S is not one. }
+function ParseExifOffset(const S: string; out Minutes: Integer): Boolean;
+var
+  T: string;  // T: the text without blanks
+  H, M: Integer;  // H, M: hours and minutes
+begin
+  Result := False;
+  Minutes := 0;
+  T := Trim(S);
+  if (Length(T) < 6) or not (T[1] in ['+', '-']) or (T[4] <> ':') then Exit;
+  if not TryStrToInt(Copy(T, 2, 2), H) or not TryStrToInt(Copy(T, 5, 2), M) then Exit;
+  if (H > 14) or (M > 59) then Exit;
+  Minutes := H * 60 + M;
+  if T[1] = '-' then Minutes := -Minutes;
+  Result := True;
+end;
+
 function ParseExifDate(const S: string; out DT: TDateTime): Boolean;
 var
   Y, M, D, H, N, Sec: Integer;  // Y, M, D: year, month, day; H, N, Sec: hour, minute, second
@@ -181,6 +201,7 @@ var
   P, N, I, E, Tag: Integer;  // P: directory position; N: entry count; I: loop counter; E: entry position; Tag: tag number
   DT: TDateTime;  // DT: date read
   S: string;  // S: text read
+  Mi: Integer;  // Mi: a time zone in minutes
 begin
   if (Depth > 3) or (IfdRel <= 0) then Exit;  // limit the nesting depth and check the offset
   if T.Base + IfdRel + 2 > Length(T.Buf) then  // directory outside the data
@@ -223,6 +244,19 @@ begin
             Info.DateTaken := DT;  // store the date
             Info.HasDate := True;  // a date is known now
           end;
+        end;
+      $9011:  // OffsetTimeOriginal: the time zone of the capture date, for example +00:00 (drones often use UTC)
+        if ParseExifOffset(GetStr(T, E), Mi) then
+        begin
+          Info.TzMinutes := Mi;
+          Info.HasTz := True;
+          Info.TzFromOriginal := True;  // the best source
+        end;
+      $9010:  // OffsetTime: the time zone of the file's date, used when OffsetTimeOriginal is missing
+        if (not Info.TzFromOriginal) and ParseExifOffset(GetStr(T, E), Mi) then
+        begin
+          Info.TzMinutes := Mi;
+          Info.HasTz := True;
         end;
       $8827: Info.ISO := U16(T, E + 8);  // ISO speed
       $A430: Info.Owner := GetStr(T, E);  // owner name
@@ -1094,6 +1128,7 @@ var
     Info.Make := ''; Info.Model := ''; Info.Artist := ''; Info.Owner := '';  // clear the text fields
     Info.Serial := ''; Info.DateTaken := 0; Info.HasDate := False;  // clear the other fields
     Info.ISO := 0; Info.Orientation := 0;  // clear the numbers
+    Info.HasTz := False; Info.TzMinutes := 0; Info.TzFromOriginal := False;  // no time zone yet
   end;
 
   { finds the TIFF header in the first Len bytes and reads its directories; sets TiffMiss when they were too few }
