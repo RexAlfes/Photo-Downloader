@@ -42,7 +42,7 @@ The simplest way to get every feature working at once.
 
 1. **File > Import from Device...** (Ctrl+Shift+O) lists the connected devices (name, storage) and preselects `DCIM`; the user can tick other folders. The Camera choice in Preferences > General becomes "Phone or camera (USB)" and makes Refresh and the automatic sequence use the first device found.
 2. The chosen folders are copied to a **staging folder** on the computer (default: in the cache folder, `CacheDir\device\<device name>\`), with a progress window, Cancel, the MD5 computed while reading, and the device file's date kept as the file time.
-3. The staging folder is then loaded as a normal source. Everything works unchanged: thumbnails, EXIF dates, status, `{Type}` and thermal detection, plug-ins (including the agency library and its scans folder), the verified copy, the backup copy.
+3. The staging folder is then loaded as a normal source. Everything works unchanged: thumbnails, EXIF dates, status, `{Type}` and thermal detection, plug-ins (including a plug-in that copies a scans folder whole), the verified copy, the backup copy.
 4. **Already staged files** (same name, size and date) are not copied again, so importing a phone a second time copies only new pictures.
 5. **Delete from the device** after the download: the program keeps the link from each staged file to its device object and deletes there (through `IFileOperation`), only for files that were downloaded and exist in the destination, as today. On a device that refuses deleting (iPhone) the menu item explains why it is not available.
 6. The staging folder is emptied after a successful download (option: keep it), and its size is shown in Help > Status.
