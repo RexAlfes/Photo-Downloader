@@ -36,6 +36,8 @@ type
     Duration: Double;               // length of a video in seconds (0 = unknown or not a video)
     CatalogName: string;            // .lrprev: file name of the photo in the Lightroom catalog ('' = unknown)
     WholeFolder: Boolean;           // found in a folder a plug-in wants copied whole (WholeFolders=): listed whatever its type
+    Group: TImageItem;              // a file of a scan: the scan item it belongs to (nil = none); such files are not shown on their own
+    Members: TList;                 // a scan item: the files of the scan (not owned; nil for an ordinary item)
     destructor Destroy; override;  // frees the thumbnail
     function StatusText: string;  // text for the status column
     function IsProblem: Boolean;  // True when the item has a problem
@@ -43,6 +45,8 @@ type
     function IsVideo: Boolean;  // True for MP4, MOV and LRV files
     function IsAudio: Boolean;  // True for MP3 files
     function IsOther: Boolean;  // True for a file that is no picture, video or audio (only listed in a whole folder)
+    function IsGroup: Boolean;  // True for a scan item: one folder inside a folder copied whole, shown and handled as one card
+    function NameTime: TDateTime;  // the time used for names and dates: the scan's time for a file of a scan
     function DurationText: string;  // video length as h:mm:ss or m:ss ('' when unknown)
     function SizeText: string;  // size as text
   end;
@@ -160,6 +164,7 @@ destructor TImageItem.Destroy;
 begin
   if Assigned(ThumbLru) then ThumbLru.Remove(Self);  // remove the item from the thumbnail list
   Thumb.Free;  // free the thumbnail
+  Members.Free;  // the member list of a scan item (the members are owned by the item list)
   inherited Destroy;  // run the inherited destructor
 end;
 
@@ -208,6 +213,19 @@ end;
 function TImageItem.IsAudio: Boolean;
 begin
   Result := Pos(';' + LowerCase(ExtractFileExt(FileName)) + ';', AudioExts) > 0;  // look the extension up in the audio list
+end;
+
+{ True for a scan item (one folder inside a folder a plug-in wants copied whole). }
+function TImageItem.IsGroup: Boolean;
+begin
+  Result := Members <> nil;  // only scan items have a member list
+end;
+
+{ The time used for folder and file names and for the date list: a file of a scan uses the scan's time, so
+  a whole scan lands in one mission day; every other item uses its own capture time. }
+function TImageItem.NameTime: TDateTime;
+begin
+  if Group <> nil then Result := Group.CaptureTime else Result := CaptureTime;  // the scan's time, or the file's own
 end;
 
 { True for a file that is no picture, video or audio: such files are listed only in a folder a plug-in
@@ -624,6 +642,166 @@ begin
   end;
 end;
 
+{ Converts a UTC time to the local time of this computer on that date (summer time included on Windows). }
+{$IFDEF WINDOWS}
+type
+  TWinSystemTime = record  // the Windows SYSTEMTIME layout
+    wYear, wMonth, wDayOfWeek, wDay, wHour, wMinute, wSecond, wMilliseconds: Word;
+  end;
+
+function SystemTimeToTzSpecificLocalTime(lpTimeZone: Pointer; var lpUniversalTime, lpLocalTime: TWinSystemTime): LongBool;
+  stdcall; external 'kernel32.dll';
+{$ENDIF}
+
+function UtcToLocal(UT: TDateTime): TDateTime;
+{$IFDEF WINDOWS}
+var
+  U, L: TWinSystemTime;  // U: the UTC time; L: the local time
+  Y, Mo, D, H, Mi, Se, Ms: Word;  // parts of the time
+{$ENDIF}
+begin
+  {$IFDEF WINDOWS}
+  DecodeDateTime(UT, Y, Mo, D, H, Mi, Se, Ms);  // split the time
+  FillChar(U, SizeOf(U), 0);
+  U.wYear := Y; U.wMonth := Mo; U.wDay := D; U.wHour := H; U.wMinute := Mi; U.wSecond := Se; U.wMilliseconds := Ms;
+  if SystemTimeToTzSpecificLocalTime(nil, U, L) then  // Windows knows the summer time rules of that date
+    Exit(EncodeDateTime(L.wYear, L.wMonth, L.wDay, L.wHour, L.wMinute, L.wSecond, L.wMilliseconds));
+  {$ENDIF}
+  Result := UniversalTimeToLocal(UT);  // the current offset of this computer
+end;
+
+{ The start time of a scan from its folder name, in local time. Skydio names a scan folder like
+  2026_11_10_Bond_scan__2026-11-10T14-15-29.110389+00-00: the part after the double underscore is the
+  start time with its offset from UTC. False when the name holds no such time. }
+function ScanTimeFromName(const Name: string; out T: TDateTime): Boolean;
+var
+  I, Y, Mo, D, H, Mi, Se, OffH, OffM, Sign: Integer;  // I: position; the date and time parts; the offset from UTC
+  P: string;  // P: the text from the time on
+
+  function Num(At, Len: Integer): Integer;  // a number of Len digits at position At of P (-1 when not digits)
+  var
+    K: Integer;
+  begin
+    Result := 0;
+    for K := At to At + Len - 1 do
+      if (K > Length(P)) or not (P[K] in ['0'..'9']) then Exit(-1)
+      else Result := Result * 10 + Ord(P[K]) - Ord('0');
+  end;
+
+begin
+  Result := False;
+  T := 0;
+  for I := 1 to Length(Name) - 18 do  // look for yyyy-mm-ddThh-mm-ss (or with ':')
+  begin
+    P := Copy(Name, I, MaxInt);
+    if (Length(P) < 19) or (P[5] <> '-') or (P[8] <> '-') or (P[11] <> 'T') or not (P[14] in ['-', ':']) or not (P[17] in ['-', ':']) then Continue;
+    Y := Num(1, 4); Mo := Num(6, 2); D := Num(9, 2); H := Num(12, 2); Mi := Num(15, 2); Se := Num(18, 2);
+    if (Y < 1990) or (Mo < 1) or (Mo > 12) or (D < 1) or (D > 31) or (H < 0) or (H > 23) or (Mi < 0) or (Mi > 59) or (Se < 0) or (Se > 59) then Continue;
+    if not TryEncodeDateTime(Y, Mo, D, H, Mi, Se, 0, T) then Continue;
+    Delete(P, 1, 19);  // the rest: fractions of a second, then the offset (+00-00, +00:00 or Z)
+    while (P <> '') and (P[1] in ['.', '0'..'9']) do Delete(P, 1, 1);
+    if (P <> '') and (P[1] in ['+', '-']) and (Length(P) >= 6) then
+    begin
+      if P[1] = '-' then Sign := -1 else Sign := 1;
+      OffH := Num(2, 2); OffM := Num(5, 2);
+      if (OffH >= 0) and (OffM >= 0) then T := T - Sign * (OffH * 60 + OffM) / (24 * 60);  // to UTC
+      T := UtcToLocal(T);  // to local time
+    end
+    else if (P <> '') and (UpCase(P[1]) = 'Z') then
+      T := UtcToLocal(T)
+    else
+      ;  // no offset: the time is taken as local time
+    Exit(True);
+  end;
+end;
+
+{ The name shown for a scan: Skydio's 2026_11_10_Bond_scan__2026-11-10T14-15-29... becomes "Bond scan";
+  other folder names are shown as they are. }
+function ScanDisplayName(const Name: string): string;
+var
+  P: Integer;  // P: position of the double underscore
+begin
+  Result := Name;
+  P := Pos('__', Result);
+  if P > 0 then Result := Copy(Result, 1, P - 1);  // without the start time
+  if (Length(Result) > 11) and (Result[5] in ['_', '-']) and (Result[8] in ['_', '-']) and (Result[11] in ['_', '-']) and
+     (Result[1] in ['0'..'9']) then
+    Delete(Result, 1, 11);  // without the leading date yyyy_mm_dd_
+  Result := Trim(StringReplace(Result, '_', ' ', [rfReplaceAll]));  // underscores as spaces
+  if Result = '' then Result := Name;
+end;
+
+{ Groups the files of each folder inside a folder copied whole (for example each scan in a drone's
+  scans folder) into one scan item: shown as one card, selected, downloaded and deleted as a whole. The
+  files stay in the list, hidden, and keep their own destinations; the scan item lists them. Files lying
+  directly in the folder copied whole stay single items. }
+procedure BuildScanItems(Items: TObjectList);
+var
+  I, K: Integer;  // I: item index; K: index of a scan
+  It, G, M: TImageItem;  // It: an item; G: a scan item; M: a member
+  W, Rel, Name, Key: string;  // W: a folder copied whole; Rel: path below it; Name: the scan folder; Key: its full path
+  Keys: TStringList;  // Keys: scan folders found, their scan items as objects
+  T, First: TDateTime;  // T: time from the folder name; First: earliest file time
+begin
+  if WholeDirs = nil then Exit;  // no folder copied whole
+  Keys := TStringList.Create;
+  try
+    Keys.CaseSensitive := {$IFDEF WINDOWS}False{$ELSE}True{$ENDIF};
+    for I := 0 to Items.Count - 1 do
+    begin
+      It := ItemAt(Items, I);
+      if not It.WholeFolder then Continue;
+      for W in WholeDirs do  // the folder copied whole it lies in
+      begin
+        if not InWholeDir(It.SourceDir) or not SameText(Copy(IncludeTrailingPathDelimiter(It.SourceDir), 1, Length(W)), W) then Continue;
+        Rel := Copy(IncludeTrailingPathDelimiter(It.SourceDir), Length(W) + 1, MaxInt);  // folders below it
+        if Rel = '' then Break;  // directly in the folder copied whole: stays a single item
+        Name := Copy(Rel, 1, Pos(PathDelim, Rel) - 1);  // the scan folder
+        Key := W + Name;  // its full path
+        K := Keys.IndexOf(Key);
+        if K < 0 then
+        begin
+          G := TImageItem.Create;  // a new scan item
+          G.Members := TList.Create;
+          G.FullPath := Key;
+          G.FileName := ScanDisplayName(Name);
+          G.SourceDir := ExcludeTrailingPathDelimiter(W);
+          G.WholeFolder := True;
+          G.ThumbTried := True;  // nothing to decode: the view draws a scan tile
+          G.CatalogName := Name;  // the folder name as it is on the card (Properties)
+          K := Keys.AddObject(Key, G);
+        end;
+        G := TImageItem(Keys.Objects[K]);
+        It.Group := G;  // the file belongs to this scan
+        G.Members.Add(It);
+        G.Size := G.Size + It.Size;
+        if It.FileTime > G.FileTime then G.FileTime := It.FileTime;  // the newest file
+        if (G.Camera = '') and (It.Camera <> '') then G.Camera := It.Camera;  // the drone
+        Break;
+      end;
+    end;
+    for K := 0 to Keys.Count - 1 do  // the time of each scan
+    begin
+      G := TImageItem(Keys.Objects[K]);
+      if ScanTimeFromName(ExtractFileName(G.FullPath), T) then
+        G.CaptureTime := T  // the start time in the folder name
+      else
+      begin
+        First := 0;
+        for I := 0 to G.Members.Count - 1 do  // otherwise the earliest time of its files
+        begin
+          M := TImageItem(G.Members[I]);
+          if (First = 0) or (M.CaptureTime < First) then First := M.CaptureTime;
+        end;
+        G.CaptureTime := First;
+      end;
+      Items.Add(G);  // the list owns the scan item
+    end;
+  finally
+    Keys.Free;
+  end;
+end;
+
 { Scans the source: the DCIM folder when there is one, otherwise the whole root. }
 procedure ScanFolder(const Root: string; S: TAppSettings; Items: TObjectList;
   Progress: TScanProgress);
@@ -672,6 +850,7 @@ begin
     SaveExifCache;  // keep what was read for the next scan (also after Cancel)
     if LrCatMessages <> '' then LogThumb(Trim(LrCatMessages));  // Lightroom catalogs that could not be read
   end;
+  BuildScanItems(Items);  // one scan item per folder inside a folder copied whole
   Items.Sort(@CompareItems);  // sort by capture time
   for I := 0 to Items.Count - 1 do  // number the items
     ItemAt(Items, I).Index := I + 1;  // set the grid number
@@ -784,7 +963,7 @@ var
   Base: string;  // Base: file name without extension
 begin
   Known := True;  // assume the token is valid
-  DT := Item.CaptureTime;  // capture time of the item
+  DT := Item.NameTime;  // capture time of the item (for a file of a scan: the scan's time)
   Base := ChangeFileExt(Item.FileName, '');  // file name without extension
   // a Lightroom preview is named after its photo in the catalog when that is known
   if Item.CatalogName <> '' then Base := ChangeFileExt(Item.CatalogName, '');  // catalog name without extension
@@ -1000,6 +1179,43 @@ end;
 { ---- status ---- }
 
 { Sets the status and destination of every item and finds duplicates and name clashes. }
+{ Status and destination of a scan item, from its files. }
+procedure GroupStatus(G: TImageItem);
+var
+  I: Integer;  // I: member index
+  M: TImageItem;  // M: one file of the scan
+  AnyNew, AnyClash: Boolean;  // AnyNew: a file still to download; AnyClash: a file with a name clash
+begin
+  AnyNew := False;
+  AnyClash := False;
+  G.DestPath := '';  // not known yet
+  for I := 0 to G.Members.Count - 1 do
+  begin
+    M := TImageItem(G.Members[I]);  // the file
+    if M.Status = isNameClash then AnyClash := True
+    else if M.Status <> isDownloaded then AnyNew := True;
+    // the scan's destination: the folder of a file at the top of the scan
+    if (G.DestPath = '') or SameText(ExcludeTrailingPathDelimiter(M.SourceDir), G.FullPath) then
+      if SameText(ExcludeTrailingPathDelimiter(M.SourceDir), G.FullPath) or (G.DestPath = '') then
+        G.DestPath := ExtractFilePath(M.DestPath);
+  end;
+  if AnyClash then
+  begin
+    G.Status := isNameClash;  // a file would overwrite a different one
+    G.ClashInfo := 'a file of this scan has the name of a different file in the destination';
+  end
+  else if AnyNew or (G.Members.Count = 0) then
+  begin
+    G.Status := isNew;  // something to download
+    G.ClashInfo := '';
+  end
+  else
+  begin
+    G.Status := isDownloaded;  // every file is in the destination
+    G.ClashInfo := '';
+  end;
+end;
+
 procedure EvaluateItems(Items: TObjectList; S: TAppSettings);
 var
   I, P, J: Integer;  // I: item index; P: position in a list; J: number of the first item with a name
@@ -1087,7 +1303,8 @@ begin
     for I := 0 to Items.Count - 1 do  // every item
     begin
       It := ItemAt(Items, I);  // current item
-      It.DateKey := FormatDateTime('yyyy"/"mm"/"dd', It.CaptureTime);  // date used for job codes
+      It.DateKey := FormatDateTime('yyyy"/"mm"/"dd', It.NameTime);  // date used for job codes
+      if It.IsGroup then Continue;  // a scan item gets its status from its files (below)
       It.DestPath := ComputeDest(S, It, S.SeqNext + I, I + 1);  // planned destination
       It.ClashInfo := '';  // no clash information yet
       // the same photo found twice (copies in other folders, renamed copies):
@@ -1117,6 +1334,7 @@ begin
     for I := 0 to Items.Count - 1 do  // every item
     begin
       It := ItemAt(Items, I);  // current item
+      if It.IsGroup then Continue;  // scan items come last
       if It.Status = isDuplicate then  // a duplicate keeps its status
       begin
         // with "Download duplicates as (1), (2) ..." the planned name already carries the number
@@ -1164,6 +1382,15 @@ begin
         else
           It.DestPath := FreeName(It.DestPath);  // the others (or a file that meets an existing one) get "(1)", "(2)" ...
       end;
+    end;
+
+    // pass 3: a scan item is new while any of its files is new, a name clash while any file clashes,
+    // and downloaded when all of them are; its destination is the folder its files go to
+    for I := 0 to Items.Count - 1 do
+    begin
+      It := ItemAt(Items, I);  // current item
+      if not It.IsGroup then Continue;  // scan items only
+      GroupStatus(It);  // status and destination from its files
     end;
   finally
     DestDirs.Free;  // free the folder lists

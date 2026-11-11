@@ -9,7 +9,7 @@ unit uViewer;
 interface
 
 uses
-  Classes, SysUtils, StrUtils, Math, Forms, Controls, Graphics, ExtCtrls, StdCtrls, Menus, LCLType, LCLIntf, FPImage,
+  Classes, SysUtils, StrUtils, Math, Forms, Controls, Graphics, ExtCtrls, StdCtrls, Menus, LCLType, LCLIntf, FPImage, LazFileUtils,
   uSettings, uItems, uExif, uScale, uDialogs, uHeic, uWebP, uLrPrev;
 
 procedure ShowImageViewer(Items: TList; StartIndex: Integer);
@@ -377,12 +377,40 @@ begin
   Result := True;  // report it as handled
 end;
 
+{ Opens a scan: the first .html report at the top of its folder (Skydio: Capture_Report.html) in the default
+  program, or else the folder itself. }
+procedure OpenScan(It: TImageItem);
+var
+  SR: TSearchRec;  // SR: a file of the scan folder
+  Report: string;  // Report: the report found
+begin
+  Report := '';
+  if FindFirstUTF8(IncludeTrailingPathDelimiter(It.FullPath) + '*.htm*', faAnyFile, SR) = 0 then
+  try
+    repeat
+      if ((SR.Attr and faDirectory) = 0) and (SR.Name <> '') and (SR.Name[1] <> '.') then
+      begin
+        Report := IncludeTrailingPathDelimiter(It.FullPath) + SR.Name;
+        Break;
+      end;
+    until FindNextUTF8(SR) <> 0;
+  finally
+    FindCloseUTF8(SR);
+  end;
+  if Report <> '' then OpenDocument(Report) else OpenDocument(It.FullPath);
+end;
+
 { Opens the viewer window as a modal dialog at picture StartIndex. }
 procedure ShowImageViewer(Items: TList; StartIndex: Integer);
 var
   F: TViewerForm;  // F: the viewer form
 begin
   if (Items = nil) or (StartIndex < 0) or (StartIndex >= Items.Count) then Exit;  // nothing to show: do nothing
+  if TImageItem(Items[StartIndex]).IsGroup then  // a scan: its report when there is one, otherwise its folder
+  begin
+    OpenScan(TImageItem(Items[StartIndex]));
+    Exit;
+  end;
   if TImageItem(Items[StartIndex]).IsVideo or TImageItem(Items[StartIndex]).IsAudio or
      TImageItem(Items[StartIndex]).IsOther then  // video, audio and other files are opened by the system's default program
   begin

@@ -468,7 +468,7 @@ begin
         'IsVideo=' + IntToStr(Ord(Item.IsVideo)) + LineEnding +  // 1 for a video
         'Camera=' + Item.Camera + LineEnding +  // camera model
         'Serial=' + Item.Serial + LineEnding +  // camera serial number
-        'Date=' + FormatDateTime('yyyymmdd', Item.CaptureTime) + LineEnding;  // capture date
+        'Date=' + FormatDateTime('yyyymmdd', Item.NameTime) + LineEnding;  // capture date
     Root := IncludeTrailingPathDelimiter(ScanRoot);  // the source the file was found in
     if (Item <> nil) and (ScanRoot <> '') and SameText(Copy(IncludeTrailingPathDelimiter(Item.SourceDir), 1, Length(Root)), Root) then
       Ctx := Ctx + 'SourceFolder=' + ExcludeTrailingPathDelimiter(Copy(IncludeTrailingPathDelimiter(Item.SourceDir),

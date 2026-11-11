@@ -941,7 +941,7 @@ end;
 { Fills the date list from the items. }
 procedure TMainForm.RebuildDates;
 var
-  I: Integer;  // I: loop counter
+  I, J, N: Integer;  // I: loop counter; J: date index; N: scans of a date
   It: TImageItem;  // It: current item
 begin
   lstDates.Items.BeginUpdate;  // stop redrawing
@@ -951,11 +951,20 @@ begin
     for I := 0 to FItems.Count - 1 do  // every item
     begin
       It := ItemAt(FItems, I);  // current item
+      if It.Group <> nil then Continue;  // files of a scan are counted with their scan
       if FDateKeys.IndexOf(It.DateKey) < 0 then  // first item of this date
       begin
         FDateKeys.Add(It.DateKey);  // remember the date
         lstDates.Items.Add(It.DateKey + ' - ' + JobCodeFor(FS, It));  // add the date with its job code
       end;
+    end;
+    for J := 0 to FDateKeys.Count - 1 do  // add the number of scans of each date
+    begin
+      N := 0;
+      for I := 0 to FItems.Count - 1 do
+        if ItemAt(FItems, I).IsGroup and (ItemAt(FItems, I).DateKey = FDateKeys[J]) then Inc(N);
+      if N = 1 then lstDates.Items[J] := lstDates.Items[J] + '  (1 scan)'
+      else if N > 1 then lstDates.Items[J] := lstDates.Items[J] + Format('  (%d scans)', [N]);
     end;
   finally
     lstDates.Items.EndUpdate;  // resume redrawing
@@ -965,6 +974,7 @@ end;
 { True when the filters allow the item to be shown. }
 function TMainForm.ItemVisible(It: TImageItem): Boolean;
 begin
+  if It.Group <> nil then Exit(False);  // a file of a scan: its scan card stands for it
   Result := not (((It.Status = isDownloaded) and (not FS.ShowDownloaded)) or  // hide downloaded files, duplicates and file types that are turned off
                  ((It.Status = isDuplicate) and (not FS.ShowDuplicates)) or
                  ((not FS.TypeShown(It.FileName)) and not It.WholeFolder));  // a folder copied whole is shown with all its files
@@ -1083,7 +1093,7 @@ end;
 { Collects the items to download: the selected ones, or all when none is selected. }
 procedure TMainForm.GetDownloadList(L: TList; Scope: TDownloadScope = dsAuto);
 var
-  I: Integer;  // I: loop counter
+  I, J: Integer;  // I: loop counter; J: file of a scan
   It: TImageItem;  // It: current item
   AnySel: Boolean;  // AnySel: True when only selected items are taken
 begin
@@ -1100,6 +1110,12 @@ begin
   begin
     It := TImageItem(FVisible[I]);  // current item
     if AnySel and (not It.Selected) then Continue;  // skip unselected items when something is selected
+    if It.IsGroup then  // a scan: its files that are not downloaded yet
+    begin
+      for J := 0 to It.Members.Count - 1 do
+        if TImageItem(It.Members[J]).Status in [isNew, isNameClash] then L.Add(It.Members[J]);
+      Continue;
+    end;
     if (It.Status in [isNew, isNameClash]) or ((It.Status = isDuplicate) and (not FS.IgnoreDuplicates)) then L.Add(It);  // new files and name clashes (and duplicates unless they are ignored) are downloaded
   end;
   if GSortCol >= 0 then L.Sort(@CompareByIndex);   // downloads and sequence numbers follow card order
@@ -2027,10 +2043,27 @@ begin
 end;
 
 { Deletes the downloaded source files after asking; they go to the trash when safe delete is on. }
+{ Removes a folder and its subfolders when they hold no files (after the files of a scan were deleted). }
+procedure RemoveEmptyFolders(const Dir: string);
+var
+  SR: TSearchRec;  // SR: an entry of the folder
+begin
+  if FindFirstUTF8(IncludeTrailingPathDelimiter(Dir) + '*', faAnyFile, SR) = 0 then
+  try
+    repeat
+      if ((SR.Attr and faDirectory) <> 0) and (SR.Name <> '.') and (SR.Name <> '..') then
+        RemoveEmptyFolders(IncludeTrailingPathDelimiter(Dir) + SR.Name);  // empty subfolders first
+    until FindNextUTF8(SR) <> 0;
+  finally
+    FindCloseUTF8(SR);
+  end;
+  RemoveDirUTF8(Dir);  // fails, and keeps the folder, when something is still in it
+end;
+
 procedure TMainForm.DeleteFiles(OnlyDownloaded, Silent: Boolean);
 var
   L, E: TList;  // L: candidate files; E: files that may be deleted
-  I, Fail, Kept: Integer;  // I: loop counter; Fail: files that failed; Kept: files that stay
+  I, J, Fail, Kept: Integer;  // I: loop counter; J: file of a scan; Fail: files that failed; Kept: files that stay
   It: TImageItem;  // It: current item
   AnySel: Boolean;  // AnySel: True when the user selected something
   Msg, Where, LastWhere: string;  // Msg: message; Where: where a file went; LastWhere: last trash location
@@ -2042,8 +2075,8 @@ begin
   try
     if OnlyDownloaded then  // only downloaded files
     begin
-      for I := 0 to FItems.Count - 1 do  // every item
-        if ItemAt(FItems, I).Status = isDownloaded then L.Add(FItems[I]);  // downloaded file
+      for I := 0 to FItems.Count - 1 do  // every item (the files of a scan count one by one; the scan item itself is no file)
+        if (ItemAt(FItems, I).Status = isDownloaded) and not ItemAt(FItems, I).IsGroup then L.Add(FItems[I]);  // downloaded file
     end
     else
     begin
@@ -2051,7 +2084,11 @@ begin
       for I := 0 to FVisible.Count - 1 do  // look at all visible items
         if TImageItem(FVisible[I]).Selected then AnySel := True;  // selected item
       for I := 0 to FVisible.Count - 1 do  // every visible item
-        if (not AnySel) or TImageItem(FVisible[I]).Selected then L.Add(FVisible[I]);  // selected files, or all when nothing is selected
+        if (not AnySel) or TImageItem(FVisible[I]).Selected then  // selected files, or all when nothing is selected
+          if TImageItem(FVisible[I]).IsGroup then  // a scan: all its files
+            for J := 0 to TImageItem(FVisible[I]).Members.Count - 1 do L.Add(TImageItem(FVisible[I]).Members[J])
+          else
+            L.Add(FVisible[I]);
     end;
     if L.Count = 0 then Exit;  // nothing to do
 
@@ -2096,11 +2133,18 @@ begin
       if Ok then  // file deleted
       begin
         if Where <> '' then LastWhere := Where;  // remember the trash location
+        if It.Group <> nil then It.Group.Members.Remove(It);  // no longer part of its scan
         FItems.Remove(It)          // the list owns and frees the item
       end
       else
         Inc(Fail);  // count the failure
     end;  // end of loop
+    for I := FItems.Count - 1 downto 0 do  // a scan whose files are all deleted: its folder goes too (when empty) and its card
+      if ItemAt(FItems, I).IsGroup and (ItemAt(FItems, I).Members.Count = 0) then
+      begin
+        RemoveEmptyFolders(ItemAt(FItems, I).FullPath);  // the scan folder and its subfolders, when nothing is left in them
+        FItems.Delete(I);  // frees the scan item
+      end;
     for I := 0 to FItems.Count - 1 do  // renumber the remaining items
       ItemAt(FItems, I).Index := I + 1;  // set the grid number
     RebuildDates;  // refresh the date list

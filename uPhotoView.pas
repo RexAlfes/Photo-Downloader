@@ -514,6 +514,39 @@ begin
   C.Pen.Color := clGray;  // restore the outline color
 end;
 
+{ Draws the tile of a scan item (a whole scan folder): a stack of three photo frames in blue, the word
+  SCAN and the number of files. }
+procedure DrawScanTile(C: TCanvas; Item: TImageItem; X, Y, W, H: Integer);
+var
+  K, FW, FH, FX, FY, Off: Integer;  // K: frame number; FW, FH: frame size; FX, FY: its corner; Off: step between frames
+  Txt: string;  // Txt: text on the tile
+begin
+  C.Brush.Style := bsSolid;
+  C.Brush.Color := $00F4E6D8;  // light blue tile
+  C.Pen.Color := $00A06A2E;  // blue outline
+  C.Rectangle(X, Y, X + W, Y + H);
+  Off := Max(3, Min(W, H) div 12);  // step between the stacked frames
+  FW := W * 11 div 20;  // frame size
+  FH := H * 9 div 20;
+  for K := 2 downto 0 do  // back to front
+  begin
+    FX := X + (W - FW) div 2 - Off + K * Off;
+    FY := Y + Max(4, H div 8) + Off - K * Off;
+    C.Brush.Color := clWhite;
+    C.Pen.Color := $00A06A2E;
+    C.Rectangle(FX, FY, FX + FW, FY + FH);
+  end;
+  C.Brush.Style := bsClear;  // no fill for the text
+  C.Font.Color := $00602F0C;  // dark blue text
+  Txt := 'SCAN';
+  C.TextOut(X + (W - C.TextWidth(Txt)) div 2, Y + H - 2 * C.TextHeight(Txt) - 2, Txt);
+  if Item.Members <> nil then Txt := IntToStr(Item.Members.Count) + ' files' else Txt := '';
+  C.TextOut(X + (W - C.TextWidth(Txt)) div 2, Y + H - C.TextHeight(Txt) - 2, Txt);
+  C.Brush.Style := bsSolid;  // restore the fill
+  C.Font.Color := clBlack;  // restore the text color
+  C.Pen.Color := clGray;  // restore the outline color
+end;
+
 { Draws the tile of a file that is no picture, video or audio (listed in a folder copied whole): a light
   page with a folded corner and the file's extension. }
 procedure DrawFileTile(C: TCanvas; Item: TImageItem; X, Y, W, H: Integer);
@@ -622,6 +655,8 @@ begin
   end
   else if Item.IsAudio then
     DrawAudioTile(Canvas, Item, X, Y, FThumbBox * 3 div 4, FThumbBox * 2 div 3)  // default audio tile
+  else if Item.IsGroup then
+    DrawScanTile(Canvas, Item, X, Y, FThumbBox * 3 div 4, FThumbBox * 2 div 3)  // a whole scan
   else if Item.IsOther then
     DrawFileTile(Canvas, Item, X, Y, FThumbBox * 3 div 4, FThumbBox * 2 div 3)  // a file that is no picture
   else if Item.IsVideo then
@@ -713,7 +748,10 @@ begin
 
   Line1 := Format('%d) %s (%s)', [Item.Index, Item.FileName, Item.SizeText]);  // name, number and size
   Line2 := FormatDateTime('mm"/"dd"/"yyyy hh":"nn":"ss', Item.CaptureTime);  // capture date and time
-  if FMode <> vmList then  // cards: add the file type (the name above may be shortened)
+  if Item.IsGroup then  // a scan: start time, SCAN, number of files and size
+    Line2 := FormatDateTime('mm"/"dd"/"yyyy hh":"nn', Item.CaptureTime) + '   SCAN   ' +
+      IntToStr(Item.Members.Count) + ' files   ' + Item.SizeText
+  else if FMode <> vmList then  // cards: add the file type (the name above may be shortened)
     Line2 := Line2 + '   ' + UpperCase(Copy(ExtractFileExt(Item.FileName), 2, 8)) + '   ' + Item.SizeText;  // date, type, size
   Line3 := 'Status: ' + Item.StatusText;  // status text
 
