@@ -325,7 +325,7 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 
 ## 6. Version history
 
-Version numbers are major.minor.revision.build. Up to 0.1.0 build 57 only the build number counted (shown as "build N" below). The last bundle with only a build number was 0.1.0.58 (build 58). Since 0.1.1.1 every bundle raises the revision and restarts the build number at 1; the IDE counts the build number up with each compile.
+Version numbers are major.minor.revision.build. Up to 0.1.0 build 57 only the build number counted (shown as "build N" below). The last bundle with only a build number was 0.1.0.58 (build 58). From 0.1.1.1 to 0.1.4.1 every bundle raised the revision and restarted the build number at 1; from 0.1.5.0 on it restarts at 0 (0.1.5.0, 0.1.6.0 ...). The IDE counts the build number up with each compile.
 
 | Build | Changes |
 |---|---|
