@@ -61,6 +61,10 @@ var
 procedure ScanFolder(const Root: string; S: TAppSettings; Items: TObjectList;  // Scans a folder (DCIM when present) for images and fills Items.
   Progress: TScanProgress);
 procedure EvaluateItems(Items: TObjectList; S: TAppSettings);  // Works out the status and destination of every item.
+{ Gives Dst the creation time of Src (Windows: Explorer's "Date created"; Linux keeps no creation time) and,
+  with KeepWrite, also its last write time ("Date modified"). A copy, and every program step that rewrites a
+  file, would otherwise get the time of the download. }
+procedure KeepFileTimes(const Src, Dst: string; KeepWrite: Boolean);
 { The file date value for FileSetDate that gives a file the local time LocalTime of its own date (Windows
   converts file dates with today's offset from UTC, which is an hour off for a date in the other half of the
   summer time year) }
@@ -340,6 +344,53 @@ begin
     Exit(EncodeDateTime(U.wYear, U.wMonth, U.wDay, U.wHour, U.wMinute, U.wSecond, U.wMilliseconds));
   {$ENDIF}
   Result := LocalTimeToUniversal(LT);  // the current offset of this computer
+end;
+
+{$IFDEF WINDOWS}
+type
+  TWinFileTime = record  // the Windows FILETIME layout
+    Lo, Hi: DWord;
+  end;
+  PWinFileTime = ^TWinFileTime;
+
+function CreateFileW(lpFileName: PWideChar; dwDesiredAccess, dwShareMode: DWord; lpSecurityAttributes: Pointer;
+  dwCreationDisposition, dwFlagsAndAttributes: DWord; hTemplateFile: THandle): THandle; stdcall; external 'kernel32.dll';
+function GetFileTime(hFile: THandle; lpCreationTime, lpLastAccessTime, lpLastWriteTime: PWinFileTime): LongBool;
+  stdcall; external 'kernel32.dll';
+function SetFileTime(hFile: THandle; lpCreationTime, lpLastAccessTime, lpLastWriteTime: PWinFileTime): LongBool;
+  stdcall; external 'kernel32.dll';
+function CloseHandle(hObject: THandle): LongBool; stdcall; external 'kernel32.dll';
+{$ENDIF}
+
+procedure KeepFileTimes(const Src, Dst: string; KeepWrite: Boolean);
+{$IFDEF WINDOWS}
+const
+  GENERIC_READ = $80000000;
+  FILE_WRITE_ATTRIBUTES = $100;
+  SHARE_ALL = 7;  // read, write and delete
+  OPEN_EXISTING = 3;
+var
+  H: THandle;  // H: an open file
+  C, W: TWinFileTime;  // C: creation time; W: last write time
+  Got: Boolean;  // Got: the source's times were read
+{$ENDIF}
+begin
+  {$IFDEF WINDOWS}
+  Got := False;
+  H := CreateFileW(PWideChar(UnicodeString(Src)), GENERIC_READ, SHARE_ALL, nil, OPEN_EXISTING, 0, 0);
+  if H <> THandle(-1) then
+  begin
+    Got := GetFileTime(H, @C, nil, @W);  // the original's times (UTC, exact)
+    CloseHandle(H);
+  end;
+  if not Got then Exit;
+  H := CreateFileW(PWideChar(UnicodeString(Dst)), FILE_WRITE_ATTRIBUTES, SHARE_ALL, nil, OPEN_EXISTING, 0, 0);
+  if H = THandle(-1) then Exit;
+  if KeepWrite then SetFileTime(H, @C, nil, @W) else SetFileTime(H, @C, nil, nil);  // nil keeps the copy's time
+  CloseHandle(H);
+  {$ELSE}
+  if KeepWrite then FileSetDateUTF8(Dst, FileAgeUTF8(Src));  // Linux files have no creation time to keep
+  {$ENDIF}
 end;
 
 function FileDateFor(LocalTime: TDateTime): LongInt;
@@ -2637,7 +2688,9 @@ begin
     FreeMem(Buf);  // free the buffer
   end;
   if Result <> crOk then
-    DeleteFileUTF8(Dst);  // remove a bad or incomplete copy
+    DeleteFileUTF8(Dst)  // remove a bad or incomplete copy
+  else
+    KeepFileTimes(Src, Dst, True);  // the copy keeps the original's creation and modification times
 end;
 
 { Returns the backup path of an item: backup folder from its own mask, file name of the main copy. }

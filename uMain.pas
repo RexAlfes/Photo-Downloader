@@ -1604,8 +1604,11 @@ begin
       FProgLbl.Caption := X.Name + ': ' + It.FileName;  // progress text
       Application.ProcessMessages;  // let the window update
       R := X.Run(PluginValues(FS.PluginOpts, Key), Dest, It.FullPath, @CopyTick, OutFile, Msg);  // run the program
-      if (R = 1) and FS.UseCaptureTime and (OutFile <> '') and FileExistsUTF8(OutFile) then
-        FileSetDateUTF8(OutFile, FileDateFor(It.CaptureTime));  // the new file gets the capture time too
+      if (R = 1) and (OutFile <> '') and FileExistsUTF8(OutFile) then  // a new file made by the program (for example a DNG)
+      begin
+        KeepFileTimes(It.FullPath, OutFile, not FS.UseCaptureTime);  // the original's creation time (and modification time)
+        if FS.UseCaptureTime then FileSetDateUTF8(OutFile, FileDateFor(It.CaptureTime));  // the new file gets the capture time too
+      end;
     end;
     case R of
       1: if Msg <> '' then LogThumb('plug-in ' + Key + ': ' + Dest + ': done (' + Msg + ')')  // log it
@@ -1632,6 +1635,7 @@ begin
   Result := True;  // success unless writing the owner fields fails
   if It.IsOther then  // a file that is no picture (scan report, CSV ...): copied unchanged, no picture steps
   begin
+    KeepFileTimes(It.FullPath, Dest, not FS.UseCaptureTime);  // the original's creation time (and modification time)
     if FS.UseCaptureTime then FileSetDateUTF8(Dest, FileDateFor(It.CaptureTime));  // its own file time
     Exit;
   end;
@@ -1645,6 +1649,8 @@ begin
   // plug-in steps on the downloaded copy (the backup copy was made before and is never changed)
   RunPluginSteps(It, Dest);  // for example a color profile or a DNG copy
 
+  // turning, color profiles and the resolution step write a new file: give it the original's times again
+  KeepFileTimes(It.FullPath, Dest, not FS.UseCaptureTime);  // creation time always; modification time unless set below
   if FS.UseCaptureTime then  // use the capture time as file time
     FileSetDateUTF8(Dest, FileDateFor(It.CaptureTime));  // set the file time
 
@@ -1922,6 +1928,7 @@ begin
           if FileExistsUTF8(JDest) then JDest := UniqueName(JDest, True);  // never overwrite: add (1), (2) ...
           if SaveLrPrevJpg(It.FullPath, JDest, FS.VerifyCopy, JHash, JErr) = crOk then  // write the preview picture
           begin
+            KeepFileTimes(It.FullPath, JDest, not FS.UseCaptureTime);  // the .lrprev file's creation time
             if FS.UseCaptureTime then  // same file time as the .lrprev file
               FileSetDateUTF8(JDest, FileDateFor(It.CaptureTime));  // set the file time
           end
