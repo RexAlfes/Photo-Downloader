@@ -108,6 +108,9 @@ type
     procedure LoadFromFile(const AFileName: string);  // reads the options from a file
     procedure SaveToFile(const AFileName: string);  // writes the options to a file
     function PluginEnabled(const AName: string): Boolean;  // True when a plug-in is switched on
+    function ProfileText: string;  // the options a profile keeps, as text (session values left out), for comparing
+    procedure AssignFrom(Src: TAppSettings);  // copies every option of Src
+    function WithProfile(const AFileName: string): TAppSettings;  // a copy with that profile loaded, session values kept (caller frees)
   end;
 
 function ConfigDir: string;  // folder for the settings file
@@ -625,6 +628,120 @@ end;
 function TAppSettings.PluginEnabled(const AName: string): Boolean;
 begin
   Result := Plugins.Values[AName] = '1';  // '1' means enabled
+end;
+
+const
+  { Session values: they change while working and are not part of what a profile is about, so they do
+    not count as unsaved profile changes and stay as they are when a profile is loaded or put back.
+    'Section/Key', or 'Section/*' for a whole section. }
+  SessionKeys: array[0..10] of string = (
+    'General/LastSource', 'General/FirstRunDone', 'General/PromptProfile', 'General/ProfileName', 'General/Logging',
+    'Path/JobCode', 'Path/SeqNext', 'View/*', 'JobHistory/*', 'DateJobCodes/*', 'Window/*');
+
+{ Splits a SessionKeys entry into its section and key. }
+procedure SplitSessionKey(const E: string; out Sec, Key: string);
+begin
+  Sec := Copy(E, 1, Pos('/', E) - 1);  // before the slash
+  Key := Copy(E, Pos('/', E) + 1, MaxInt);  // after the slash ('*' = the whole section)
+end;
+
+{ Removes the session values from Ini. }
+procedure StripSession(Ini: TCustomIniFile);
+var
+  I: Integer;  // I: loop counter
+  Sec, Key: string;  // Sec, Key: one session value
+begin
+  for I := Low(SessionKeys) to High(SessionKeys) do
+  begin
+    SplitSessionKey(SessionKeys[I], Sec, Key);  // its section and key
+    if Key = '*' then Ini.EraseSection(Sec)  // the whole section
+    else Ini.DeleteKey(Sec, Key);  // one value
+  end;
+end;
+
+{ Copies the session values of Src into Dst (values Src does not have are removed from Dst). }
+procedure CopySession(Src, Dst: TCustomIniFile);
+var
+  I, J: Integer;  // I, J: loop counters
+  Sec, Key: string;  // Sec, Key: one session value
+  L: TStringList;  // L: the keys of a section
+begin
+  L := TStringList.Create;  // create the key list
+  try
+    for I := Low(SessionKeys) to High(SessionKeys) do
+    begin
+      SplitSessionKey(SessionKeys[I], Sec, Key);  // its section and key
+      if Key = '*' then  // the whole section
+      begin
+        Dst.EraseSection(Sec);  // drop the profile's section
+        Src.ReadSection(Sec, L);  // the keys of the session's section
+        for J := 0 to L.Count - 1 do
+          Dst.WriteString(Sec, L[J], Src.ReadString(Sec, L[J], ''));  // copy each value
+      end
+      else if Src.ValueExists(Sec, Key) then
+        Dst.WriteString(Sec, Key, Src.ReadString(Sec, Key, ''))  // copy the value
+      else
+        Dst.DeleteKey(Sec, Key);  // not set in the session
+    end;
+  finally
+    L.Free;  // free the key list
+  end;
+end;
+
+{ The options a profile keeps, as ini text without the session values. Two settings with the same
+  text are the same profile. }
+function TAppSettings.ProfileText: string;
+var
+  Ini: TMemIniFile;  // Ini: the options in memory (never written to disk)
+  L: TStringList;  // L: the ini lines
+begin
+  Ini := TMemIniFile.Create('');  // no file
+  L := TStringList.Create;  // create the line list
+  try
+    SaveTo(Ini);  // collect the options
+    StripSession(Ini);  // leave out the session values
+    Ini.GetStrings(L);  // as lines
+    Result := L.Text;  // as one text
+  finally
+    L.Free;  // free the line list
+    Ini.Free;  // free the ini object
+  end;
+end;
+
+{ Copies every option of Src into these settings. }
+procedure TAppSettings.AssignFrom(Src: TAppSettings);
+var
+  Ini: TMemIniFile;  // Ini: the options of Src in memory
+begin
+  Ini := TMemIniFile.Create('');  // no file
+  try
+    Src.SaveTo(Ini);  // collect Src's options
+    LoadFrom(Ini);  // and read them
+  finally
+    Ini.Free;  // free the ini object
+  end;
+end;
+
+{ Returns a copy of these settings with the profile file AFileName loaded the usual way (values the file
+  does not have stay), but with the session values of these settings. The caller frees it. }
+function TAppSettings.WithProfile(const AFileName: string): TAppSettings;
+var
+  Cur, Prof: TMemIniFile;  // Cur: these settings; Prof: the copy with the profile loaded
+begin
+  Result := TAppSettings.Create;  // the copy
+  Cur := TMemIniFile.Create('');  // no file
+  Prof := TMemIniFile.Create('');  // no file
+  try
+    SaveTo(Cur);  // these settings
+    Result.LoadFrom(Cur);  // copied
+    Result.LoadFromFile(AFileName);  // the profile on top
+    Result.SaveTo(Prof);  // as ini
+    CopySession(Cur, Prof);  // with the session values of these settings
+    Result.LoadFrom(Prof);  // read back
+  finally
+    Prof.Free;  // free the ini objects
+    Cur.Free;
+  end;
 end;
 
 end.

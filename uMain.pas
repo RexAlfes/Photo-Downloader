@@ -17,6 +17,7 @@ type
   TMainForm = class(TForm)
   private
     FPluginErr: string;  // problems found while loading plug-in libraries (shown after the splash)
+    FAutoClosing: Boolean;  // the automatic sequence closes the program: no questions
     FStepFails: TStringList;  // plug-in steps that failed during the current download (one line each)
     FWantClientH: Integer;  // client height the window was given at creation (GTK may shrink it before it is shown)
     FS: TAppSettings;  // program settings
@@ -120,6 +121,11 @@ type
     procedure ProfileLoadClick(Sender: TObject);
     procedure ProfileSaveClick(Sender: TObject);
     procedure ProfileDeleteClick(Sender: TObject);
+    function WriteProfile(const Nm: string): Boolean;  // saves the settings as the profile Nm (no questions)
+    function ProfileChanged: Boolean;  // True when the settings differ from the saved profile in use
+    function AskSaveProfile: Boolean;  // asks to save unsaved profile changes; False when the user canceled
+    procedure UseDefaultProfile;  // makes "Default" the profile in use (loads it, or creates it from the settings)
+    procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);  // asks about unsaved profile changes
     procedure StatusClick(Sender: TObject);
     procedure PrefsClick(Sender: TObject);
     procedure FileTypesClick(Sender: TObject);
@@ -206,6 +212,7 @@ begin
   if not FS.FitWindow then  // Fit to Window adapts to the window, so the window keeps its size
     SizeForThumbColumns(WantedColumns(FView.Mode, FView.ThumbSize));  // size the window for the thumbnail columns
   OnClose := @FormClose;  // close handler
+  OnCloseQuery := @FormCloseQuery;  // asks about unsaved profile changes first
   FTimer := TTimer.Create(Self);  // create the start-up timer
   FTimer.Interval := 150;  // fire after 150 ms
   FTimer.OnTimer := @StartupTimer;  // start-up work
@@ -2229,7 +2236,11 @@ begin
   if FS.AutoSoftEject then  // eject step
     if not DoEject(True) then Exit;  // stop when the eject failed
   if FS.AutoLaunch then LaunchCustom;  // launch step
-  if FS.AutoExit then Close;  // exit step
+  if FS.AutoExit then  // exit step
+  begin
+    FAutoClosing := True;  // hands-free: do not stop at the profile question
+    Close;  // close the program
+  end;
 end;
 
 { Asks for the general job code. }
@@ -2279,21 +2290,24 @@ begin
       ListProfiles(L);  // find the profiles
       // "Default" always exists: it keeps the settings as they are (no profile file needed)
       if L.IndexOf('Default') < 0 then L.Insert(0, 'Default');  // there is always a Default profile
-      if ChooseFromList('User Profiles', 'Select a profile to load:', L, Choice) then  // ask the user
-        if FileExistsUTF8(ProfilesDir + Choice + '.ini') then  // profile file exists
-        begin
-          FS.LoadFromFile(ProfilesDir + Choice + '.ini');  // load the profile
-          FS.PromptProfile := True;       // a profile must not switch the prompt off
-          FS.ProfileName := Choice;  // the profile in use
-          ReloadPlugins;  // the profile may switch other plug-ins on
-          ApplyState;  // apply the settings
-        end
-        else
-          FS.ProfileName := '';  // "Default" without a profile file: no profile in use
+      if ChooseFromList('User Profiles', 'Select a profile to load:', L, Choice) and  // ask the user
+         FileExistsUTF8(ProfilesDir + Choice + '.ini') then  // profile file exists
+      begin
+        FS.LoadFromFile(ProfilesDir + Choice + '.ini');  // load the profile
+        FS.PromptProfile := True;       // a profile must not switch the prompt off
+        FS.ProfileName := Choice;  // the profile in use
+        ReloadPlugins;  // the profile may switch other plug-ins on
+        ApplyState;  // apply the settings
+        SaveSettingsNow;  // remember the profile in use
+      end
+      else
+        UseDefaultProfile;  // nothing chosen (or "Default" not saved yet): the Default profile
     finally
       L.Free;  // free the list
     end;
-  end;
+  end
+  else if (FS.ProfileName = '') or not FileExistsUTF8(ProfilesDir + FS.ProfileName + '.ini') then
+    UseDefaultProfile;  // no profile in use (or its file is gone): the Default profile
   UpdateCaption;  // the profile in use in the title bar
   Src := '';  // no source yet
   if FS.LoadLastAtStartup then Src := FS.LastSource;  // use the last source when asked
@@ -2388,6 +2402,7 @@ begin
     end;
     if ChooseFromList('Load User Profile', 'Select a profile to load:', L, Choice) then  // ask the user
     begin
+      if not AskSaveProfile then Exit;  // unsaved changes of the profile in use: save them first, or canceled
       FS.LoadFromFile(ProfilesDir + Choice + '.ini');  // load the profile
       FS.PromptProfile := PromptWas;      // a profile must not change the start-up prompt setting
       FS.ProfileName := Choice;  // the profile in use
@@ -2425,10 +2440,20 @@ begin
   if FileExistsUTF8(Fn) and  // saving over a profile
      (MessageDlg(AppTitle, 'Replace the profile "' + Nm + '" with the current settings?', mtConfirmation,
        [mbYes, mbNo], 0) <> mrYes) then Exit;  // only when the user agrees
+  WriteProfile(Nm);  // save it (tells the user when it fails)
+end;
+
+{ Saves the settings as the profile Nm without questions and makes it the profile in use. A new file is
+  written first, so an old profile is replaced completely (no left-over keys) and is not lost when writing
+  fails. False (after telling the user) when it could not be saved. }
+function TMainForm.WriteProfile(const Nm: string): Boolean;
+var
+  Fn: string;  // Fn: the profile file
+begin
+  Result := False;  // not saved yet
+  Fn := ProfilesDir + Nm + '.ini';  // the profile file
   try
     FS.ProfileName := Nm;  // the profile in use from now on (also stored inside the profile)
-    // write a new file first, so an old profile is replaced completely (no left-over keys) and
-    // is not lost when writing fails
     if FileExistsUTF8(Fn + '.tmp') then DeleteFileUTF8(Fn + '.tmp');  // a left-over from a failed save
     FS.SaveToFile(Fn + '.tmp');  // write the new profile
     if FileExistsUTF8(Fn) then DeleteFileUTF8(Fn);  // remove the old one
@@ -2436,10 +2461,86 @@ begin
     SaveSettingsNow;  // remember the profile in use
     UpdateCaption;  // the profile in use in the title bar
     SetStatus('Profile "' + Nm + '" saved.');  // tell the user
+    Result := True;  // saved
   except
     on E: Exception do
       MessageDlg(AppTitle, 'Could not save the profile:'#13#10 + E.Message, mtError, [mbOK], 0);  // tell the user
   end;
+end;
+
+{ True when the settings differ from the saved file of the profile in use. Session values (last source,
+  job code, next sequence number, view options ...) do not count (uSettings.SessionKeys). }
+function TMainForm.ProfileChanged: Boolean;
+var
+  Fn: string;  // Fn: the profile file
+  P: TAppSettings;  // P: the settings as the profile file has them
+begin
+  Result := False;  // no profile in use: nothing to compare
+  if FS.ProfileName = '' then Exit;
+  Fn := ProfilesDir + FS.ProfileName + '.ini';  // its file
+  if not FileExistsUTF8(Fn) then Exit;  // deleted meanwhile
+  P := FS.WithProfile(Fn);  // the settings with the saved profile
+  try
+    Result := P.ProfileText <> FS.ProfileText;  // anything a profile keeps is different
+  finally
+    P.Free;  // free the copy
+  end;
+end;
+
+{ When the settings were changed since the profile in use was saved, asks whether to save them to it.
+  Yes saves the profile; No puts the saved profile back (the changes are dropped); Cancel returns False. }
+function TMainForm.AskSaveProfile: Boolean;
+var
+  P: TAppSettings;  // P: the settings as the profile file has them
+begin
+  Result := True;  // go on
+  if not ProfileChanged then Exit;  // nothing unsaved
+  case MessageDlg(AppTitle, 'The settings were changed and are not saved in the profile "' + FS.ProfileName + '".' +
+         #13#10#13#10'Save the changes to the profile?', mtConfirmation, [mbYes, mbNo, mbCancel], 0) of
+    mrYes: Result := WriteProfile(FS.ProfileName);  // save them (stay when saving failed)
+    mrNo:
+      begin
+        P := FS.WithProfile(ProfilesDir + FS.ProfileName + '.ini');  // the saved profile, session values kept
+        try
+          FS.AssignFrom(P);  // drop the changes
+        finally
+          P.Free;  // free the copy
+        end;
+        SaveSettingsNow;  // the settings file matches the profile again
+      end;
+  else
+    Result := False;  // canceled
+  end;
+end;
+
+{ Makes "Default" the profile in use: loads Default.ini, or saves the current settings as Default.ini when
+  there is none yet. Used at start-up when no profile was chosen. }
+procedure TMainForm.UseDefaultProfile;
+var
+  Fn: string;  // Fn: the Default profile file
+  PromptWas: Boolean;  // PromptWas: the start-up prompt setting
+begin
+  Fn := ProfilesDir + 'Default.ini';  // its file
+  if FileExistsUTF8(Fn) then  // saved before: load it
+  begin
+    PromptWas := FS.PromptProfile;  // a profile must not change the start-up prompt setting
+    FS.LoadFromFile(Fn);  // load the profile
+    FS.PromptProfile := PromptWas;  // keep the prompt setting
+    FS.ProfileName := 'Default';  // the profile in use
+    ReloadPlugins;  // the profile may switch other plug-ins on
+    ApplyState;  // apply the settings
+    SaveSettingsNow;  // remember the profile in use
+  end
+  else
+    WriteProfile('Default');  // the settings as they are become the Default profile
+end;
+
+{ Before the window closes: asks about profile changes that were not saved (not when the automatic
+  sequence closes the program). }
+procedure TMainForm.FormCloseQuery(Sender: TObject; var CanClose: Boolean);
+begin
+  if FAutoClosing then Exit;  // hands-free exit: no questions
+  CanClose := AskSaveProfile;  // Cancel keeps the program open
 end;
 
 { Deletes a user profile chosen from a list. }
