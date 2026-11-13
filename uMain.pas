@@ -76,6 +76,7 @@ type
     procedure RebuildDates;
     procedure ApplyFilter;
     procedure GetDownloadList(L: TList; Scope: TDownloadScope = dsAuto);
+    function ToDownload(It: TImageItem): Boolean;  // True when a download would copy this item (or files of this scan)
     procedure SelectWhere(Mode: Integer);
     function PostProcess(It: TImageItem; const Dest: string): Boolean;
     procedure RunPluginSteps(It: TImageItem; const Dest: string);  // runs the switched-on plug-in steps on a downloaded file
@@ -710,6 +711,8 @@ var
   L: TList;  // L: files to download
   N, P, I: Integer;  // N: file count; P: problem file count; I: loop counter
   S: string;  // S: status text
+  It: TImageItem;  // It: current item
+  AnySel, AnyAll, AnyDone: Boolean;  // AnySel/AnyAll: selected/any items to download; AnyDone: a downloaded item
 begin
   if FItems.Count = 0 then  // no files
   begin
@@ -743,23 +746,24 @@ begin
       S := S + '.';  // end the sentence
   end;
   SetStatus(S);  // show the text
-  L := TList.Create;  // count again for each button
-  try
-    GetDownloadList(L, dsSelected);  // selected files to download
-    btnDownload.Enabled := L.Count > 0;  // Download Selected only with selected files to download
-    L.Clear;  // start again
-    GetDownloadList(L, dsAll);  // all shown files to download
-    btnDownloadAll.Enabled := L.Count > 0;  // Download All when there are files to download
-  finally
-    L.Free;  // free the list
-  end;
-  btnDelete.Enabled := False;  // Delete only when a downloaded file is visible
-  for I := 0 to FVisible.Count - 1 do  // every visible file
-    if TImageItem(FVisible[I]).Status = isDownloaded then  // downloaded file
+  // the buttons need only yes/no answers: one pass over the shown items, with the same rule as the download list
+  AnySel := False;  // a selected item still to download
+  AnyAll := False;  // any item still to download
+  AnyDone := False;  // a downloaded item (for Delete)
+  for I := 0 to FVisible.Count - 1 do  // every visible item
+  begin
+    It := TImageItem(FVisible[I]);  // current item
+    if It.Status = isDownloaded then AnyDone := True;  // something to delete
+    if ToDownload(It) then  // a download would copy it
     begin
-      btnDelete.Enabled := True;  // enable the Delete button
-      Break;  // one is enough
+      AnyAll := True;  // Download All has work
+      if It.Selected then AnySel := True;  // Download Selected has work
     end;
+    if AnySel and AnyAll and AnyDone then Break;  // all three known
+  end;
+  btnDownload.Enabled := AnySel;  // Download Selected only with selected files to download
+  btnDownloadAll.Enabled := AnyAll;  // Download All when there are files to download
+  btnDelete.Enabled := AnyDone;  // Delete only when a downloaded file is visible
 end;
 
 { ====================================================================== }
@@ -1095,6 +1099,19 @@ begin
   Result := TImageItem(A).Index - TImageItem(B).Index;  // difference of the numbers
 end;
 
+{ The one rule for what a download copies: new files and name clashes, and duplicates unless they are
+  ignored. A scan counts while any of its files is still to download (its status is then new or name
+  clash, uItems.GroupStatus); its files themselves are never duplicates. GetDownloadList and the buttons
+  in UpdateStatus both use it, so they always agree. }
+function TMainForm.ToDownload(It: TImageItem): Boolean;
+begin
+  if It.IsGroup then
+    Result := (It.Status in [isNew, isNameClash]) and (It.Members.Count > 0)  // a scan with files still to download
+  else
+    Result := (It.Status in [isNew, isNameClash]) or
+      ((It.Status = isDuplicate) and (not FS.IgnoreDuplicates));  // a file
+end;
+
 { Collects the items to download: the selected ones, or all when none is selected. }
 procedure TMainForm.GetDownloadList(L: TList; Scope: TDownloadScope = dsAuto);
 var
@@ -1118,10 +1135,10 @@ begin
     if It.IsGroup then  // a scan: its files that are not downloaded yet
     begin
       for J := 0 to It.Members.Count - 1 do
-        if TImageItem(It.Members[J]).Status in [isNew, isNameClash] then L.Add(It.Members[J]);
+        if ToDownload(TImageItem(It.Members[J])) then L.Add(It.Members[J]);
       Continue;
     end;
-    if (It.Status in [isNew, isNameClash]) or ((It.Status = isDuplicate) and (not FS.IgnoreDuplicates)) then L.Add(It);  // new files and name clashes (and duplicates unless they are ignored) are downloaded
+    if ToDownload(It) then L.Add(It);  // new files and name clashes (and duplicates unless they are ignored) are downloaded
   end;
   if GSortCol >= 0 then L.Sort(@CompareByIndex);   // downloads and sequence numbers follow card order
 end;
