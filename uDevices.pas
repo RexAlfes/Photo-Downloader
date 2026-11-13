@@ -56,6 +56,19 @@ function StagingBytes: Int64;
 { A name that can be used as a file or folder name (characters Windows refuses become "_"). }
 function SafeFolderName(const S: string): string;
 
+type
+  { What PickSourceFolder returned. }
+  TPickResult = (prCancel,   // canceled
+                 prFolder,   // a folder on a disk (Path)
+                 prDevice,   // a device, a storage of it or a folder inside it (DevName, DevId; FolderName and FolderId empty for the device or a storage)
+                 prOther);   // something that is neither (a library, a network place without a path ...)
+
+{ The Windows folder dialog for File > Open Source Folder. Unlike the standard folder dialog it tells a
+  device apart from a disk folder, so choosing a phone or camera can import from it instead of
+  returning a wrong folder. Windows only (elsewhere it returns prCancel; use the LCL dialog there). }
+function PickSourceFolder(Owner: THandle; const Title, InitialDir: string; out Path, DevName, DevId,
+  FolderName, FolderId: string): TPickResult;
+
 implementation
 
 uses
@@ -67,6 +80,12 @@ const
   BHID_EnumItems: TGUID = '{94F60519-2850-4924-AA5A-D15E84868039}';  // children of a folder item
   BHID_Stream: TGUID = '{1CEBB3AB-7C10-499A-A417-92CA16C4CB83}';  // IStream of a file item
   CLSID_FileOperation: TGUID = '{3AD05575-8857-4850-9277-11B85BDB8E09}';  // the Shell's copy/move/delete engine
+  CLSID_FileOpenDialog: TGUID = '{DC1C5A9C-E88A-4DDE-A5A1-60F82A20AEF7}';  // the Windows open dialog
+  ThisPcParse = '::{20D04FE0-3AEA-1069-A2D8-08002B30309D}';  // parsing name of This PC
+  FOS_NOCHANGEDIR = $00000008;  // the dialog keeps the current directory
+  FOS_PICKFOLDERS = $00000020;  // choose folders, not files
+  FOS_PATHMUSTEXIST = $00000800;  // only existing places
+  SIGDN_FILESYSPATH = $80058000;  // the disk path (fails for device items)
   SIGDN_NORMALDISPLAY = $00000000;  // the name Explorer shows
   SIGDN_DESKTOPABSOLUTEPARSING = $80028000;  // the full parsing name (::{...}\\?\usb#... for devices)
   SFGAO_CANDELETE = $00000020;  // the item may be deleted
@@ -141,6 +160,28 @@ type
     function NewItem(psiDestinationFolder: IShellItem; dwFileAttributes: DWORD; pszName: PWideChar; pszTemplateName: PWideChar; pfopsItem: IUnknown): HResult; stdcall;
     function PerformOperations: HResult; stdcall;
     function GetAnyOperationsAborted(out pfAnyOperationsAborted: LongBool): HResult; stdcall;
+  end;
+
+  IFileDialog = interface(IUnknown)  // with IModalWindow.Show first
+    ['{42F85136-DB7E-439C-85F1-E4075D135FC8}']
+    function Show(hwndOwner: HWND): HResult; stdcall;
+    function SetFileTypes(cFileTypes: UINT; rgFilterSpec: Pointer): HResult; stdcall;
+    function SetFileTypeIndex(iFileType: UINT): HResult; stdcall;
+    function GetFileTypeIndex(out piFileType: UINT): HResult; stdcall;
+    function Advise(pfde: IUnknown; out pdwCookie: DWORD): HResult; stdcall;
+    function Unadvise(dwCookie: DWORD): HResult; stdcall;
+    function SetOptions(fos: DWORD): HResult; stdcall;
+    function GetOptions(out pfos: DWORD): HResult; stdcall;
+    function SetDefaultFolder(psi: IShellItem): HResult; stdcall;
+    function SetFolder(psi: IShellItem): HResult; stdcall;
+    function GetFolder(out ppsi: IShellItem): HResult; stdcall;
+    function GetCurrentSelection(out ppsi: IShellItem): HResult; stdcall;
+    function SetFileName(pszName: PWideChar): HResult; stdcall;
+    function GetFileName(out pszName: PWideChar): HResult; stdcall;
+    function SetTitle(pszTitle: PWideChar): HResult; stdcall;
+    function SetOkButtonLabel(pszText: PWideChar): HResult; stdcall;
+    function SetFileNameLabel(pszLabel: PWideChar): HResult; stdcall;
+    function GetResult(out ppsi: IShellItem): HResult; stdcall;
   end;
 
 const
@@ -578,6 +619,70 @@ begin
     if Result[I] in ['\', '/', ':', '*', '?', '"', '<', '>', '|', #0..#31] then Result[I] := '_';
   while (Result <> '') and (Result[Length(Result)] in ['.', ' ']) do Delete(Result, Length(Result), 1);  // Windows drops these
   if Result = '' then Result := 'device';
+end;
+
+function PickSourceFolder(Owner: THandle; const Title, InitialDir: string; out Path, DevName, DevId,
+  FolderName, FolderId: string): TPickResult;
+{$IFDEF WINDOWS}
+var
+  Dlg: IFileDialog;  // Dlg: the Windows dialog
+  Opts: DWORD;  // Opts: its options
+  Start, Picked, It, Up: IShellItem;  // Start: first folder; Picked: the choice; It, Up: walking up to This PC
+  P: PWideChar;  // P: disk path of the choice
+  Chain: TStringList;  // Chain: names from the device's storage down to the choice
+  Parse: string;  // Parse: parsing name of a parent
+{$ENDIF}
+begin
+  Result := prCancel;
+  Path := ''; DevName := ''; DevId := ''; FolderName := ''; FolderId := '';
+  {$IFDEF WINDOWS}
+  NeedCom;
+  if Failed(CoCreateInstance(CLSID_FileOpenDialog, nil, CLSCTX_INPROC_SERVER, IFileDialog, Dlg)) or (Dlg = nil) then Exit;
+  Opts := 0;
+  Dlg.GetOptions(Opts);
+  Dlg.SetOptions(Opts or FOS_PICKFOLDERS or FOS_PATHMUSTEXIST or FOS_NOCHANGEDIR);  // folders; devices allowed
+  Dlg.SetTitle(PWideChar(UTF8Decode(Title)));
+  if (InitialDir <> '') and Succeeded(SHCreateItemFromParsingName(PWideChar(UTF8Decode(InitialDir)), nil, IShellItem, Start)) then
+    Dlg.SetFolder(Start);  // start in the last source
+  if Dlg.Show(Owner) <> S_OK then Exit;  // canceled
+  if Failed(Dlg.GetResult(Picked)) or (Picked = nil) then Exit;
+  if Succeeded(Picked.GetDisplayName(SIGDN_FILESYSPATH, P)) and (P <> nil) then  // a folder on a disk
+  begin
+    Path := UTF8Encode(WideString(P));
+    CoTaskMemFree(P);
+    Exit(prFolder);
+  end;
+  Result := prOther;  // no disk path: a device, or something else
+  Chain := TStringList.Create;
+  try
+    It := Picked;
+    while Succeeded(It.GetParent(Up)) and (Up <> nil) do  // up to the entry just below This PC
+    begin
+      Parse := ItemName(Up, SIGDN_DESKTOPABSOLUTEPARSING);
+      if SameText(Parse, ThisPcParse) then  // It is an entry of This PC
+      begin
+        if (Attrs(It, SFGAO_FILESYSTEM) and SFGAO_FILESYSTEM = 0) and
+           (Pos('\\?\', ItemName(It, SIGDN_DESKTOPABSOLUTEPARSING)) > 0) then  // a portable device
+        begin
+          DevName := ItemName(It, SIGDN_NORMALDISPLAY);
+          DevId := ItemToId(It);
+          if Chain.Count >= 2 then  // a folder inside a storage: import just that folder
+          begin
+            FolderName := StringReplace(Trim(Chain.Text), LineEnding, '\', [rfReplaceAll]);  // "Storage\Folder\..."
+            FolderId := ItemToId(Picked);
+          end;
+          Result := prDevice;
+        end;
+        Break;
+      end;
+      Chain.Insert(0, ItemName(It, SIGDN_NORMALDISPLAY));  // this level's name, outermost first
+      It := Up;
+      Up := nil;
+    end;
+  finally
+    Chain.Free;
+  end;
+  {$ENDIF}
 end;
 
 end.

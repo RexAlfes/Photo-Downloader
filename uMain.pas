@@ -77,6 +77,7 @@ type
     procedure AutoDetectSource;
     function ImportFromDevice(const DevName, DevId: string; FolderNames, FolderIds: TStrings; Silent: Boolean): Boolean;  // copies device folders to staging and loads them
     function ImportFirstDevice(Silent: Boolean): Boolean;  // imports DCIM of the first connected device (Refresh, automation)
+    function ImportDeviceDcim(const DevName, DevId: string; Silent: Boolean): Boolean;  // imports DCIM of one device
     function DevCountProgress(Count: Integer): Boolean;  // progress while listing device files
     function DevBytesProgress(Bytes: Int64): Boolean;  // progress while copying a device file
     procedure LeaveDevice;  // the device stops being the source: downloaded staged copies are removed
@@ -2491,32 +2492,43 @@ begin
   end;
 end;
 
-{ Imports the DCIM folders of the first connected device; False when there is none. }
-function TMainForm.ImportFirstDevice(Silent: Boolean): Boolean;
+{ Imports the DCIM folders of the device DevName (DevId); False when it has none or nothing was imported. }
+function TMainForm.ImportDeviceDcim(const DevName, DevId: string; Silent: Boolean): Boolean;
 var
-  Devs, DevIds, Names, Ids, DNames, DIds: TStringList;  // devices; their folders; the DCIM folders
-  I, D: Integer;  // I: folder; D: device
+  Names, Ids, DNames, DIds: TStringList;  // the device's folders; its DCIM folders
+  I: Integer;  // I: loop counter
 begin
   Result := False;
-  Devs := TStringList.Create; DevIds := TStringList.Create;
   Names := TStringList.Create; Ids := TStringList.Create;
   DNames := TStringList.Create; DIds := TStringList.Create;
   try
+    ListDeviceFolders(DevId, Names, Ids);  // "Storage\Folder"
+    for I := 0 to Names.Count - 1 do
+      if SameText(Copy(Names[I], Length(Names[I]) - 4, 5), '\DCIM') then  // "Storage\DCIM"
+      begin
+        DNames.Add(Names[I]);
+        DIds.Add(Ids[I]);
+      end;
+    if DIds.Count > 0 then Result := ImportFromDevice(DevName, DevId, DNames, DIds, Silent);
+  finally
+    Names.Free; Ids.Free; DNames.Free; DIds.Free;
+  end;
+end;
+
+{ Imports the DCIM folders of the first connected device that has one; False when there is none. }
+function TMainForm.ImportFirstDevice(Silent: Boolean): Boolean;
+var
+  Devs, DevIds: TStringList;  // Devs, DevIds: the connected devices
+  D: Integer;  // D: loop counter
+begin
+  Result := False;
+  Devs := TStringList.Create; DevIds := TStringList.Create;
+  try
     ListDevices(Devs, DevIds);  // connected devices
     for D := 0 to Devs.Count - 1 do  // the first one with a DCIM folder
-    begin
-      ListDeviceFolders(DevIds[D], Names, Ids);
-      for I := 0 to Names.Count - 1 do
-        if SameText(Copy(Names[I], Length(Names[I]) - 4, 5), '\DCIM') then  // "Storage\DCIM"
-        begin
-          DNames.Add(Names[I]);
-          DIds.Add(Ids[I]);
-        end;
-      if DIds.Count > 0 then
-        Exit(ImportFromDevice(Devs[D], DevIds[D], DNames, DIds, Silent));
-    end;
+      if ImportDeviceDcim(Devs[D], DevIds[D], Silent) then Exit(True);
   finally
-    Devs.Free; DevIds.Free; Names.Free; Ids.Free; DNames.Free; DIds.Free;
+    Devs.Free; DevIds.Free;
   end;
 end;
 
@@ -2662,16 +2674,55 @@ begin
   PruneThumbCache;  // keep the thumbnail cache below its size limit
 end;
 
-{ Lets the user choose a source folder and loads it. }
+{ Lets the user choose a source folder and loads it. On Windows the dialog also tells a phone or camera
+  apart (uDevices.PickSourceFolder): choosing the device imports its DCIM folder, choosing a folder inside
+  it imports that folder (the standard folder dialog would return a wrong folder for a device). }
 procedure TMainForm.OpenSourceClick(Sender: TObject);
 var
-  D: TSelectDirectoryDialog;  // D: folder chooser
+  D: TSelectDirectoryDialog;  // D: folder chooser (Linux)
+  Start, Path, DevName, DevId, FolderName, FolderId: string;  // the first folder; what was chosen
+  Names, Ids: TStringList;  // Names, Ids: the chosen device folder
 begin
+  Start := '';  // the first folder shown
+  if (FS.LastSource <> '') and DirectoryExistsUTF8(FS.LastSource) then Start := FS.LastSource;  // last source exists
+  if DevicesSupported then  // Windows
+  begin
+    case PickSourceFolder(Handle, 'Open Source Folder', Start, Path, DevName, DevId, FolderName, FolderId) of
+      prFolder:  // a disk folder
+        begin
+          LoadSource(Path);  // load it
+          SaveSettingsNow;  // save the settings
+        end;
+      prDevice:  // a phone or camera
+        if FolderId = '' then  // the device or a storage: its DCIM folder
+        begin
+          if not ImportDeviceDcim(DevName, DevId, False) and not FCancel then
+            MessageDlg(AppTitle, DevName + ' shows no DCIM folder. Choose a folder inside it, or use ' +
+              'File > Import from Device...', mtInformation, [mbOK], 0);  // explain
+        end
+        else
+        begin
+          Names := TStringList.Create;
+          Ids := TStringList.Create;
+          try
+            Names.Add(FolderName);  // "Storage\Folder"
+            Ids.Add(FolderId);
+            ImportFromDevice(DevName, DevId, Names, Ids, False);  // just that folder
+          finally
+            Names.Free;
+            Ids.Free;
+          end;
+        end;
+      prOther:  // neither
+        MessageDlg(AppTitle, 'This place is not a folder on a disk or a phone or camera. Choose a folder.',
+          mtInformation, [mbOK], 0);  // explain
+    end;
+    Exit;
+  end;
   D := TSelectDirectoryDialog.Create(Self);  // create the chooser
   try
     D.Title := 'Open Source Folder';  // window title
-    if (FS.LastSource <> '') and DirectoryExistsUTF8(FS.LastSource) then  // last source exists
-      D.InitialDir := FS.LastSource;  // start there
+    D.InitialDir := Start;  // start in the last source
     if D.Execute then  // user chose a folder
     begin
       LoadSource(D.FileName);  // load it

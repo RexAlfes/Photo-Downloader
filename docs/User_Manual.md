@@ -92,7 +92,7 @@ A **job code** is a name for the shoot. It becomes part of the destination folde
 
 ## 5. Loading pictures
 
-- **File > Open Source Folder (Ctrl+O)** scans the folder and all folders inside it.
+- **File > Open Source Folder (Ctrl+O)** scans the folder and all folders inside it. On Windows you can also choose a phone or camera under This PC: choosing the device imports its DCIM folder, choosing a folder inside it imports that folder (see [Phones and cameras by USB](#phones-and-cameras-by-usb)).
 - **File > Import from Device... (Ctrl+Shift+O)** reads a phone, camera or drone controller connected by USB (see [Phones and cameras by USB](#phones-and-cameras-by-usb) below).
 - **File > Refresh (F5)** scans again. With no source chosen, it looks for a removable drive with a `DCIM` folder (Windows).
 - **Preferences > General** can load the last used folder at start-up. Otherwise nothing is scanned until you choose.
