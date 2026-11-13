@@ -33,6 +33,8 @@ type
     FDevIds, FFolderIds: TStringList;  // what finds the devices and the listed folders again
     procedure DeviceChange(Sender: TObject);
     procedure FolderClick(Sender: TObject);
+    procedure SelectAllClick(Sender: TObject);  // ticks every folder
+    procedure ClearAllClick(Sender: TObject);  // clears every tick
     procedure UpdateOk;
   public
     constructor CreateDlg(Names, Ids: TStrings);
@@ -53,14 +55,14 @@ end;
 constructor TDeviceImportForm.CreateDlg(Names, Ids: TStrings);
 var
   L: TLabel;  // L: a label
-  B: TButton;  // B: Cancel
+  B: TButton;  // B: Select All, Clear All and Cancel
 begin
   inherited CreateNew(nil);
   Caption := 'Import from Device';
   BorderStyle := bsDialog;
   Position := poMainFormCenter;
   ClientWidth := 440;
-  ClientHeight := 330;
+  ClientHeight := 362;
   FDevIds := TStringList.Create;
   FDevIds.Assign(Ids);
   FFolderIds := TStringList.Create;
@@ -85,9 +87,20 @@ begin
   lstFolders.SetBounds(12, 86, 416, 150);
   lstFolders.OnClickCheck := @FolderClick;
 
+  B := TButton.Create(Self);  // tick every folder
+  B.Parent := Self;
+  B.Caption := 'Select All';
+  B.SetBounds(12, 242, 90, 25);
+  B.OnClick := @SelectAllClick;
+  B := TButton.Create(Self);  // clear every tick
+  B.Parent := Self;
+  B.Caption := 'Clear All';
+  B.SetBounds(108, 242, 90, 25);
+  B.OnClick := @ClearAllClick;
+
   lblInfo := TLabel.Create(Self);
   lblInfo.Parent := Self;
-  lblInfo.SetBounds(12, 242, 416, 46);
+  lblInfo.SetBounds(12, 274, 416, 46);
   lblInfo.AutoSize := False;
   lblInfo.WordWrap := True;
   lblInfo.Caption := 'The files are copied to a staging folder on this computer and then shown like a card. ' +
@@ -96,13 +109,13 @@ begin
   btnOk := TButton.Create(Self);
   btnOk.Parent := Self;
   btnOk.Caption := 'Import';
-  btnOk.SetBounds(262, 294, 80, 25);
+  btnOk.SetBounds(262, 326, 80, 25);
   btnOk.ModalResult := mrOk;
   btnOk.Default := True;
   B := TButton.Create(Self);
   B.Parent := Self;
   B.Caption := 'Cancel';
-  B.SetBounds(348, 294, 80, 25);
+  B.SetBounds(348, 326, 80, 25);
   B.ModalResult := mrCancel;
   B.Cancel := True;
 
@@ -149,6 +162,20 @@ end;
 { A folder was ticked or cleared. }
 procedure TDeviceImportForm.FolderClick(Sender: TObject);
 begin
+  UpdateOk;
+end;
+
+{ Select All: ticks every folder. }
+procedure TDeviceImportForm.SelectAllClick(Sender: TObject);
+begin
+  lstFolders.CheckAll(cbChecked, False, False);  // every folder
+  UpdateOk;
+end;
+
+{ Clear All: clears every tick. }
+procedure TDeviceImportForm.ClearAllClick(Sender: TObject);
+begin
+  lstFolders.CheckAll(cbUnchecked, False, False);  // no folder
   UpdateOk;
 end;
 

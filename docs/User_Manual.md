@@ -105,7 +105,7 @@ A **job code** is a name for the shoot. It becomes part of the destination folde
 A phone, camera or drone controller connected by USB cable has no drive letter, so Photo Downloader first copies its pictures to a **staging folder** on your computer and then shows them like a card. Windows only; on Linux the device appears as a folder under `/run/user/<your user number>/gvfs` that File > Open Source Folder can open.
 
 1. Connect the device. Unlock a phone and choose **File transfer** in its USB message; set a camera to PTP or MTP in its menu if it asks. An iPhone first asks you to **Trust this computer**.
-2. Choose **File > Import from Device...** (Ctrl+Shift+O). Pick the device; its folders are listed with **DCIM** (photos and videos) ticked. Tick other folders if you want them too.
+2. Choose **File > Import from Device...** (Ctrl+Shift+O). Pick the device; its folders are listed with **DCIM** (photos and videos) ticked. Tick other folders if you want them too; **Select All** ticks every folder and **Clear All** clears them.
 3. Click **Import**. A progress window shows each file being copied; **Cancel** stops it. Every copy is checked (MD5) and keeps the date from the device.
 4. The pictures appear in the window. Download them as usual.
 
