@@ -1,6 +1,6 @@
 # Phones and cameras over USB (MTP / PTP / WPD): plan
 
-Status: **Phase 0 done (2026-11-13); Phase 1 built in 0.1.4.22/0.1.4.23 (Windows) and tested by the user with a Nikon D700 (selecting, downloading, deleting on the camera) and an Android phone. Still to try: drone controllers, iPhone.** Written 2026-11-10 for version 0.1.4. The specification lists "MTP devices, direct USB cameras" as Open.
+Status: **Phase 0 done (2026-11-13); Phase 1 built in 0.1.4.22/0.1.4.23 (Windows) and tested by the user with a Nikon D700 (selecting, downloading, deleting on the camera), an Android phone and a Skydio drone controller. Still to try: iPhone.** Written 2026-11-10 for version 0.1.4. The specification lists "MTP devices, direct USB cameras" as Partial (Windows done, Linux by hand through GVFS).
 
 ## 1. Where things stand
 
