@@ -1,6 +1,6 @@
 # Phones and cameras over USB (MTP / PTP / WPD): plan
 
-Status: **plan, nothing built yet** (written 2026-11-10 for version 0.1.4). The specification lists "MTP devices, direct USB cameras" as Open.
+Status: **Phase 0 done (2026-11-13); the owner's decisions are made (section 6); Phase 1 is next.** Written 2026-11-10 for version 0.1.4. The specification lists "MTP devices, direct USB cameras" as Open.
 
 ## 1. Where things stand
 
@@ -36,6 +36,15 @@ Status: **plan, nothing built yet** (written 2026-11-10 for version 0.1.4). The 
 
 A test program in the scratchpad that lists the devices under This PC, walks `DCIM` of a connected phone, prints name, size and date of each file, and copies one file through `IStream` with an MD5. It proves that the Shell route works from Free Pascal on the user's devices before any program change.
 
+**Result (2026-11-13): works.** On a Nikon D700 connected by USB (PTP), the test program did the following:
+
+- It found the camera under This PC. The camera has no file-system attribute, and its parsing name has the form `::{20D04FE0-...}\\?\usb#vid_04b0&pid_0422#...`.
+- It found `DCIM` one level down, inside the camera's storage (`SID-{10001,NIKON D700,...}`).
+- It listed 10 files (NEF and JPG) with name, size and date in 0.84 s.
+- It copied a 14 MB NEF through `BHID_Stream` at about 6 MB/s. The MD5 computed while reading matched the MD5 of the copy, and the copy's size matched the size the Shell reports.
+
+The same code works on an ordinary folder. Free Pascal needs its own short declarations of `IShellItem`, `IShellItem2` (`GetUInt64` for System.Size, `GetFileTime` for System.DateModified) and `IEnumShellItems` (`BHID_EnumItems`), with `constref` for GUID and property-key parameters. `SHGetKnownFolderItem(FOLDERID_ComputerFolder)` gives This PC. Not tried yet: phones, iPhone and drone controllers.
+
 ### Phase 1: import through a staging folder (first release)
 
 The simplest way to get every feature working at once.
@@ -65,13 +74,15 @@ First list GVFS device folders in **File > Import from Device...** and use the s
 
 ## 6. Decisions for the owner
 
-| # | Question | Proposal |
-|---|---|---|
-| 1 | Which devices matter most? | Android phones and drone controllers first, then iPhone, then cameras |
-| 2 | Phase 1 with a staging folder acceptable? | Yes |
-| 3 | Where may the staging folder be, and may it be emptied after the download? | Cache folder; emptied after a successful download |
-| 4 | Delete from the device after the download? | Yes, on devices that allow it, with the same rules as for cards |
-| 5 | Keep "Disable PTP downloads"? | Remove it; the device list makes it unnecessary |
+Decided by the owner on 2026-11-13.
+
+| # | Question | Proposal | Decision |
+|---|---|---|---|
+| 1 | Which devices matter most? | Android phones and drone controllers first, then iPhone, then cameras | **Cameras first** (the D700 is at hand), then Android phones and drone controllers, then iPhone |
+| 2 | Phase 1 with a staging folder acceptable? | Yes | **Yes** |
+| 3 | Where may the staging folder be, and may it be emptied after the download? | Cache folder; emptied after a successful download | **As proposed:** cache folder, emptied after a successful download (an option keeps it) |
+| 4 | Delete from the device after the download? | Yes, on devices that allow it, with the same rules as for cards | **As proposed** |
+| 5 | Keep "Disable PTP downloads"? | Remove it; the device list makes it unnecessary | **Keep it:** as a switch that keeps devices out of Refresh and the automatic sequence |
 
 ## 7. Testing
 
@@ -90,4 +101,4 @@ First list GVFS device folders in **File > Import from Device...** and use the s
 
 ## 9. Documents to update when it is built
 
-README, specification (status table and version history), User Manual (a section on phones and cameras), Settings_File.md (new settings, `DisablePTP` removed), website, release notes, launch materials, continuation prompt.
+README, specification (status table and version history), User Manual (a section on phones and cameras), Settings_File.md (new settings; `DisablePTP` kept, now keeping devices out of Refresh and the automatic sequence), website, release notes, launch materials, continuation prompt.
