@@ -7,7 +7,8 @@ interface
 uses
   Classes, SysUtils, Contnrs, Math, Forms, Controls, Graphics, Dialogs, Menus,
   ExtCtrls, StdCtrls, ComCtrls, LCLType, LCLIntf, LazFileUtils, IniFiles,
-  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uLrCat, uSingle, uRotate, uSafeDel, uSplash, uPlugins, uExtPlugin, uIccEmbed, uJpegDpi;
+  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uLrCat, uSingle, uRotate, uSafeDel, uSplash, uPlugins, uExtPlugin, uIccEmbed, uJpegDpi,
+  uDevices, uDeviceDlg;  // phones and cameras by USB: Shell access and the import window
 
 type
   { Which files a download takes: dsAuto = the selected ones, or all when nothing is selected (automation);
@@ -26,6 +27,10 @@ type
     FDateKeys: TStringList;         // parallel to lstDates
     FSourcePath, FCamera, FLastFile, FLastDir: string;  // FSourcePath: current source folder; FCamera: camera name; FLastFile: last downloaded file; FLastDir: its folder
     FSession: Integer;  // download session number
+    FDevName, FDevId, FDevStage: string;  // the device that is the source: name, what finds it again, its staging folder ('' = no device)
+    FDevFolderNames, FDevFolderIds: TStringList;  // the device folders that were imported (Refresh imports them again)
+    FDevFiles: TStringList;  // the device's files: staging path below FDevStage -> TDeviceFile (owned)
+    FDevDoneKb: Int64;  // KB imported before the current file (progress bar)
     FThumbCols: Integer;            // thumbnail columns the window was sized for
     FCancel: Boolean;  // True when the user pressed Cancel
     FSyncing: Boolean;              // true while list/grid selections are being mirrored
@@ -70,6 +75,12 @@ type
     procedure ScanProgress(Count: Integer);
     procedure LoadSource(const Path: string);
     procedure AutoDetectSource;
+    function ImportFromDevice(const DevName, DevId: string; FolderNames, FolderIds: TStrings; Silent: Boolean): Boolean;  // copies device folders to staging and loads them
+    function ImportFirstDevice(Silent: Boolean): Boolean;  // imports DCIM of the first connected device (Refresh, automation)
+    function DevCountProgress(Count: Integer): Boolean;  // progress while listing device files
+    function DevBytesProgress(Bytes: Int64): Boolean;  // progress while copying a device file
+    procedure LeaveDevice;  // the device stops being the source: downloaded staged copies are removed
+    function DeviceFileOf(It: TImageItem): TDeviceFile;  // the device file a staged item came from (nil when none)
     procedure Reevaluate;
     procedure ReloadPlugins;  // looks for plug-in libraries again and reports problems
     procedure SaveDownloadToProfile;  // writes the download path and plug-in values just used into the profile in use
@@ -119,6 +130,7 @@ type
     procedure ProgCancelClick(Sender: TObject);
     procedure CopyTick;
     procedure OpenSourceClick(Sender: TObject);
+    procedure ImportDeviceClick(Sender: TObject);  // File > Import from Device...
     procedure ProfilesClick(Sender: TObject);  // File > User Profiles...: the profiles window
     function ProfileAction(Act: TProfileAction; const Nm: string): Boolean;  // does what the profiles window asks
     function ProfileInUse: string;  // the profile in use (for the profiles window)
@@ -206,6 +218,12 @@ begin
   LogEnabled := FS.LoggingOn;  // switch the log on or off
   FPluginErr := LoadPlugins(FS);  // plug-in libraries (their tokens are needed for the first scan)
   FItems := TObjectList.Create(True);  // list of all images (owns them)
+  FDevFolderNames := TStringList.Create;  // imported device folders: names
+  FDevFolderIds := TStringList.Create;  // imported device folders: what finds them again
+  FDevFiles := TStringList.Create;  // the device's files by staging path
+  FDevFiles.OwnsObjects := True;  // frees the TDeviceFile objects
+  FDevFiles.Sorted := True;  // fast lookup
+  FDevFiles.CaseSensitive := False;  // Windows paths
   FVisible := TList.Create;  // list of the visible images
   FDateKeys := TStringList.Create;  // list of the image dates
   BuildMenu;  // build the menu
@@ -226,6 +244,9 @@ begin
   FVisible.Free;  // free the visible list
   FDateKeys.Free;  // free the date list
   FItems.Free;  // free the item list
+  FDevFiles.Free;  // free the device file list
+  FDevFolderNames.Free;  // free the device folder names
+  FDevFolderIds.Free;  // free the device folder ids
   FStepFails.Free;  // free the list of failed plug-in steps (may be nil)
   FS.Free;  // free the settings
   inherited Destroy;  // run the inherited destructor
@@ -292,6 +313,7 @@ begin
 
   MFile := AddMenu(MM.Items, '&File', nil, 0);  // File menu
   AddMenu(MFile, 'Open Source Folder', @OpenSourceClick, ShortCut(VK_O, [ssCtrl]));  // open a source folder
+  AddMenu(MFile, 'Import from Device...', @ImportDeviceClick, ShortCut(VK_O, [ssCtrl, ssShift]));  // phone, camera or drone controller by USB
   AddMenu(MFile, '-', nil, 0);  // separator
   AddMenu(MFile, 'User Profiles...', @ProfilesClick, 0);  // the profiles window: load, save, save as, new, delete
   AddMenu(MFile, '-', nil, 0);  // separator
@@ -678,6 +700,8 @@ begin
   if FS.ProfileName <> '' then T := T + ' - Profile: ' + FS.ProfileName;  // the profile in use
   if FSourcePath = '' then  // no source
     Caption := T + ' - no image source'
+  else if FDevName <> '' then  // a phone or camera (its staging folder)
+    Caption := T + ' - Device ' + FDevName
   else if ExcludeTrailingPathDelimiter(FSourcePath) = ExcludeTrailingPathDelimiter(MountPointOf(FSourcePath)) then  // source is a card reader (a mount point)
     Caption := T + ' - Cardreader ' + FSourcePath  // title with the card reader
   else
@@ -779,6 +803,7 @@ var
   Heavy: Boolean;  // Heavy: slow file type
   It: TImageItem;  // It: current item
 begin
+  if (FDevStage <> '') and not SameText(Path, FDevStage) then LeaveDevice;  // another source: the device is done
   FSourcePath := Path;  // remember the source
   FS.LastSource := Path;  // remember it in the settings
   UpdateCaption;  // show the new source in the title bar at once, not only after the scan
@@ -852,11 +877,11 @@ var
   {$IFDEF WINDOWS}Root: string;{$ENDIF}  // Root: drive root (Windows only)
 begin
   case FS.SourceMode of  // by source mode
-    smCamera:  // camera mode
-      begin
-        SetStatus('Direct camera (PTP) download is not supported. ' +  // direct camera download is not supported
-          'Use a card reader or File > Open Source Directory.');
-      end;
+    smCamera:  // phone or camera mode
+      if FS.DisablePTP then  // devices are switched off
+        SetStatus('Phone and camera downloads are switched off (Preferences > General > Disable PTP downloads).')
+      else if not ImportFirstDevice(True) then  // the first device with a DCIM folder
+        SetStatus('No phone or camera with a DCIM folder was found. Connect it, unlock it and choose File transfer.');
     smCardReader:  // card reader mode
       {$IFDEF WINDOWS}
       for I := 1 to Length(FS.DriveLetters) do  // every drive letter
@@ -894,11 +919,12 @@ begin
         if DirectoryExistsUTF8(L[I] + 'DCIM') then  // drive has a DCIM folder
         begin
           LoadSource(L[I]);  // load it
-          Break;  // stop searching
+          Exit;  // a card was found
         end;
     finally
       L.Free;  // free the list
     end;
+    if not FS.DisablePTP then ImportFirstDevice(True);  // no card: a phone or camera, when devices are switched on
   end;
 end;
 
@@ -2069,6 +2095,8 @@ begin
   // and the copy really exists in the destination
   Result := (It.Status = isDownloaded) and (not It.NoDelete) and (It.DestPath <> '') and  // downloaded, not protected and the copy exists
     FileExistsUTF8(It.DestPath);
+  if Result and (FDevStage <> '') then  // from a phone or camera: the device must allow deleting it
+    Result := (DeviceFileOf(It) <> nil) and DeviceFileOf(It).CanDelete;
 end;
 
 { Deletes the downloaded source files after asking; they go to the trash when safe delete is on. }
@@ -2097,7 +2125,10 @@ var
   AnySel: Boolean;  // AnySel: True when the user selected something
   Msg, Where, LastWhere: string;  // Msg: message; Where: where a file went; LastWhere: last trash location
   Ok: Boolean;  // Ok: True when a file was deleted
+  DF: TDeviceFile;  // DF: the device file of a staged item
+  DevErr, FirstErr: string;  // DevErr: why a device file was not deleted; FirstErr: the first such reason
 begin
+  FirstErr := '';  // no device error yet
   LastWhere := '';  // no location yet
   L := TList.Create;  // candidate list
   E := TList.Create;  // deletable list
@@ -2130,7 +2161,9 @@ begin
       if not Silent then  // tell the user unless silent
         MessageDlg(AppTitle,
           'Nothing was deleted. Only files that have been downloaded and exist in ' +
-          'the destination can be deleted from the image source.', mtInformation, [mbOK], 0);
+          'the destination can be deleted from the image source.' +
+          BoolToStr(FDevStage <> '', #13#10#13#10'Some devices (an iPhone, for example) do not allow deleting files.', ''),
+          mtInformation, [mbOK], 0);
       Exit;  // nothing to do
     end;
     if not Silent then  // ask unless silent
@@ -2139,7 +2172,12 @@ begin
         'Each one has been checked to exist in the destination.', [E.Count]);
       if Kept > 0 then  // some files stay
         Msg := Msg + #13#10 + Format('%d selected file(s) have not been downloaded and will be kept.', [Kept]);  // add a note
-      if FS.SafeDelete then  // safe delete is on
+      if FDevStage <> '' then  // a phone or camera
+        Msg := Format('Delete %d downloaded file(s) from the device %s?'#13#10 +
+          'Each one has been checked to exist in the destination.', [E.Count, FDevName]) +
+          BoolToStr(Kept > 0, #13#10 + Format('%d selected file(s) cannot be deleted and will be kept.', [Kept]), '') +
+          #13#10#13#10'Devices have no Recycle Bin: this cannot be undone.'
+      else if FS.SafeDelete then  // safe delete is on
         Msg := Msg + #13#10#13#10'Safe delete is on. The files are moved to the Recycle Bin,' +  // explain the trash
           #13#10'or, on a card or other removable drive, to a hidden' +
           #13#10'trash folder (' + FS.SafeDeleteFolder + ') on the same drive.'
@@ -2152,7 +2190,16 @@ begin
     begin
       It := TImageItem(E[I]);  // current item
       if It.IsReadOnly then FileSetAttrUTF8(It.FullPath, 0);  // clear the read-only flag
-      if FS.SafeDelete then  // safe delete
+      if FDevStage <> '' then  // a phone or camera: delete on the device, then the staged copy
+      begin
+        DF := DeviceFileOf(It);  // where it came from
+        Ok := (DF <> nil) and DeleteDeviceFile(DF.Id, DevErr);  // delete on the device
+        if (not Ok) and (FirstErr = '') then
+          if DF = nil then FirstErr := It.FileName + ': not from this device' else FirstErr := It.FileName + ': ' + DevErr;
+        if Ok then DeleteFileUTF8(It.FullPath);  // the staged copy too
+        Where := '';  // no trash on a device
+      end
+      else if FS.SafeDelete then  // safe delete
         Ok := SafeDeleteFile(It.FullPath, FS.SafeDeleteFolder, Where)  // move to the trash
       else
       begin
@@ -2181,7 +2228,8 @@ begin
     if (LastWhere <> '') and (Fail = 0) then  // files went to the trash
       SetStatus(Format('%d file(s) moved to %s.', [E.Count, LastWhere]));  // tell the user where
     if Fail > 0 then  // some failed
-      MessageDlg(AppTitle, Format('%d file(s) could not be deleted.', [Fail]), mtError, [mbOK], 0);  // report them
+      MessageDlg(AppTitle, Format('%d file(s) could not be deleted.', [Fail]) +
+        BoolToStr(FirstErr <> '', #13#10#13#10 + FirstErr, ''), mtError, [mbOK], 0);  // report them
   finally
     E.Free;  // free the deletable list
     L.Free;  // free the candidate list
@@ -2195,6 +2243,19 @@ var
 begin
   Result := False;  // assume failure
   if FSourcePath = '' then Exit;  // no source
+  if FDevStage <> '' then  // a phone or camera: nothing to eject, the device is done as a source
+  begin
+    LeaveDevice;  // downloaded staged copies are removed
+    FItems.Clear;  // empty the item list
+    FVisible.Clear;  // empty the visible list
+    FSourcePath := '';  // no source any more
+    RebuildDates;  // clear the date list
+    ApplyFilter;  // refresh the grid
+    UpdateCaption;  // update the window title
+    UpdateMenus;  // update the menus
+    if not Silent then SetStatus('The device can be unplugged.');  // tell the user
+    Exit(True);
+  end;
   Root := MountPointOf(FSourcePath);  // mount point of the source
   {$IFDEF WINDOWS}
   if Root = '' then       // Windows: any drive letter may be ejected, as before
@@ -2256,6 +2317,244 @@ begin
     FAutoClosing := True;  // hands-free: do not stop at the profile question
     Close;  // close the program
   end;
+end;
+
+{ ====================================================================== }
+{ phones and cameras by USB (uDevices, docs/MTP_Plan.md)                  }
+{ ====================================================================== }
+
+{ File > Import from Device...: choose a device and folders, import them and show them. }
+procedure TMainForm.ImportDeviceClick(Sender: TObject);
+var
+  DevName, DevId: string;  // DevName, DevId: the chosen device
+  Names, Ids: TStringList;  // Names, Ids: the chosen folders
+begin
+  Names := TStringList.Create;
+  Ids := TStringList.Create;
+  try
+    if ExecuteDeviceImport(DevName, DevId, Names, Ids) then  // the window
+      ImportFromDevice(DevName, DevId, Names, Ids, False);  // copy and show
+  finally
+    Names.Free;
+    Ids.Free;
+  end;
+end;
+
+{ Progress while listing device files; False when canceled. }
+function TMainForm.DevCountProgress(Count: Integer): Boolean;
+begin
+  if (FProg <> nil) and (GetTickCount64 - FLastTick > 100) then  // at most ten updates a second
+  begin
+    FLastTick := GetTickCount64;
+    FProgLbl.Caption := Format('Listing the files on the device... %d found', [Count]);  // progress text
+    Application.ProcessMessages;  // let the window update and Cancel work
+  end;
+  Result := not FCancel;
+end;
+
+{ Progress while copying a device file; False when canceled. }
+function TMainForm.DevBytesProgress(Bytes: Int64): Boolean;
+begin
+  if (FProg <> nil) and (GetTickCount64 - FLastTick > 100) then  // at most ten updates a second
+  begin
+    FLastTick := GetTickCount64;
+    FProgBar.Position := Min(FProgBar.Max, FDevDoneKb + Bytes div 1024);  // KB done in all
+    Application.ProcessMessages;  // let the window update and Cancel work
+  end;
+  Result := not FCancel;
+end;
+
+{ Removes the files below Dir that are not in Keep (staging paths; stale copies of earlier imports). }
+procedure PruneStaging(const Dir: string; Keep: TStringList);
+var
+  SR: TSearchRec;  // SR: an entry of the folder
+begin
+  if FindFirstUTF8(Dir + '*', faAnyFile, SR) = 0 then
+  try
+    repeat
+      if (SR.Attr and faDirectory) <> 0 then
+      begin
+        if (SR.Name <> '.') and (SR.Name <> '..') then PruneStaging(Dir + SR.Name + PathDelim, Keep);  // subfolder
+      end
+      else if Keep.IndexOf(Dir + SR.Name) < 0 then
+        DeleteFileUTF8(Dir + SR.Name);  // no longer imported from the device
+    until FindNextUTF8(SR) <> 0;
+  finally
+    FindCloseUTF8(SR);
+  end;
+end;
+
+{ Copies the device folders (FolderIds, shown as FolderNames) into the device's staging folder and loads
+  it as the source. Files staged before (same size and time) are not copied again; staged files no
+  longer on the device are removed. False when canceled or nothing could be read. Silent: no message
+  about failed files (Refresh in automation). }
+function TMainForm.ImportFromDevice(const DevName, DevId: string; FolderNames, FolderIds: TStrings; Silent: Boolean): Boolean;
+var
+  Files: TObjectList;  // Files: the device's files (TDeviceFile)
+  Keep: TStringList;  // Keep: staging paths of those files
+  I, Copied, Skipped, Failed: Integer;  // I: loop counter; Copied, Skipped, Failed: counts
+  F: TDeviceFile;  // F: a device file
+  Stage, Err, Fails, OldLast: string;  // Stage: staging folder; Err: why a copy failed; Fails: list of failures; OldLast: last source before
+  TotalKb: Int64;  // TotalKb: size of all files in KB
+  ListOk: Boolean;  // ListOk: every folder could be listed
+begin
+  Result := False;
+  Stage := StagingDir(DevName);  // CacheDir\device\<name>\
+  Files := TObjectList.Create(True);  // owns the files until they move to FDevFiles
+  Copied := 0; Skipped := 0; Failed := 0; Fails := '';  // nothing yet
+  ListOk := True;
+  try
+    ShowProgress(0, 'Importing from ' + DevName, False);  // progress window
+    try
+      FProgLbl.Caption := 'Listing the files on the device...';  // progress text
+      Application.ProcessMessages;  // let the window update
+      for I := 0 to FolderIds.Count - 1 do  // every chosen folder
+        if not ListDeviceFiles(FolderIds[I], FolderNames[I], Files, @DevCountProgress) then
+        begin
+          if FCancel then Break;  // canceled
+          ListOk := False;  // this folder could not be read
+          Fails := Fails + FolderNames[I] + ': cannot be read (unplugged or locked?)' + LineEnding;
+        end;
+      if not FCancel then
+      begin
+        TotalKb := 0;
+        for I := 0 to Files.Count - 1 do Inc(TotalKb, Max(0, TDeviceFile(Files[I]).Size) div 1024 + 1);  // size in KB
+        FProgBar.Style := pbstNormal;  // the length is known now
+        FProgBar.Max := Max(1, TotalKb);
+        FProgBar.Position := 0;
+        FDevDoneKb := 0;
+        for I := 0 to Files.Count - 1 do  // every file
+        begin
+          if FCancel then Break;  // canceled
+          F := TDeviceFile(Files[I]);
+          FProgLbl.Caption := Format('Copying %d of %d: %s', [I + 1, Files.Count, ExtractFileName(F.Rel)]);  // progress text
+          Application.ProcessMessages;  // let the window update
+          if StagedCopyMatches(F, Stage + F.Rel) then Inc(Skipped)  // staged before
+          else if CopyDeviceFile(F, Stage + F.Rel, @DevBytesProgress, Err) then Inc(Copied)  // copied and checked
+          else if not FCancel then
+          begin
+            Inc(Failed);
+            Fails := Fails + F.Rel + ': ' + Err + LineEnding;  // remember why
+          end;
+          Inc(FDevDoneKb, Max(0, F.Size) div 1024 + 1);  // progress
+          FProgBar.Position := Min(FProgBar.Max, FDevDoneKb);
+        end;
+      end;
+    finally
+      HideProgress;  // close the progress window
+    end;
+    if FCancel then  // the user stopped it
+    begin
+      SetStatus(Format('Import from %s canceled after %d file(s).', [DevName, Copied]));
+      Exit;
+    end;
+    if (Files.Count = 0) and not ListOk then  // nothing could be read
+    begin
+      if not Silent then
+        MessageDlg(AppTitle, 'Nothing could be read from ' + DevName + ':' + LineEnding + LineEnding + Fails +
+          LineEnding + NoDeviceText, mtWarning, [mbOK], 0);
+      Exit;
+    end;
+    if (FDevStage <> '') and not SameText(FDevStage, Stage) then LeaveDevice;  // another device was the source
+    if ListOk then  // the staging folder mirrors the chosen folders: drop copies no longer on the device
+    begin
+      Keep := TStringList.Create;
+      try
+        Keep.Sorted := True;
+        Keep.CaseSensitive := False;
+        for I := 0 to Files.Count - 1 do Keep.Add(Stage + TDeviceFile(Files[I]).Rel);
+        PruneStaging(Stage, Keep);
+      finally
+        Keep.Free;
+      end;
+    end;
+    FDevFiles.Clear;  // the files of this import
+    for I := 0 to Files.Count - 1 do FDevFiles.AddObject(TDeviceFile(Files[I]).Rel, Files[I]);
+    Files.OwnsObjects := False;  // FDevFiles owns them now
+    FDevName := DevName;  // the device is the source
+    FDevId := DevId;
+    FDevStage := Stage;
+    if FDevFolderNames <> FolderNames then FDevFolderNames.Assign(FolderNames);  // for Refresh
+    if FDevFolderIds <> FolderIds then FDevFolderIds.Assign(FolderIds);
+    ForceDirectoriesUTF8(Stage);  // even when empty
+    OldLast := FS.LastSource;  // the staging folder is no "last source" (it is not a folder the user chose)
+    LoadSource(Stage);  // show the staged files like a card
+    FS.LastSource := OldLast;
+    SetStatus(Format('Imported from %s: %d file(s) copied, %d already there%s.',
+      [DevName, Copied, Skipped, BoolToStr(Failed > 0, Format(', %d FAILED', [Failed]), '')]));
+    if (Fails <> '') and not Silent then
+      MessageDlg(AppTitle, 'These could not be imported from ' + DevName + ':' + LineEnding + LineEnding + Fails,
+        mtWarning, [mbOK], 0);
+    Result := True;
+  finally
+    Files.Free;
+  end;
+end;
+
+{ Imports the DCIM folders of the first connected device; False when there is none. }
+function TMainForm.ImportFirstDevice(Silent: Boolean): Boolean;
+var
+  Devs, DevIds, Names, Ids, DNames, DIds: TStringList;  // devices; their folders; the DCIM folders
+  I, D: Integer;  // I: folder; D: device
+begin
+  Result := False;
+  Devs := TStringList.Create; DevIds := TStringList.Create;
+  Names := TStringList.Create; Ids := TStringList.Create;
+  DNames := TStringList.Create; DIds := TStringList.Create;
+  try
+    ListDevices(Devs, DevIds);  // connected devices
+    for D := 0 to Devs.Count - 1 do  // the first one with a DCIM folder
+    begin
+      ListDeviceFolders(DevIds[D], Names, Ids);
+      for I := 0 to Names.Count - 1 do
+        if SameText(Copy(Names[I], Length(Names[I]) - 4, 5), '\DCIM') then  // "Storage\DCIM"
+        begin
+          DNames.Add(Names[I]);
+          DIds.Add(Ids[I]);
+        end;
+      if DIds.Count > 0 then
+        Exit(ImportFromDevice(Devs[D], DevIds[D], DNames, DIds, Silent));
+    end;
+  finally
+    Devs.Free; DevIds.Free; Names.Free; Ids.Free; DNames.Free; DIds.Free;
+  end;
+end;
+
+{ The device stops being the source (another source, Eject, exit). Unless Preferences > General keeps
+  them, the staged copies of downloaded files are removed (the files not downloaded stay staged, so the
+  next import does not copy them again). }
+procedure TMainForm.LeaveDevice;
+var
+  I: Integer;  // I: loop counter
+  It: TImageItem;  // It: an item
+begin
+  if FDevStage = '' then Exit;  // no device
+  if not FS.KeepDeviceCopies then
+  begin
+    for I := 0 to FItems.Count - 1 do  // every staged file that was downloaded
+    begin
+      It := ItemAt(FItems, I);
+      if (It.Status = isDownloaded) and (not It.IsGroup) and
+         SameText(Copy(It.FullPath, 1, Length(FDevStage)), FDevStage) then
+        DeleteFileUTF8(It.FullPath);  // its copy is in the destination
+    end;
+    RemoveEmptyFolders(FDevStage);  // folders left empty
+  end;
+  FDevName := ''; FDevId := ''; FDevStage := '';  // no device any more
+  FDevFiles.Clear;
+  FDevFolderNames.Clear;
+  FDevFolderIds.Clear;
+end;
+
+{ The device file a staged item came from, or nil. }
+function TMainForm.DeviceFileOf(It: TImageItem): TDeviceFile;
+var
+  I: Integer;  // I: index in FDevFiles
+begin
+  Result := nil;
+  if (FDevStage = '') or not SameText(Copy(It.FullPath, 1, Length(FDevStage)), FDevStage) then Exit;  // not staged
+  I := FDevFiles.IndexOf(Copy(It.FullPath, Length(FDevStage) + 1, MaxInt));  // path below the staging folder
+  if I >= 0 then Result := TDeviceFile(FDevFiles.Objects[I]);
 end;
 
 { Asks for the general job code. }
@@ -2358,6 +2657,7 @@ end;
 procedure TMainForm.FormClose(Sender: TObject; var CloseAction: TCloseAction);
 begin
   if CloseAction = caNone then Exit;     // closing was canceled
+  LeaveDevice;  // downloaded staged device files are removed
   SaveSettingsNow;  // save the settings
   PruneThumbCache;  // keep the thumbnail cache below its size limit
 end;
@@ -2580,13 +2880,15 @@ begin
       isDuplicate: Inc(NDup);  // duplicate
     end;
   if FSourcePath = '' then S := 'Source: (none)' else S := 'Source: ' + FSourcePath;  // source text
+  if FDevName <> '' then S := 'Source: device ' + FDevName + ' (staging folder ' + FSourcePath + ')';  // a phone or camera
   S := AppTitle + ' ' + AppVersionString + #13#10#13#10 + S + #13#10 + Format('Files found: %d', [FItems.Count]) +  // build the message (program, source, counts)
     #13#10 + Format('  New: %d   Already downloaded: %d   Name clashes: %d   Duplicates: %d',  // counts
       [NNew, NDown, NClash, NDup]) +
     #13#10#13#10 + 'Job code: ' + FS.JobCode +  // job code
     #13#10 + 'Next sequence number: ' + IntToStr(FS.SeqNext) +  // next sequence number
     #13#10 + 'Example: ' + ExampleDest(FS, FS.DownloadDir, FS.FileNameMask, FS.JobCode) +  // example name
-    #13#10#13#10 + 'SQLite library (Lightroom catalogs): ' + LrCatLibraryText;  // library for .lrprev files
+    #13#10#13#10 + 'SQLite library (Lightroom catalogs): ' + LrCatLibraryText +  // library for .lrprev files
+    #13#10 + Format('Device staging folders: %.1f MB in %s', [StagingBytes / 1048576, CacheDir + 'device']);  // imported device files
   ShowStatus(S, SettingsFileName);  // show the dialog (the settings file is a clickable link)
 end;
 
@@ -2658,8 +2960,23 @@ end;
 
 { Reloads the source folder (or looks for a card reader). }
 procedure TMainForm.RefreshClick(Sender: TObject);
+var
+  Names, Ids: TStringList;  // Names, Ids: the device folders imported last
 begin
-  if FSourcePath <> '' then  // a source is loaded
+  if FDevId <> '' then  // a phone or camera: import again (new pictures), then show
+  begin
+    Names := TStringList.Create;
+    Ids := TStringList.Create;
+    try
+      Names.Assign(FDevFolderNames);  // copies: the import replaces the fields
+      Ids.Assign(FDevFolderIds);
+      ImportFromDevice(FDevName, FDevId, Names, Ids, False);
+    finally
+      Names.Free;
+      Ids.Free;
+    end;
+  end
+  else if FSourcePath <> '' then  // a source is loaded
     LoadSource(FSourcePath)  // reload it
   else if (FS.LastSource <> '') and DirectoryExistsUTF8(FS.LastSource) then  // a last source is known
     LoadSource(FS.LastSource)  // load it

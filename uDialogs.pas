@@ -2229,7 +2229,7 @@ type
     // General
     rbAuto, rbCamera, rbCard: TRadioButton;  // image source choices
     edLetters: TEdit;  // drive letters box
-    chkPTP, chkReadOnly, chkPreserveRO, chkProfile, chkAutoRename, chkRenameDup, chkIgnoreDup, chkIgnoreSize, chkRotate, chkJpe, chkLrJpg, chkLrBoth,  // general options (first part)
+    chkPTP, chkKeepDev, chkReadOnly, chkPreserveRO, chkProfile, chkAutoRename, chkRenameDup, chkIgnoreDup, chkIgnoreSize, chkRotate, chkJpe, chkLrJpg, chkLrBoth,  // general options (first part)
     chkLowerName, chkLowerExt, chkStamp, chkSaveJobs, chkExifTxt, chkEject, chkWholeDisk, chkLrData,  // general options (second part)
     chkIptc, chkPromptIptc, chkIIM, chkNef, chkExifOwner, chkLoadLast, chkSingle, chkWinSafe: TCheckBox;  // general options (third part)
     lblLetters: TLabel;  // label of the drive letters box
@@ -2546,7 +2546,7 @@ begin
   G.Caption := 'Image source';  // group title
   G.SetBounds(6, 2, 482, 150);  // position and size it
   rbAuto := MkRadio(G, 'Auto-detect camera or card reader (used by Refresh and automation)', 10, 2);  // automatic detection choice
-  rbCamera := MkRadio(G, 'Camera (connected by USB)', 10, 26);  // camera choice
+  rbCamera := MkRadio(G, 'Phone or camera (connected by USB)', 10, 26);  // phone or camera choice (File > Import from Device)
   rbCard := MkRadio(G, 'Card reader or external storage device', 10, 50);  // card reader choice
   lblLetters := MkLabel(G, 'Drive letter or letters:', 34, 84);  // label of the drive letters box
   edLetters := MkEdit(G, 170, 80, 110);  // drive letters box
@@ -2555,7 +2555,10 @@ begin
   edLetters.Visible := False;
   {$ENDIF}
   MkButton(G, 'Locate card reader', 300, 78, 150).OnClick := @LocateClick;  // button that locates the card reader
-  chkPTP := MkCheck(G, 'Disable PTP downloads', 10, 108);  // PTP option
+  chkPTP := MkCheck(G, 'Disable PTP downloads', 10, 108);  // PTP option: devices stay out of Refresh and automation
+  chkPTP.Width := 200;  // leave room for the next check box
+  chkKeepDev := MkCheck(G, 'Keep imported device files', 220, 108);  // keep the staging copies after the download
+  chkKeepDev.Width := 250;  // inside the group box
 
   Y := 156;  // start below the group box
   chkLoadLast := MkCheck(TS, 'Load the last used source folder at startup (otherwise nothing is scanned)', 8, Y);  // load last source option
@@ -3401,6 +3404,7 @@ begin
     rbCard.Checked := FS.SourceMode = smCardReader;  // card reader source
     edLetters.Text := FS.DriveLetters;  // drive letters
     chkPTP.Checked := FS.DisablePTP;  // disable PTP
+    chkKeepDev.Checked := FS.KeepDeviceCopies;  // keep staged device files
     chkReadOnly.Checked := FS.SaveReadOnly;  // save files as read-only
     chkPreserveRO.Checked := FS.PreserveReadOnly;  // preserve read-only status
     chkProfile.Checked := FS.PromptProfile;  // prompt for the profile
@@ -3483,6 +3487,7 @@ begin
   else FS.SourceMode := smAuto;  // automatic source
   FS.DriveLetters := Trim(edLetters.Text);  // drive letters
   FS.DisablePTP := chkPTP.Checked;  // disable PTP
+  FS.KeepDeviceCopies := chkKeepDev.Checked;  // keep staged device files
   FS.SaveReadOnly := chkReadOnly.Checked;  // save files as read-only
   FS.PreserveReadOnly := chkPreserveRO.Checked;  // preserve read-only status
   FS.PromptProfile := chkProfile.Checked;  // prompt for the profile

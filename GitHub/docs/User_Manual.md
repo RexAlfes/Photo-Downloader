@@ -93,11 +93,28 @@ A **job code** is a name for the shoot. It becomes part of the destination folde
 ## 5. Loading pictures
 
 - **File > Open Source Folder (Ctrl+O)** scans the folder and all folders inside it.
+- **File > Import from Device... (Ctrl+Shift+O)** reads a phone, camera or drone controller connected by USB (see [Phones and cameras by USB](#phones-and-cameras-by-usb) below).
 - **File > Refresh (F5)** scans again. With no source chosen, it looks for a removable drive with a `DCIM` folder (Windows).
 - **Preferences > General** can load the last used folder at start-up. Otherwise nothing is scanned until you choose.
 - **Scan whole disk for known image types** is on by default. Turn it off to scan only the `DCIM` folder of a card.
 - A progress window with a **Cancel** button appears while a large folder loads. Thumbnails are drawn a few at a time while you scroll; they are kept in a disk cache (at most 500 MB, the oldest are removed first) so they appear much faster next time. The camera, date and orientation read from each file are kept as well, so scanning the same folder again is much faster.
 - **File > Eject (F6)** safely removes the card or drive after use.
+
+### Phones and cameras by USB
+
+A phone, camera or drone controller connected by USB cable has no drive letter, so Photo Downloader first copies its pictures to a **staging folder** on your computer and then shows them like a card. Windows only; on Linux the device appears as a folder under `/run/user/<your user number>/gvfs` that File > Open Source Folder can open.
+
+1. Connect the device. Unlock a phone and choose **File transfer** in its USB message; set a camera to PTP or MTP in its menu if it asks. An iPhone first asks you to **Trust this computer**.
+2. Choose **File > Import from Device...** (Ctrl+Shift+O). Pick the device; its folders are listed with **DCIM** (photos and videos) ticked. Tick other folders if you want them too.
+3. Click **Import**. A progress window shows each file being copied; **Cancel** stops it. Every copy is checked (MD5) and keeps the date from the device.
+4. The pictures appear in the window. Download them as usual.
+
+- Pictures imported before are not copied again: importing the same phone later copies only new pictures.
+- **Refresh (F5)** imports the same folders again (new pictures) and shows them.
+- **Delete** removes downloaded pictures from the device itself, after asking. Devices have no Recycle Bin, so this cannot be undone. Some devices (an iPhone, for example) do not allow deleting.
+- **Eject (F6)** ends the device as the source; you can then unplug it.
+- The staging folder is `device\<device name>` in the program's cache folder (Help > Status shows its size). When you load another source, eject or exit, the staged copies of the pictures you downloaded are removed; pictures not downloaded stay for next time. **Preferences > General > Keep imported device files** keeps them all.
+- With **Phone or camera (connected by USB)** chosen in Preferences > General, Refresh and the automatic sequence import the DCIM folder of the first device found; with **Auto-detect**, they do so when no card is found. **Disable PTP downloads** keeps devices out of both (it is on by default); File > Import from Device... always works.
 
 If a picture cannot be shown, its thumbnail is a gray box with the file extension and a **red X**. The file can still be copied. The reason is written to the log if logging is on (see [section 16](#16-logging-and-troubleshooting)).
 
@@ -297,8 +314,9 @@ Open File > Preferences (Ctrl+P). The dialog has seven tabs: Download Path, Gene
 Destination folder template, file name template, default job code, the starting sequence number with Reset, "Show tokens…", the example image, **Verify every copy**, and the **backup folder**.
 
 ### General
-- **Image source:** auto-detect, camera (USB) or card reader/external storage. On Windows you can enter the drive letters of card readers or use **Locate card reader**. On Linux, removable drives are found automatically.
-- **Disable PTP downloads.**
+- **Image source:** auto-detect, phone or camera (USB) or card reader/external storage. On Windows you can enter the drive letters of card readers or use **Locate card reader**. On Linux, removable drives are found automatically.
+- **Disable PTP downloads:** Refresh and the automatic sequence leave phones and cameras alone (on by default). File > Import from Device... still works.
+- **Keep imported device files:** the staged copies of device pictures stay after the download (see [Phones and cameras by USB](#phones-and-cameras-by-usb)).
 - Load the last used source folder at start-up.
 - Prompt for user profile at start-up.
 - Prompt for job code at start-up (the Job Code window, which also asks for the source folder; on by default).
@@ -418,6 +436,7 @@ Help > **Logging (for troubleshooting)** writes problems to a file named `thumbn
 | Shortcut | Command |
 |---|---|
 | Ctrl+O | Open Source Folder |
+| Ctrl+Shift+O | Import from Device |
 | Ctrl+P | Preferences |
 | F4 | Start Auto Sequence |
 | F5 | Refresh |
@@ -454,7 +473,7 @@ Typical locations: Windows `C:\Users\<you>\AppData\Local\PhotoDownloader\`; Linu
 
 **Can I use it without an internet connection?** Yes. It only uses the internet when you open the website, the Releases page or the donation links from the Help menu.
 
-**Does it work with cameras connected by USB cable?** Not yet. Use a card reader or copy the camera's folder first. USB camera download (PTP/MTP) is planned.
+**Does it work with cameras connected by USB cable?** Yes, on Windows: File > Import from Device... (see [Phones and cameras by USB](#phones-and-cameras-by-usb)). A card reader is usually faster.
 
 **Is there a Mac version?** Not at present.
 

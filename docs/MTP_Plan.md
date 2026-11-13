@@ -1,6 +1,6 @@
 # Phones and cameras over USB (MTP / PTP / WPD): plan
 
-Status: **Phase 0 done (2026-11-13); the owner's decisions are made (section 6); Phase 1 is next.** Written 2026-11-10 for version 0.1.4. The specification lists "MTP devices, direct USB cameras" as Open.
+Status: **Phase 0 done (2026-11-13); Phase 1 built in 0.1.4.22 (Windows), not yet tried by the user.** Written 2026-11-10 for version 0.1.4. The specification lists "MTP devices, direct USB cameras" as Open.
 
 ## 1. Where things stand
 
@@ -46,6 +46,12 @@ A test program in the scratchpad that lists the devices under This PC, walks `DC
 The same code works on an ordinary folder. Free Pascal needs its own short declarations of `IShellItem`, `IShellItem2` (`GetUInt64` for System.Size, `GetFileTime` for System.DateModified) and `IEnumShellItems` (`BHID_EnumItems`), with `constref` for GUID and property-key parameters. `SHGetKnownFolderItem(FOLDERID_ComputerFolder)` gives This PC. Not tried yet: phones, iPhone and drone controllers.
 
 ### Phase 1: import through a staging folder (first release)
+
+**Built in 0.1.4.22** as described below, with these details:
+
+- Items inside a device are found again through their Shell item ID list, not their parsing name.
+- Staged copies of downloaded files are removed when the device stops being the source (another source, Eject, exit), not right after the download. That way the pictures stay viewable and can still be deleted from the device. Files that were not downloaded stay staged.
+- The device list is not remembered between runs; Refresh repeats the last import while the program runs.
 
 The simplest way to get every feature working at once.
 

@@ -24,9 +24,10 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 | `[Path]` | `BackupDir` | text | (empty) | Backup folder template (same tokens as DownloadDir) |
 | `[Path]` | `SeqStart` | number | 1 | First sequence number |
 | `[Path]` | `SeqNext` | number | 1 | Next sequence number |
-| `[General]` | `SourceMode` | number | 0 | Source: 0 automatic, 1 camera, 2 card reader |
+| `[General]` | `SourceMode` | number | 0 | Source: 0 automatic, 1 phone or camera (USB), 2 card reader |
 | `[General]` | `DriveLetters` | text | E | Drive letters treated as card readers |
-| `[General]` | `DisablePTP` | True/False | 1 | Disable PTP downloads |
+| `[General]` | `DisablePTP` | True/False | 1 | Disable PTP downloads: Refresh and the automatic sequence leave phones and cameras alone (File > Import from Device... still works) |
+| `[General]` | `KeepDeviceCopies` | True/False | 0 | Keep the staged copies of files imported from a phone or camera after they are downloaded |
 | `[General]` | `SaveReadOnly` | True/False | 0 | Save files as read-only |
 | `[General]` | `PreserveReadOnly` | True/False | 0 | Preserve read-only status |
 | `[General]` | `PromptProfile` | True/False | 0 | Prompt for a user profile at startup |

@@ -68,6 +68,7 @@ type
     WriteExifText, AutoEject, ScanWholeDisk, AddIptc, PromptIptc, WriteIptcIIM,
     WriteIptcNef: Boolean;
     LrPrevAsJpg: Boolean;           // download .lrprev files as .jpg (the largest preview picture)
+    KeepDeviceCopies: Boolean;      // keep the staged copies of files imported from a phone or camera (uDevices)
     ScanLrData: Boolean;            // scan Lightroom preview folders (.lrdata) for .lrprev files
     LrPrevKeepBoth: Boolean;        // with LrPrevAsJpg: also keep the .lrprev file
     WriteExifOwner: Boolean;        // write author/copyright into EXIF on copy
@@ -286,6 +287,7 @@ begin
   SourceMode := smAuto;  // automatic source selection
   DriveLetters := 'E';  // default drive letter
   DisablePTP := True;  // PTP downloads disabled
+  KeepDeviceCopies := False;  // staged device files are removed once they are downloaded
   SaveReadOnly := False;  // copies are not read-only
   PreserveReadOnly := False;  // do not keep the read-only flag
   PromptProfile := False;  // no profile prompt
@@ -405,6 +407,7 @@ begin
     SourceMode := TSourceMode(I);  // convert the number to the source mode
     DriveLetters := ReadString('General', 'DriveLetters', DriveLetters);  // load: drive letters to scan
     DisablePTP := ReadBool('General', 'DisablePTP', DisablePTP);  // load: disable PTP downloads
+    KeepDeviceCopies := ReadBool('General', 'KeepDeviceCopies', KeepDeviceCopies);  // load: keep staged device files
     SaveReadOnly := ReadBool('General', 'SaveReadOnly', SaveReadOnly);  // load: save copies as read-only
     PreserveReadOnly := ReadBool('General', 'PreserveReadOnly', PreserveReadOnly);  // load: keep the read-only flag of the original
     PromptProfile := ReadBool('General', 'PromptProfile', PromptProfile);  // load: ask for a user profile at start-up
@@ -527,6 +530,7 @@ begin
     WriteInteger('General', 'SourceMode', Ord(SourceMode));  // save: source mode number
     WriteString('General', 'DriveLetters', DriveLetters);  // save: drive letters to scan
     WriteBool('General', 'DisablePTP', DisablePTP);  // save: disable PTP downloads
+    WriteBool('General', 'KeepDeviceCopies', KeepDeviceCopies);  // save: keep staged device files
     WriteBool('General', 'SaveReadOnly', SaveReadOnly);  // save: save copies as read-only
     WriteBool('General', 'PreserveReadOnly', PreserveReadOnly);  // save: keep the read-only flag of the original
     WriteBool('General', 'PromptProfile', PromptProfile);  // save: ask for a user profile at start-up
