@@ -69,7 +69,7 @@ implementation
 
 uses
   {$IFDEF WINDOWS}Windows, Registry, uDarkStyleParams, uMetaDarkStyle, uDarkStyleSchemes,{$ENDIF}
-  {$IFDEF LCLGTK2}glib2, gdk2, gtk2, Gtk2Def, Gtk2Proc,{$ENDIF}  // GTK 2: title bar hint, GTK theme, LCL's style cache
+  {$IFDEF LCLGTK2}glib2, gdk2, gtk2, Gtk2Proc, Gtk2Int, InterfaceBase,{$ENDIF}  // GTK 2: title bar hint, GTK theme, LCL's style cache
   LCLIntf, IniFiles;
 
 {$IFNDEF WINDOWS}
@@ -311,15 +311,13 @@ begin
   gtk_settings_set_string_property(gtk_settings_get_default, 'gtk-theme-name', PChar(V), 'PhotoDownloader');  // this program only
   // LCL keeps the GTK styles of the old theme (read in Application.Initialize); GTK frees them when it loads the
   // new one, so drawing text with a system color then crashed (Access Violation in GetSysGCValues). Let GTK load
-  // the new theme, drop LCL's cached styles and read them again, which also rebuilds the system colors.
+  // the new theme, drop LCL's cached styles, and read the styles, system colors and system color brushes again
+  // (the brushes paint window backgrounds: without this, windows stayed light with light text).
   while gtk_events_pending <> 0 do gtk_main_iteration_do(False);
   ReleaseAllStyles;
-  GetStyle(lgsButton);  // the same styles LCL reads at start-up (TGtk2WidgetSet.InitSystemColors)
-  GetStyle(lgsWindow);
-  GetStyle(lgsMenuBar);
-  GetStyle(lgsMenuitem);
-  GetStyle(lgsVerticalScrollbar);
-  GetStyle(lgsTooltip);
+  TGtk2WidgetSet(WidgetSet).InitSystemColors;  // styles and the system color table of the new theme
+  TGtk2WidgetSet(WidgetSet).FreeSystemBrushes;  // brushes of the old colors
+  TGtk2WidgetSet(WidgetSet).InitSystemBrushes;  // brushes of the new colors
   GtkOverride := True;
   StartDark := Want;
   {$ELSE}
