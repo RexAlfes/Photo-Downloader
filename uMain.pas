@@ -188,6 +188,9 @@ type
     procedure DeleteClick(Sender: TObject);
     procedure CloseClick(Sender: TObject);
     procedure CustomClick(Sender: TObject);
+  protected
+    procedure DoShow; override;  // the window is on the screen: title bar of the theme
+    procedure TitleBarLater(Data: PtrInt);  // the title bar again once the window is really shown
   public
     constructor Create(TheOwner: TComponent); override;
     destructor Destroy; override;
@@ -254,6 +257,7 @@ end;
 { Frees the lists and the settings. }
 destructor TMainForm.Destroy;
 begin
+  Application.RemoveAsyncCalls(Self);  // a queued title bar call must not reach a freed window
   FVisible.Free;  // free the visible list
   FDateKeys.Free;  // free the date list
   FItems.Free;  // free the item list
@@ -673,6 +677,20 @@ begin
   FAutoClosing := True;  // no further questions while closing
   Result := True;  // restarting
   Close;  // the new copy starts when this one is gone
+end;
+
+{ The window is shown: now it exists on the screen, so the title bar can get the theme's light or dark. }
+procedure TMainForm.DoShow;
+begin
+  inherited DoShow;
+  ApplyTitleBar(Self, ThemeDark);  // dark title bar with the dark theme (Windows: the window exists now)
+  Application.QueueAsyncCall(@TitleBarLater, 0);  // GTK: the window exists on the screen a moment later
+end;
+
+{ Called after the window was shown: on Linux the window manager's window exists now. }
+procedure TMainForm.TitleBarLater(Data: PtrInt);
+begin
+  ApplyTitleBar(Self, ThemeDark);  // dark title bar with the dark theme
 end;
 
 { Follows the system: when its light/dark setting changed, the colors change too. }

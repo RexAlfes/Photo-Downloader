@@ -355,7 +355,8 @@ begin
   {$IFDEF LCLGTK2}
   if (Form = nil) or not Form.HandleAllocated then Exit;
   W := PGtkWidget(Form.Handle);
-  if W^.window = nil then gtk_widget_realize(W);  // the window needs its X window for the hint
+  // only a window that exists on the screen: realizing it early (while the form is being built) made GTK
+  // replace it later, losing the hint, and could crash; DoShow of the main window and the viewer calls this again
   if W^.window = nil then Exit;
   gdk_property_change(W^.window, gdk_atom_intern('_GTK_THEME_VARIANT', False),
     gdk_atom_intern('UTF8_STRING', False), 8, GDK_PROP_MODE_REPLACE,

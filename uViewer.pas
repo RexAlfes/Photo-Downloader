@@ -42,6 +42,8 @@ type
   protected
     function DoMouseWheel(Shift: TShiftState; WheelDelta: Integer;
       MousePos: TPoint): Boolean; override;
+    procedure DoShow; override;  // the window is on the screen: title bar of the theme
+    procedure TitleBarLater(Data: PtrInt);  // the title bar again once the window is really shown
   public
     constructor CreateViewer(AOwner: TComponent; AItems: TList; AIndex: Integer);
     destructor Destroy; override;
@@ -113,6 +115,7 @@ end;
 { Frees the decoded picture. }
 destructor TViewerForm.Destroy;
 begin
+  Application.RemoveAsyncCalls(Self);  // a queued title bar call must not reach a freed window
   FreeAndNil(FSrc);  // release the picture
   inherited Destroy;  // run the normal clean-up
 end;
@@ -401,6 +404,20 @@ begin
 end;
 
 { Opens the viewer window as a modal dialog at picture StartIndex. }
+{ The viewer is shown: now it exists on the screen, so the title bar can get the theme's light or dark. }
+procedure TViewerForm.DoShow;
+begin
+  inherited DoShow;
+  ApplyTitleBar(Self, ThemeDark);  // dark title bar with the dark theme (Windows: the window exists now)
+  Application.QueueAsyncCall(@TitleBarLater, 0);  // GTK: the window exists on the screen a moment later
+end;
+
+{ Called after the window was shown: on Linux the window manager's window exists now. }
+procedure TViewerForm.TitleBarLater(Data: PtrInt);
+begin
+  ApplyTitleBar(Self, ThemeDark);  // dark title bar with the dark theme
+end;
+
 procedure ShowImageViewer(Items: TList; StartIndex: Integer);
 var
   F: TViewerForm;  // F: the viewer form
@@ -419,8 +436,6 @@ begin
   end;
   F := TViewerForm.CreateViewer(Application, Items, StartIndex);  // create the viewer
   try
-    F.HandleNeeded;  // the window exists, so its title bar can be themed
-    ApplyTitleBar(F, ThemeDark);  // dark title bar with the dark theme
     F.ShowModal;  // show it and wait until it closes
   finally
     F.Free;  // free the form
