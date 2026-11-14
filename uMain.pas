@@ -72,6 +72,7 @@ type
     procedure SetThumbPreset(Size: Integer);
     procedure UpdateViewChecks;
     procedure ApplyTheme;  // colors of the theme in the window, the grid and the title bar
+    procedure ThemeChecks;  // marks the theme choice in the menu, watches the system setting
     procedure ThemeClick(Sender: TObject);  // View > Theme: Follow system / Light / Dark
     procedure ThemeTimerTick(Sender: TObject);  // follows a change of the system setting
     function RestartProgram: Boolean;  // closes and starts the program again (after a theme change); False when canceled
@@ -634,6 +635,12 @@ begin
   FView.Color := Th.Back;  // grid background
   FView.Invalidate;  // draw the cards again
   ApplyTitleBar(Self, ThemeDark);  // dark title bar on Windows
+  ThemeChecks;  // the menu marks and the system watch
+end;
+
+{ Marks the theme choice in View > Theme and watches the system's light/dark setting when following it. }
+procedure TMainForm.ThemeChecks;
+begin
   miThemeSys.Checked := FS.ThemeMode = 0;  // mark the choice
   miThemeLight.Checked := FS.ThemeMode = 1;
   miThemeDark.Checked := FS.ThemeMode = 2;
@@ -655,8 +662,10 @@ begin
     if MessageDlg(AppTitle, 'Menus, buttons and dialog windows change to the new theme when Photo Downloader ' +
          'starts. Restart Photo Downloader now?', mtConfirmation, [mbYes, mbNo], 0) = mrYes then
       if RestartProgram then Exit;  // closing: the new copy starts in the new theme
-    ApplyTheme;  // No (or the restart was canceled): the pictures change now
-    SetStatus('The pictures use the new theme now; menus, buttons and dialogs follow at the next start.');
+    // No (or the restart was canceled): the window keeps the theme it started with, as a whole (changing
+    // only the parts that can change left a mix of light and dark); the choice is used at the next start
+    ThemeChecks;
+    SetStatus('The new theme is used from the next start of Photo Downloader.');
     Exit;
   end;
   ApplyTheme;  // show it
@@ -698,9 +707,11 @@ procedure TMainForm.ThemeTimerTick(Sender: TObject);
 begin
   if (FS.ThemeMode = 0) and (SystemPrefersDark <> FThemeWasDark) then  // the setting changed
   begin
-    ApplyTheme;  // the pictures follow at once
-    if ThemeDark <> StartDark then
-      SetStatus('The pictures use the new theme now; menus, buttons and dialogs follow at the next start.');
+    FThemeWasDark := SystemPrefersDark;  // seen
+    if SystemPrefersDark = StartDark then
+      ApplyTheme  // back to the theme the program started with: the whole window follows
+    else
+      SetStatus('The system switched between light and dark: Photo Downloader follows from its next start.');  // the window stays as a whole
   end;
 end;
 
