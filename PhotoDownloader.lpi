@@ -12,6 +12,7 @@
       <Title Value="Photo Downloader"/>
       <UseAppBundle Value="False"/>
       <ResourceType Value="res"/>
+      <UseXPManifest Value="True"/>
       <Icon Value="0"/>
     </General>
     <VersionInfo>
@@ -19,7 +20,7 @@
       <AutoIncrementBuild Value="True"/>
       <MinorVersionNr Value="1"/>
       <RevisionNr Value="4"/>
-      <BuildNr Value="27"/>
+      <BuildNr Value="28"/>
       <Attributes pvaPreRelease="True"/>
       <StringTable FileDescription="Photo Downloader" ProductName="Photo Downloader"/>
     </VersionInfo>
@@ -61,8 +62,8 @@
             <Filename Value="bin/$(TargetOS)-release/PhotoDownloader"/>
           </Target>
           <SearchPaths>
-            <IncludeFiles Value="$(ProjOutDir);third_party/XelHeic"/>
-            <OtherUnitFiles Value="third_party/XelHeic"/>
+            <IncludeFiles Value="$(ProjOutDir);third_party/XelHeic;third_party/metadarkstyle"/>
+            <OtherUnitFiles Value="third_party/XelHeic;third_party/metadarkstyle"/>
             <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)-release"/>
           </SearchPaths>
           <CodeGeneration>
@@ -232,8 +233,8 @@
       <Filename Value="bin/$(TargetOS)/PhotoDownloader"/>
     </Target>
     <SearchPaths>
-      <IncludeFiles Value="$(ProjOutDir);third_party/XelHeic"/>
-      <OtherUnitFiles Value="third_party/XelHeic"/>
+      <IncludeFiles Value="$(ProjOutDir);third_party/XelHeic;third_party/metadarkstyle"/>
+      <OtherUnitFiles Value="third_party/XelHeic;third_party/metadarkstyle"/>
       <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
     </SearchPaths>
     <CodeGeneration>

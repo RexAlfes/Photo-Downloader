@@ -37,7 +37,8 @@ procedure ShowImageProperties(Item: TImageItem);
 implementation
 
 uses
-  FileUtil, LazFileUtils  // copying and deleting plug-in files
+  FileUtil, LazFileUtils,  // copying and deleting plug-in files
+  uTheme  // dialog text colors for the light and dark theme
   {$IFDEF LCLGTK2}, gtk2{$ENDIF};  // GTK 2: modal state of a window (ReviveAfterChooser)
 
 const
@@ -419,7 +420,7 @@ begin
   MkWrap(Self, AText, 12, 12, 496, TextH);  // status text
   MkLabel(Self, 'Settings file (click to open its folder):', 12, TextH + 20);  // prompt
   Lk := MkWrap(Self, SettingsFile, 12, TextH + 40, 496, 36);  // settings file path
-  Lk.Font.Color := clBlue;  // link color
+  Lk.Font.Color := DlgLinkText;  // link color (lighter blue in the dark theme)
   Lk.Font.Style := [fsUnderline];  // link underline
   Lk.Cursor := crHandPoint;  // hand cursor over the link
   Lk.Hint := 'Open the folder that contains the settings file';  // tooltip
@@ -1045,7 +1046,7 @@ begin
   MkButton(Self, '&Add', 10, 294, 100).OnClick := @AddClick;  // add the typed entry
   MkButton(Self, 'Re&place selected', 118, 294, 140).OnClick := @ReplaceClick;  // replace the selected entry
   lblMsg := MkWrap(Self, '', 10, 324, 450, 20);  // what is wrong
-  lblMsg.Font.Color := RGBToColor(160, 0, 0);  // dark red (readable on the normal background)
+  lblMsg.Font.Color := DlgErrorText;  // red that is readable on the background (uTheme)
   MkButton(Self, 'OK', 290, 350, 80, mrOK).Default := True;  // OK button, also the default button
   MkButton(Self, 'Cancel', 380, 350, 80, mrCancel).Cancel := True;  // Cancel button, also reacts to Esc
   FillList(0);  // show the entries
@@ -1459,7 +1460,7 @@ begin
   begin
     Lab := MkWrap(Self, P.Info.Values['Note'], 12, Y + 4, W - 24, 48);  // the reminder under the fields
     Lab.Alignment := taCenter;  // centered
-    Lab.Font.Color := RGBToColor(160, 0, 0);  // dark red, so it is noticed and still easy to read (contrast above 4.5:1)
+    Lab.Font.Color := DlgErrorText;  // red, so it is noticed and still easy to read (contrast above 4.5:1)
     lblNote := Lab;  // pd_check may change or hide it (Note= line)
     Inc(Y, 54);  // room for it
   end;
@@ -1468,7 +1469,7 @@ begin
   lblPreview := MkLabel(Self, '', 12, Y + 6);  // preview of the result
   lblPreview.Font.Style := [fsBold];  // bold
   lblError := MkWrap(Self, '', 12, Y + 28, W - 24, 36);  // error text
-  lblError.Font.Color := RGBToColor(160, 0, 0);  // dark red (contrast above 4.5:1)
+  lblError.Font.Color := DlgErrorText;  // red (contrast above 4.5:1)
   Inc(Y, 72);  // room for preview and error
   if P.Info.Values['DestFolder'] = '1' then  // the plug-in lets the user choose the destination here
   begin
@@ -1486,7 +1487,7 @@ begin
   if (Head <> nil) and (P.Info.Values['Version'] <> '') then  // and at the top right of the header
   begin
     Lab := MkLabel(Head, 'Version ' + P.Info.Values['Version'], 0, 0);  // version text
-    Lab.Font.Color := RGBToColor(96, 96, 96);  // quiet dark gray (contrast above 4.5:1 on white)
+    Lab.Font.Color := DlgQuietText;  // quiet gray (contrast above 4.5:1)
     Lab.SetBounds(W - Canvas.TextWidth(Lab.Caption) - 18, 18, Lab.Width, Lab.Height);  // top right, inside the clear space
   end;
   if LayoutIndex >= 0 then  // a layout field: the plug-in's folders are added to the destination folder

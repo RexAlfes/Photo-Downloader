@@ -2,8 +2,10 @@
   main window panels and the date list), View > Theme (Follow system / Light / Dark), and the dark
   window title bar on Windows 10 and 11.
 
-  Menus, buttons and dialogs are drawn by the system and keep its look: on Windows they stay light
-  (Windows has no supported dark mode for classic programs); on Linux they follow the GTK theme.
+  Menus, buttons and dialogs are drawn by the system. On Linux they follow the GTK theme. On Windows,
+  which has no supported dark mode for classic programs, StartTheme switches them dark at program start
+  with the MetaDarkStyle package (third_party/metadarkstyle, LGPL with linking exception); that can only
+  be chosen before the first window exists, so a change of theme reaches them at the next start.
   The light palette is the program's look before themes existed. Every dark text and background pair
   has a contrast of at least 4.5:1. }
 unit uTheme;
@@ -36,7 +38,16 @@ type
 var
   Th: TThemeColors;  // the colors in use (set by SetTheme)
   ThemeDark: Boolean = False;  // the dark colors are in use
+  StartDark: Boolean = False;  // menus, buttons and dialogs were made dark at program start (Windows)
 
+{ Program start, before Application.Initialize: reads View > Theme from the settings file and, when it
+  means dark, makes menus, buttons and dialogs dark for this run (Windows; see the unit header). }
+procedure StartTheme(const SettingsFile: string);
+{ Text colors for dialog windows: red for errors, gray for quiet notes, blue for links; lighter shades
+  when the dialogs are dark (StartDark), each at least 4.5:1 on its background. }
+function DlgErrorText: TColor;
+function DlgQuietText: TColor;
+function DlgLinkText: TColor;
 { Picks the palette for Mode; returns True when it is dark. }
 function SetTheme(Mode: TThemeMode): Boolean;
 { True when the system asks programs to be dark (Windows: the "apps" setting; Linux: a dark GTK theme). }
@@ -49,12 +60,14 @@ procedure ApplyTitleBar(Form: TCustomForm; Dark: Boolean);
 implementation
 
 uses
-  {$IFDEF WINDOWS}Windows, Registry,{$ENDIF} LCLIntf;
+  {$IFDEF WINDOWS}Windows, Registry, uDarkStyleParams, uMetaDarkStyle, uDarkStyleSchemes,{$ENDIF}
+  LCLIntf, IniFiles;
 
 { The colors before themes existed. }
 procedure SetLight;
 begin
   Th.Back := clWindow;
+  if StartDark then Th.Back := clWhite;  // the system colors are dark for this run: real light colors
   Th.Text := clBlack;
   Th.Normal := $00EBEBEF;         // RGB(239,235,235)
   Th.Selected := $00FAD7BE;       // RGB(190,215,250)
@@ -70,6 +83,13 @@ begin
   Th.HeaderText := clBtnText;
   Th.HeaderLine := clBtnShadow;
   Th.Focus := clHighlight;
+  if StartDark then  // the system colors are dark for this run: real light colors until the next start
+  begin
+    Th.Header := RGBToColor(240, 240, 240);
+    Th.HeaderText := clBlack;
+    Th.HeaderLine := RGBToColor(160, 160, 160);
+    Th.Focus := RGBToColor(0, 120, 215);
+  end;
   Th.Panel := clDefault;          // the system's colors
   Th.PanelText := clDefault;
 end;
@@ -112,7 +132,7 @@ var
 {$ENDIF}
 begin
   {$IFDEF WINDOWS}
-  Result := False;  // Windows draws classic programs light
+  Result := StartDark;  // dark only when MetaDarkStyle made it so at start
   {$ELSE}
   C := ColorToRGB(clWindow);
   Result := (Red(C) * 299 + Green(C) * 587 + Blue(C) * 114) div 1000 < 128;  // a dark window color
@@ -151,6 +171,47 @@ begin
   end;
   if Result then SetDark else SetLight;
   ThemeDark := Result;  // for windows opened later (the viewer)
+end;
+
+procedure StartTheme(const SettingsFile: string);
+var
+  Ini: TIniFile;  // Ini: the settings file
+  Mode: Integer;  // Mode: View > Theme (0 system, 1 light, 2 dark)
+begin
+  Mode := 0;  // follow the system when the file has nothing
+  try
+    Ini := TIniFile.Create(SettingsFile);
+    try
+      Mode := Ini.ReadInteger('View', 'Theme', 0);
+    finally
+      Ini.Free;
+    end;
+  except
+    Mode := 0;  // unreadable: follow the system
+  end;
+  {$IFDEF WINDOWS}
+  StartDark := (Mode = 2) or ((Mode <> 1) and SystemPrefersDark);
+  if StartDark then
+  begin
+    PreferredAppMode := pamForceDark;  // dark menus, buttons and dialogs for this run
+    ApplyMetaDarkStyle(DefaultDark);  // before the first window exists
+  end;  // light: nothing is changed, the program looks as without the package
+  {$ENDIF}
+end;
+
+function DlgErrorText: TColor;
+begin
+  if StartDark then Result := RGBToColor(255, 128, 128) else Result := RGBToColor(160, 0, 0);
+end;
+
+function DlgQuietText: TColor;
+begin
+  if StartDark then Result := RGBToColor(176, 176, 176) else Result := RGBToColor(96, 96, 96);
+end;
+
+function DlgLinkText: TColor;
+begin
+  if StartDark then Result := RGBToColor(110, 170, 255) else Result := clBlue;
 end;
 
 procedure ApplyTitleBar(Form: TCustomForm; Dark: Boolean);

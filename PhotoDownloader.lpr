@@ -15,7 +15,7 @@ uses
   {$IFDEF LCLGTK2}
   gtk2,  // GTK 2 style settings (ListComboBoxes)
   {$ENDIF}
-  uSettings, uSingle, uSplash, uScale, uVersion, uExif, uItems, uDrives, uPhotoView, uDialogs, uViewer, uMain;
+  uSettings, uSingle, uSplash, uScale, uVersion, uExif, uItems, uDrives, uPhotoView, uDialogs, uViewer, uMain, uTheme;
 
 {$R *.res}
 
@@ -63,6 +63,7 @@ begin
   Application.Scaled := True;  // scale the forms with the system DPI setting
   // single instance (the default): hand over to the copy that is already running
   if SingleInstanceWanted and ActivateRunningInstance then Halt(0);
+  StartTheme(SettingsFileName);  // dark menus, buttons and dialogs (Windows) must be chosen before any window
   Application.Initialize;  // create the application object
   {$IFDEF UNIX}
   LoadWindowIcon;  // window and taskbar icon on Linux

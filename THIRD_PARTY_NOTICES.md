@@ -19,6 +19,12 @@ the program or `winsqlite3.dll` (part of Windows 10 and 11) on Windows, `libsqli
 with Photo Downloader. SQLite is in the public domain (https://www.sqlite.org/copyright.html). The Pascal declarations come
 from the Free Pascal unit `sqlite3dyn` (Free Pascal packages, LGPL with the static linking exception).
 
+## MetaDarkStyle (`third_party/metadarkstyle`)
+Source: https://github.com/zamtmn/metadarkstyle (Andrey Zubarev, Alexander Koblov), version 0.9, commit 57b8544 of 2026-11-09. Bundled files: the units of the package's `src` folder, `CustomDark.lrs`, `CustomDark.darkstylecolors` and its `README.md` (which holds the license). The IDE packages, examples and pictures are left out.
+
+* License: GNU Lesser General Public License 2.1 or later, with a linking exception (the same terms as the Lazarus component library): programs that link it may be distributed under their own license.
+* Used on Windows only (`uTheme.StartTheme`), to draw menus, buttons and dialogs dark. No local changes.
+
 ## Local changes to bundled code
 * `Av1.Decoder.pas` (build 29): per-block state arrays enlarged and writes at the right/bottom picture edge clipped, to stop out-of-range writes that crashed AVIF decoding. Not sent upstream.
 * `Av1.Decoder.pas` (build 33): the 4x4-block grid size now comes from the frame header (MiCols/MiRows, always even) instead of `(size+3) shr 2`; pictures whose height or width gave an odd count (e.g. 1920x2523) never finished decoding.

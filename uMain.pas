@@ -644,6 +644,10 @@ begin
   else FS.ThemeMode := 0;  // follow the system
   ApplyTheme;  // show it
   SaveSettingsNow;  // remember it
+  {$IFDEF WINDOWS}
+  if ThemeDark <> StartDark then  // menus, buttons and dialogs were set at start
+    SetStatus('The pictures use the new theme now; menus, buttons and dialogs follow at the next start.');
+  {$ENDIF}
 end;
 
 { Follows the system: when its light/dark setting changed, the colors change too. }

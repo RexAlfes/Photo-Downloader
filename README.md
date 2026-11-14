@@ -59,6 +59,9 @@ settings. The decoder is the pure-Pascal Xelitan HEIC decoder, bundled in `third
 (see `THIRD_PARTY_NOTICES.md`). The project does **not** need the `XelImageFormats` package; if you added it
 under Project > Project Inspector > Required Packages, remove it so units are not found twice.
 
+## Dark theme on Windows
+View > Theme can make the whole program dark. On Windows, menus, buttons and dialogs are made dark with the MetaDarkStyle package, bundled in `third_party/metadarkstyle` (LGPL with a linking exception, see `THIRD_PARTY_NOTICES.md`); nothing has to be installed in Lazarus. On Linux the GTK theme decides.
+
 ## External library: SQLite (optional)
 Photo Downloader is a single program file, with one exception: to read a Lightroom catalog (`.lrcat`) for `.lrprev`
 preview files it uses the SQLite library of the system, loaded only when a `.lrprev` file is scanned:
