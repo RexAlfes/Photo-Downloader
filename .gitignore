@@ -77,3 +77,6 @@ bin/
 PhotoDownloader.lpi.before
 PhotoDownloader.lpi.keep
 build-stamp.txt.before
+
+# MetaDarkStyle ships this .lrs file as source (its included color scheme)
+!third_party/metadarkstyle/CustomDark.lrs
