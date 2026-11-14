@@ -388,6 +388,18 @@ begin
   miThemeDark := AddMenu(MTheme, 'Dark', @ThemeClick, 0);  // always dark
   miThemeSys.RadioItem := True; miThemeLight.RadioItem := True; miThemeDark.RadioItem := True;  // one of the three
   miThemeSys.GroupIndex := 7; miThemeLight.GroupIndex := 7; miThemeDark.GroupIndex := 7;
+  // GTK creates a menu item without a check box until it is first checked (and keeps the box after that):
+  // ShowAlwaysCheckable creates the box from the start, as in the right-click menu
+  miList.RadioItem := True; miSmall.RadioItem := True; miMedium.RadioItem := True;  // the views exclude each other
+  miLarge.RadioItem := True; miFit.RadioItem := True;
+  miList.GroupIndex := 2; miSmall.GroupIndex := 2; miMedium.GroupIndex := 2;  // one group
+  miLarge.GroupIndex := 2; miFit.GroupIndex := 2;
+  miShowDown.ShowAlwaysCheckable := True; miShowDup.ShowAlwaysCheckable := True;  // check boxes
+  miList.ShowAlwaysCheckable := True; miSmall.ShowAlwaysCheckable := True; miMedium.ShowAlwaysCheckable := True;
+  miLarge.ShowAlwaysCheckable := True; miFit.ShowAlwaysCheckable := True;  // round marks
+  miDateSel.ShowAlwaysCheckable := True;  // check box
+  miThemeSys.ShowAlwaysCheckable := True; miThemeLight.ShowAlwaysCheckable := True;
+  miThemeDark.ShowAlwaysCheckable := True;  // round marks
 
   MHelp := AddMenu(MM.Items, '&Help', nil, 0);  // Help menu
   AddMenu(MHelp, 'Contents', @HelpContentsClick, 0);  // help contents
@@ -400,6 +412,7 @@ begin
   AddMenu(MHelp, 'Register', @RegisterClick, 0);  // show the license
   AddMenu(MHelp, '-', nil, 0);  // separator
   miLogging := AddMenu(MHelp, 'Logging (for troubleshooting)', @LoggingClick, 0);  // logging for troubleshooting
+  miLogging.ShowAlwaysCheckable := True;  // its check box also when off (GTK)
   miLogging.Checked := FS.LoggingOn;  // show the logging state
   AddMenu(MHelp, 'Save log file...', @SaveLogClick, 0);  // save the log file
   AddMenu(MHelp, '-', nil, 0);  // separator
