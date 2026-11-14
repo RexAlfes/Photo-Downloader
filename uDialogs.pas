@@ -6,7 +6,8 @@ interface
 
 uses
   Classes, SysUtils, Math, Types, Forms, Controls, Graphics, Dialogs, StdCtrls, ExtCtrls,
-  ComCtrls, CheckLst, Spin, Clipbrd, LCLType, LCLIntf, uSettings, uItems, uExif, uDrives, uVersion, uSafeDel, uPlugins, uExtPlugin, uIccEmbed, uJpegDpi;
+  ComCtrls, CheckLst, Spin, Clipbrd, LCLType, LCLIntf, uSettings, uItems, uExif, uDrives, uVersion, uSafeDel, uPlugins, uExtPlugin, uIccEmbed, uJpegDpi,
+  uMsgDlg;  // MessageDlg with Yes on the left on every system (after Dialogs)
 
 function ExecuteJobCode(S: TAppSettings; var Job: string; const CurrentCamera: string): Boolean;
 { As ExecuteJobCode, with an extra 'Source folder' line (used at start-up). Source is the

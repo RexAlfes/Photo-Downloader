@@ -8,7 +8,8 @@ unit uDeviceDlg;
 interface
 
 uses
-  Classes, SysUtils, Forms, Controls, StdCtrls, CheckLst, Dialogs;
+  Classes, SysUtils, Forms, Controls, StdCtrls, CheckLst, Dialogs,
+  uMsgDlg;  // MessageDlg with Yes on the left on every system (after Dialogs)
 
 { Shows the window. On Import returns True with the device's name and Id and the ticked folders
   (FolderNames: "Storage\Folder", FolderIds: what finds them again). False when canceled or no device

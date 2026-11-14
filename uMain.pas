@@ -9,7 +9,8 @@ uses
   ExtCtrls, StdCtrls, ComCtrls, LCLType, LCLIntf, LazFileUtils, IniFiles,
   uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uLrCat, uSingle, uRotate, uSafeDel, uSplash, uPlugins, uExtPlugin, uIccEmbed, uJpegDpi,
   uDevices, uDeviceDlg,  // phones and cameras by USB: Shell access and the import window
-  uTheme;  // light and dark colors
+  uTheme,  // light and dark colors
+  uMsgDlg;  // MessageDlg with Yes on the left on every system (after Dialogs)
 
 type
   { Which files a download takes: dsAuto = the selected ones, or all when nothing is selected (automation);

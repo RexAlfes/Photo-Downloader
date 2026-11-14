@@ -228,6 +228,10 @@
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
+        <Filename Value="uMsgDlg.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
         <Filename Value="uWebP.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>
