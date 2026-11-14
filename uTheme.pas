@@ -50,6 +50,8 @@ function DlgQuietText: TColor;
 function DlgLinkText: TColor;
 { Picks the palette for Mode; returns True when it is dark. }
 function SetTheme(Mode: TThemeMode): Boolean;
+{ True when Mode means dark now (without changing the colors in use). }
+function ModeIsDark(Mode: TThemeMode): Boolean;
 { True when the system asks programs to be dark (Windows: the "apps" setting; Linux: a dark GTK theme). }
 function SystemPrefersDark: Boolean;
 { True when the system draws its own windows dark already (a dark GTK theme on Linux; never on Windows). }
@@ -166,7 +168,7 @@ begin
   {$ENDIF}
 end;
 
-function SetTheme(Mode: TThemeMode): Boolean;
+function ModeIsDark(Mode: TThemeMode): Boolean;
 begin
   case Mode of
     tmLight: Result := False;
@@ -174,6 +176,11 @@ begin
   else
     Result := SystemPrefersDark;
   end;
+end;
+
+function SetTheme(Mode: TThemeMode): Boolean;
+begin
+  Result := ModeIsDark(Mode);
   if Result then SetDark else SetLight;
   ThemeDark := Result;  // for windows opened later (the viewer)
 end;

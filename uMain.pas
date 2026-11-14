@@ -74,7 +74,7 @@ type
     procedure ApplyTheme;  // colors of the theme in the window, the grid and the title bar
     procedure ThemeClick(Sender: TObject);  // View > Theme: Follow system / Light / Dark
     procedure ThemeTimerTick(Sender: TObject);  // follows a change of the system setting
-    procedure RestartProgram;  // closes and starts the program again (after a theme change)
+    function RestartProgram: Boolean;  // closes and starts the program again (after a theme change); False when canceled
     procedure ThumbSizeChanged(Sender: TObject);
     procedure SetStatus(const S: string);
     procedure UpdateCaption;
@@ -643,22 +643,28 @@ begin
   if Sender = miThemeLight then FS.ThemeMode := 1  // always light
   else if Sender = miThemeDark then FS.ThemeMode := 2  // always dark
   else FS.ThemeMode := 0;  // follow the system
-  ApplyTheme;  // show it
-  SaveSettingsNow;  // remember it
+  SaveSettingsNow;  // remember it (a restart reads it)
   {$IFDEF WINDOWS}
-  if ThemeDark <> StartDark then  // menus, buttons and dialogs were set at start: offer a restart
+  // menus, buttons and dialogs were set at start: ask first, so the window does not change halfway
+  // before a restart
+  if ModeIsDark(TThemeMode(FS.ThemeMode)) <> StartDark then
+  begin
     if MessageDlg(AppTitle, 'Menus, buttons and dialog windows change to the new theme when Photo Downloader ' +
          'starts. Restart Photo Downloader now?', mtConfirmation, [mbYes, mbNo], 0) = mrYes then
-      RestartProgram
-    else
-      SetStatus('The pictures use the new theme now; menus, buttons and dialogs follow at the next start.');
+      if RestartProgram then Exit;  // closing: the new copy starts in the new theme
+    ApplyTheme;  // No (or the restart was canceled): the pictures change now
+    SetStatus('The pictures use the new theme now; menus, buttons and dialogs follow at the next start.');
+    Exit;
+  end;
   {$ENDIF}
+  ApplyTheme;  // show it
 end;
 
 { Closes the program and starts it again, so menus, buttons and dialogs use the new theme. Unsaved
-  profile changes are asked about first; Cancel keeps the program open. }
-procedure TMainForm.RestartProgram;
+  profile changes are asked about first; Cancel keeps the program open (False). }
+function TMainForm.RestartProgram: Boolean;
 begin
+  Result := False;  // not restarting yet
   if not AskSaveProfile then Exit;  // canceled
   SaveSettingsNow;  // the new theme is read at the next start
   if not StartRestartedCopy then  // the new copy waits until this one has closed
@@ -667,6 +673,7 @@ begin
     Exit;
   end;
   FAutoClosing := True;  // no further questions while closing
+  Result := True;  // restarting
   Close;  // the new copy starts when this one is gone
 end;
 
