@@ -72,3 +72,8 @@ bin/
 # Claude Code personal settings and worktrees (local only)
 .claude/settings.local.json
 .claude/worktrees/
+
+# build scripts: temporary copies while building
+PhotoDownloader.lpi.before
+PhotoDownloader.lpi.keep
+build-stamp.txt.before

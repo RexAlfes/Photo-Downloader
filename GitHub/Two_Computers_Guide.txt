@@ -41,16 +41,18 @@ One-time setup on each computer
 
 The version number file (the one thing to watch)
 ------------------------------------------------
-Lazarus (the IDE and lazbuild) changes PhotoDownloader.lpi every time you compile: the program
-gets the build number in the file, and the file then holds the next one. Never change it by
-hand. On Linux, linux/build.sh also keeps it in step: it pulls first, and after the build it
-commits and pushes PhotoDownloader.lpi ("Built 0.1.3.N (Linux)"). Let it, and commit the file
-with your other changes. Rules:
-  * Always pull before you compile, and commit and push when you are done, so both computers
-    count on from the same number. (linux/build.sh does this for you on Linux; in the Lazarus
-    IDE on Windows, pull before and push after yourself.)
-  * If a pull still reports a conflict in PhotoDownloader.lpi, keep the higher BuildNr value,
-    then:  git add PhotoDownloader.lpi   and   git commit
+The build number is one number per version of the program code: debug and Release builds of
+the same code, on Windows and on Linux, carry the same number. It goes up by one only when the
+code changed. The build scripts look after it: windows\build.ps1 on Windows and linux/build.sh
+on Linux. They pull first, compare the program sources with build-stamp.txt (number and a
+fingerprint of the sources), raise the number in PhotoDownloader.lpi when the sources changed,
+build, and then commit and push PhotoDownloader.lpi and build-stamp.txt ("Built 0.1.4.N
+(Windows)" or "(Linux)"). Lazarus itself (the IDE and lazbuild) no longer changes the number,
+so after code changes build with a script. Never change the number by hand. Rules:
+  * Always pull before you build, and commit and push when you are done, so both computers
+    count on from the same number. (The scripts do this for you.)
+  * If a pull still reports a conflict in PhotoDownloader.lpi or build-stamp.txt, keep the
+    higher number in both, then:  git add PhotoDownloader.lpi build-stamp.txt   and   git commit
 
 Branches (optional, later)
 --------------------------
