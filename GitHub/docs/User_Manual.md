@@ -381,7 +381,7 @@ The interface for writing libraries is described in `docs/Plugin_Developer_Manua
 A **profile** is a saved set of preferences – useful if you use several cameras, clients or computers.
 
 - **File > User Profiles...** opens the **User Profiles** window: the saved profiles, with the profile in use named above the list, and these buttons:
-  - **Load** applies the selected profile (double-clicking a profile does the same).
+  - **Load** applies the selected profile; the window stays open. **Double-clicking** a profile loads it and closes the window.
   - **Save** stores the current settings in the profile in use.
   - **Save As...** stores the current settings under another name; that profile is then in use.
   - **New...** starts a new profile from the program's default settings and makes it the profile in use (the last source folder, job code and view options stay).

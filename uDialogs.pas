@@ -670,6 +670,7 @@ type
     function Selected: string;  // the selected profile ('' = none)
     function AskName(const ATitle: string; out Nm: string): Boolean;  // asks for a new profile name
     procedure LoadClick(Sender: TObject);
+    procedure ListDblClick(Sender: TObject);  // loads the profile and closes the window
     procedure SaveClick(Sender: TObject);
     procedure SaveAsClick(Sender: TObject);
     procedure NewClick(Sender: TObject);
@@ -731,6 +732,16 @@ begin
   if Handler(paLoad, Nm) then Refresh(Nm);  // loaded
 end;
 
+{ Double-click: loads the profile and closes the window (the Load button keeps it open). }
+procedure TProfilesHelper.ListDblClick(Sender: TObject);
+var
+  Nm: string;  // Nm: the profile
+begin
+  Nm := Selected;  // the double-clicked profile
+  if Nm = '' then Exit;  // none
+  if Handler(paLoad, Nm) then Form.ModalResult := mrClose;  // loaded: done
+end;
+
 { Saves the settings to the profile in use. }
 procedure TProfilesHelper.SaveClick(Sender: TObject);
 begin
@@ -786,8 +797,8 @@ begin
     H.List.Parent := F;  // place it on the form
     H.List.SetBounds(10, 36, 270, 248);  // position and size it
     H.List.OnClick := @H.UpdateButtons;  // buttons follow the selection
-    H.List.OnDblClick := @H.LoadClick;  // double-click loads
-    MkLabel(F, 'Double-click a profile to load it.', 10, 292);  // hint
+    H.List.OnDblClick := @H.ListDblClick;  // double-click loads and closes
+    MkLabel(F, 'Double-click a profile to load it and close.', 10, 292);  // hint
     H.BLoad := MkButton(F, '&Load', 295, 36, 115);  // load the selected profile
     H.BLoad.OnClick := @H.LoadClick;
     H.BSave := MkButton(F, '&Save', 295, 68, 115);  // save to the profile in use
