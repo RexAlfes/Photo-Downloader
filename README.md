@@ -116,7 +116,7 @@ The Status dialog shows the exact path. Saved user profiles are in a `profiles` 
 The full list of sections, keys, types and defaults is in `docs/Settings_File.md` (also section 5 of `docs/Specification_Current.md`).
 
 ## Versioning
-Version info is enabled with "Automatically increment build number". The IDE and `lazbuild` both increment it on each build: the program gets the number in `PhotoDownloader.lpi`, and the file then holds the next one. On Linux, `linux/build.sh` also pulls before and pushes the new number after the build. Documents show only the version (0.1.1), not the build number.
+The version is major.minor.revision.build (this release: 0.1.5.0). The build number goes up once per change of the program code: the build scripts `windows\build.ps1` and `linux/build.sh` compare the sources with `build-stamp.txt` and raise the number in `PhotoDownloader.lpi` when they changed, so the debug and Release builds of the same code (and the builds on Windows and Linux) carry the same number. Lazarus itself does not change it (automatic increment is off). On Linux, `linux/build.sh` also pulls before and pushes the new number after the build. Documents show only the version (0.1.1), not the build number.
 The version is shown in About, Status and Register. See `docs/Specification_Current.md` for the version history.
 
 **Baseline.** Build 42 is the baseline code. Suggested Git tag: `baseline-build-42`; later builds are compared against it.

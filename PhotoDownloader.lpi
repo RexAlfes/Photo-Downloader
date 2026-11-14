@@ -19,8 +19,8 @@
       <UseVersionInfo Value="True"/>
       <AutoIncrementBuild Value="False"/>
       <MinorVersionNr Value="1"/>
-      <RevisionNr Value="4"/>
-      <BuildNr Value="57"/>
+      <RevisionNr Value="5"/>
+      <BuildNr Value="0"/>
       <Attributes pvaPreRelease="True"/>
       <StringTable FileDescription="Photo Downloader" ProductName="Photo Downloader"/>
     </VersionInfo>

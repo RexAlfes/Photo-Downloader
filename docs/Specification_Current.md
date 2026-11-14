@@ -1,6 +1,6 @@
 # Photo Downloader – Current Specification and Status
 
-**Version:** 0.1.4  **Date:** 10 Nov 2026  **License:** GNU GPL v3 or later
+**Version:** 0.1.5  **Date:** 14 Nov 2026  **License:** GNU GPL v3 or later
 
 ## 1. Purpose
 
@@ -355,10 +355,11 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 
 ## 6. Version history
 
-Version numbers are major.minor.revision.build. Up to 0.1.0 build 57 only the build number counted (shown as "build N" below). The last bundle with only a build number was 0.1.0.58 (build 58). From 0.1.1.1 to 0.1.4.1 every bundle raised the revision and restarted the build number at 1; from 0.1.5.0 on it restarts at 0 (0.1.5.0, 0.1.6.0 ...). The IDE counts the build number up with each compile.
+Version numbers are major.minor.revision.build. Up to 0.1.0 build 57 only the build number counted (shown as "build N" below). The last bundle with only a build number was 0.1.0.58 (build 58). From 0.1.1.1 to 0.1.4.1 every bundle raised the revision and restarted the build number at 1; from 0.1.5.0 on it restarts at 0 (0.1.5.0, 0.1.6.0 ...). Up to 0.1.4.57 the build number went up with each compile; since then it goes up once per change of the program code (`build-stamp.txt`, build scripts), so debug and Release builds of the same code carry the same number.
 
 | Build | Changes |
 |---|---|
+| 0.1.5.0 | Phones, cameras and drone controllers by USB (File > Import from Device..., Windows, staging folder; Open Source Folder imports from a chosen device); View > Theme Follow system / Light / Dark (MetaDarkStyle on Windows, dark or light GTK theme version on Linux, restart question); User Profiles window (Load, Save, Save As, New, Delete; double-click loads and closes; Default profile; unsaved changes asked; loading keeps theme and view); scan cards; local times for UTC files; copies keep the creation date; {Type} token; plug-in layout field, note, radio fields, path tokens, scan and whole folders; crash log; EXIF read far into a file (DNGLab and Skydio DNG orientation and dates); Linux button order (Yes, Open, Save on the left), File Types fits the screen, menu check marks; one download rule; build mode Debug, one build number per code version (build-stamp.txt, windows/build.ps1, linux/build.sh both) |
 | 1–8 | Initial implementation from prototype application images and specification, compile and stability fixes, icon, GPL notice, date/thumbnail sync, EXIF author and copyright, RAW previews, throttled thumbnails |
 | 0.1.4.1 | Editable plug-in lists (field flags `edit` and `code=N`: **Edit list...** and the list editor `TCodeListForm`, stored as `List.<key>=`, sent to `pd_check` and `pd_token`); prompt window text colors with at least 4.5:1 contrast; the user profile in use in the title bar; GTK 2 drop-down lists open below their box (`appears-as-list`); `linux/build.sh` (pulls, builds, commits and pushes only the BuildNr line); the build number rule corrected (`lazbuild` counts it up itself) |
 | 0.1.3.1 | Plug-in steps after each file (`RunPluginSteps`; a failed step keeps the file from deletion and switches the plug-in off); program plug-ins (`uExtPlugin.pas`, `.plugin.ini`) with DNG Converter plug-ins for Adobe DNG Converter and dnglab (`plugins/dng-converter`; program found at its usual place, on the PATH or next to the `.plugin.ini`); built-in JPEG auto profile (`uIccEmbed.pas`), JPEG resolution (`uJpegDpi.pas`) and Directory Maker documented; Plug-ins tab Install... / Remove, gray switched-off entries, version after the name; Preferences shorter with scrolling tabs on small screens; GTK 2: JPEG auto profile setup takes input again after its file chooser |

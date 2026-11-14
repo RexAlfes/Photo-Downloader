@@ -184,6 +184,17 @@
                     <p>Portrait JPEGs, including progressive ones, are turned upright from their EXIF orientation without
                        recompressing, so there is no quality loss.</p>
                 </div>
+                <div class="card">
+                    <h3>&#128241; Phones &amp; Cameras by USB</h3>
+                    <p>Windows: File &gt; Import from Device reads phones, cameras and drone controllers connected by USB,
+                       copies the chosen folders with a checksum check and the device dates, imports only new pictures
+                       the next time, and can delete downloaded pictures from the device.</p>
+                </div>
+                <div class="card">
+                    <h3>&#127769; Light &amp; Dark Theme</h3>
+                    <p>View &gt; Theme follows the system or stays light or dark. On Windows menus, buttons, dialogs and the
+                       title bar turn dark too; on Linux the matching version of your GTK theme is used.</p>
+                </div>
             </div>
         </section>
 
@@ -192,7 +203,7 @@
             <ul class="plain">
                 <li>Windows is the primary platform. The Linux build has been tested on Linux Mint 22.3 (GTK 2 widgetset); other distributions and the Qt widgetset are untested.</li>
                 <li>The single-instance option is Windows only.</li>
-                <li>Direct USB camera (PTP/MTP) download, GPS geotagging, a download history and RAW+JPEG pairing are not implemented yet.</li>
+                <li>Phones and cameras by USB (MTP/PTP) are read on Windows with File &gt; Import from Device; on Linux open the device's folder (it appears under <code>/run/user/&lt;number&gt;/gvfs</code>) with File &gt; Open Source Folder. GPS geotagging, a download history and RAW+JPEG pairing are not implemented yet.</li>
                 <li>Lightroom previews (.lrprev) are small (at most 256 px); they can be downloaded as .jpg, or as both .lrprev and .jpg. Their file name, date and camera come from the Lightroom catalog when it is found, which needs the SQLite library (built into Windows 10 and 11; on older Windows place the 64-bit <code>sqlite3.dll</code> next to the program).</li>
                 <li>Video thumbnails depend on the system (Windows Shell codecs; <code>ffmpegthumbnailer</code> or <code>ffmpeg</code> on Linux). MP3 files show a default tile without cover art or length.</li>
             </ul>

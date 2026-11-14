@@ -1,6 +1,6 @@
 ---
 title: "Photo Downloader: Feature Summary"
-subtitle: "Version 0.1.4, November 2026"
+subtitle: "Version 0.1.5, November 2026"
 ---
 
 # Photo Downloader
