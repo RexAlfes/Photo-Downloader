@@ -3,31 +3,34 @@
 #
 #   linux/build.sh            debug build (Default mode)  -> bin/linux/PhotoDownloader
 #   linux/build.sh release    Release build (small)       -> bin/linux-release/PhotoDownloader
+#   linux/build.sh both       both, one after the other (like Run > Build many modes in Lazarus)
 #   linux/build.sh run        debug build, then start the program
 #   linux/build.sh release run
 #   linux/build.sh --no-git   build without pulling and pushing the build number
 #
 # The build number: PhotoDownloader.lpi holds the number of the NEXT build. lazbuild puts it into the
-# program and then counts it up by one itself (AutoIncrementBuild), like the Lazarus IDE. To keep the
-# number in step with the other computer this script first pulls from GitHub, and afterwards commits
-# only PhotoDownloader.lpi ("Built 0.1.3.N (Linux)") and pushes it (any of your own commits that were
-# not pushed yet go along). Only the BuildNr line changes in the committed file: the other lines
-# lazbuild rewrites (LCLWidgetType entries) are left as they were. Without network it warns and builds anyway.
+# program and then counts it up by one itself (AutoIncrementBuild), like the Lazarus IDE; with "both"
+# each build gets its own number (debug N, Release N+1). To keep the number in step with the other
+# computer this script first pulls from GitHub, and afterwards commits only PhotoDownloader.lpi
+# ("Built 0.1.3.N (Linux)") and pushes it (any of your own commits that were not pushed yet go along).
+# Only the BuildNr line changes in the committed file: the other lines lazbuild rewrites
+# (LCLWidgetType entries) are left as they were. Without network it warns and builds anyway.
 # Needs Lazarus 4.8 (lazbuild) and the GTK 2 development files: sudo apt install build-essential libgtk2.0-dev
 set -e
 cd "$(dirname "$0")/.."    # the project folder (this script lies in linux/)
 
-MODE=Default    # build mode: Default (debug information) or Release
+MODES=Default   # build modes, in order: Default (debug information) and/or Release
 RUN=0           # 1 = start the program after building
 SYNC=1          # 1 = pull before and push the build number after the build
 for A in "$@"; do
   case "$A" in
-    release|Release|--release) MODE=Release ;;
-    debug|default|Default) MODE=Default ;;
+    release|Release|--release) MODES=Release ;;
+    debug|default|Default) MODES=Default ;;
+    both|all|--both) MODES="Default Release" ;;
     run|--run) RUN=1 ;;
     --no-git|nogit|no-git) SYNC=0 ;;
-    -h|--help|help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
-    *) echo "Unknown option: $A (use release, debug, run or --no-git)"; exit 1 ;;
+    -h|--help|help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "Unknown option: $A (use release, debug, both, run or --no-git)"; exit 1 ;;
   esac
 done
 if [ "$SYNC" = 1 ] && ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -48,29 +51,12 @@ if ! command -v lazbuild >/dev/null 2>&1; then
   exit 1
 fi
 
-# the number this build gets (lazbuild counts the file up afterwards)
-BUILT=$(sed -n 's/.*<BuildNr Value="\([0-9]*\)".*/\1/p' "$LPI")
-if [ -z "$BUILT" ]; then
-  echo "No BuildNr found in $LPI"
-  exit 1
-fi
-NEXT=$((BUILT + 1))
-MINOR=$(sed -n 's/.*<MinorVersionNr Value="\([0-9]*\)".*/\1/p' "$LPI")
-REV=$(sed -n 's/.*<RevisionNr Value="\([0-9]*\)".*/\1/p' "$LPI")
-VER="0.${MINOR:-0}.${REV:-0}.$BUILT"
 CLEAN=0   # 1 = the project file had no changes of your own before the build
 if [ "$SYNC" = 1 ] && git diff --quiet HEAD -- "$LPI" 2>/dev/null; then CLEAN=1; fi
-echo "Building Photo Downloader $VER ($MODE, GTK 2) ..."
+VERS=""   # the versions built, for the commit message
+FIRST_OUT=""  # the program file of the first build (started with "run")
 
-if [ "$MODE" = Release ]; then
-  OUT=bin/linux-release/PhotoDownloader
-  set -- -B --build-mode=Release --ws=gtk2 "$LPI"
-else
-  OUT=bin/linux/PhotoDownloader
-  set -- -B --build-mode=Default --ws=gtk2 "$LPI"
-fi
-
-# the project file after the build: the next number (every compile counts, also a failed one); when it
+# the project file after a build: the next number (every compile counts, also a failed one); when it
 # had no changes of your own, the committed file with only the BuildNr line changed
 set_next() {
   if [ "$CLEAN" = 1 ]; then
@@ -82,32 +68,59 @@ set_next() {
 # sends the build number to GitHub
 push_number() {
   [ "$SYNC" = 1 ] || return 0
-  if git commit --quiet -m "Built $VER (Linux)" -- "$LPI" && git push --quiet; then
+  if git commit --quiet -m "Built $VERS (Linux)" -- "$LPI" && git push --quiet; then
     echo "Build number sent to GitHub (next build: $NEXT)."
   else
     echo "WARNING: the build number could not be sent to GitHub. Later: git push"
   fi
 }
 
-LOG=$(mktemp)    # the full compiler output, shown only when the build fails
-if lazbuild "$@" >"$LOG" 2>&1; then
-  grep -E 'lines compiled' "$LOG" | tail -n 1
-  rm -f "$LOG"
-  echo "Done: $OUT (version $VER)"
-  set_next
-  push_number
-else
+# builds one mode ($1); returns 1 when the build failed
+build_one() {
+  MODE=$1
+  # the number this build gets (lazbuild counts the file up afterwards)
+  BUILT=$(sed -n 's/.*<BuildNr Value="\([0-9]*\)".*/\1/p' "$LPI")
+  if [ -z "$BUILT" ]; then
+    echo "No BuildNr found in $LPI"
+    exit 1
+  fi
+  NEXT=$((BUILT + 1))
+  MINOR=$(sed -n 's/.*<MinorVersionNr Value="\([0-9]*\)".*/\1/p' "$LPI")
+  REV=$(sed -n 's/.*<RevisionNr Value="\([0-9]*\)".*/\1/p' "$LPI")
+  VER="0.${MINOR:-0}.${REV:-0}.$BUILT"
+  if [ -z "$VERS" ]; then VERS=$VER; else VERS="$VERS and $VER"; fi
+  echo "Building Photo Downloader $VER ($MODE, GTK 2) ..."
+  if [ "$MODE" = Release ]; then
+    OUT=bin/linux-release/PhotoDownloader
+  else
+    OUT=bin/linux/PhotoDownloader
+  fi
+  [ -n "$FIRST_OUT" ] || FIRST_OUT=$OUT
+  LOG=$(mktemp)    # the full compiler output, shown only when the build fails
+  if lazbuild -B --build-mode="$MODE" --ws=gtk2 "$LPI" >"$LOG" 2>&1; then
+    grep -E 'lines compiled' "$LOG" | tail -n 1
+    rm -f "$LOG"
+    echo "Done: $OUT (version $VER)"
+    set_next
+    return 0
+  fi
   grep -E 'Error|Fatal' "$LOG" | head -n 20
   if grep -q "Can't create" "$LOG"; then
     echo "The program file could not be written: close Photo Downloader and build again."
   fi
   echo "Build failed (full output: $LOG)."
   set_next
-  push_number
-  exit 1
-fi
+  return 1
+}
+
+FAILED=0
+for M in $MODES; do
+  if ! build_one "$M"; then FAILED=1; break; fi   # stop at the first failed build
+done
+push_number
+[ "$FAILED" = 0 ] || exit 1
 
 if [ "$RUN" = 1 ]; then
-  echo "Starting $OUT (messages appear in this terminal) ..."
-  exec "./$OUT"
+  echo "Starting $FIRST_OUT (messages appear in this terminal) ..."
+  exec "./$FIRST_OUT"
 fi
