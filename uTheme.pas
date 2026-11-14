@@ -333,6 +333,26 @@ begin
   if StartDark then Result := RGBToColor(110, 170, 255) else Result := clBlue;
 end;
 
+{$IFDEF LCLGTK2}
+{ Sets the window manager's hint for a dark or light title bar on a GTK window. }
+procedure SetTitleVariant(Win: PGdkWindow; Dark: Boolean);
+const
+  Variant: array[Boolean] of string = ('light', 'dark');  // value of the hint
+begin
+  if Win = nil then Exit;
+  gdk_property_change(Win, gdk_atom_intern('_GTK_THEME_VARIANT', False),
+    gdk_atom_intern('UTF8_STRING', False), 8, GDK_PROP_MODE_REPLACE,
+    Pguchar(PChar(Variant[Dark])), Length(Variant[Dark]));
+end;
+
+{ GTK "realize" signal: the window has just been created and is not on the screen yet, the moment the
+  window manager (Muffin in Cinnamon) still reads the hint; later changes it ignores. }
+procedure TitleBarRealized(Widget: PGtkWidget; Data: gpointer); cdecl;
+begin
+  SetTitleVariant(Widget^.window, ThemeDark);  // the theme in use
+end;
+{$ENDIF}
+
 procedure ApplyTitleBar(Form: TCustomForm; Dark: Boolean);
 {$IFDEF WINDOWS}
 type
@@ -346,8 +366,6 @@ var
   V: BOOL;  // V: dark or light
 {$ENDIF}
 {$IFDEF LCLGTK2}
-const
-  Variant: array[Boolean] of string = ('light', 'dark');  // value of the hint
 var
   W: PGtkWidget;  // W: the form's GTK window
 {$ENDIF}
@@ -355,12 +373,14 @@ begin
   {$IFDEF LCLGTK2}
   if (Form = nil) or not Form.HandleAllocated then Exit;
   W := PGtkWidget(Form.Handle);
-  // only a window that exists on the screen: realizing it early (while the form is being built) made GTK
-  // replace it later, losing the hint, and could crash; DoShow of the main window and the viewer calls this again
-  if W^.window = nil then Exit;
-  gdk_property_change(W^.window, gdk_atom_intern('_GTK_THEME_VARIANT', False),
-    gdk_atom_intern('UTF8_STRING', False), 8, GDK_PROP_MODE_REPLACE,
-    Pguchar(PChar(Variant[Dark])), Length(Variant[Dark]));  // the window manager redraws the title bar
+  // the window manager reads the hint when the window first appears: set it from GTK's "realize" signal,
+  // right before that (never realize the window early here: that made GTK replace it and could crash)
+  if g_object_get_data(PGObject(W), 'pd-title-bar') = nil then
+  begin
+    g_signal_connect_after(W, 'realize', TGCallback(@TitleBarRealized), nil);
+    g_object_set_data(PGObject(W), 'pd-title-bar', Pointer(1));  // connected once per window
+  end;
+  SetTitleVariant(W^.window, Dark);  // a window already on the screen (followed by window managers that watch it)
   {$ENDIF}
   {$IFDEF WINDOWS}
   if (Form = nil) or not Form.HandleAllocated then Exit;
