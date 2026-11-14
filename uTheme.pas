@@ -38,11 +38,15 @@ type
 var
   Th: TThemeColors;  // the colors in use (set by SetTheme)
   ThemeDark: Boolean = False;  // the dark colors are in use
-  StartDark: Boolean = False;  // menus, buttons and dialogs were made dark at program start (Windows)
+  StartDark: Boolean = False;  // menus, buttons and dialogs are dark in this run (chosen at program start)
 
 { Program start, before Application.Initialize: reads View > Theme from the settings file and, when it
   means dark, makes menus, buttons and dialogs dark for this run (Windows; see the unit header). }
 procedure StartTheme(const SettingsFile: string);
+{ Program start, right after Application.Initialize. Linux (GTK 2): when View > Theme differs from the
+  desktop's light or dark, uses the dark or light version of the desktop's GTK theme for this program
+  (Mint-Y and Mint-Y-Dark, for example), so menus, buttons and dialogs follow. Windows: nothing. }
+procedure StartThemeAfterInit;
 { Text colors for dialog windows: red for errors, gray for quiet notes, blue for links; lighter shades
   when the dialogs are dark (StartDark), each at least 4.5:1 on its background. }
 function DlgErrorText: TColor;
@@ -65,8 +69,15 @@ implementation
 
 uses
   {$IFDEF WINDOWS}Windows, Registry, uDarkStyleParams, uMetaDarkStyle, uDarkStyleSchemes,{$ENDIF}
-  {$IFDEF LCLGTK2}glib2, gdk2, gtk2,{$ENDIF}  // GTK 2: the window manager's dark title bar hint
+  {$IFDEF LCLGTK2}glib2, gdk2, gtk2,{$ENDIF}  // GTK 2: dark title bar hint, dark or light GTK theme
   LCLIntf, IniFiles;
+
+{$IFNDEF WINDOWS}
+var
+  StartMode: Integer = 0;  // View > Theme read at program start (0 system, 1 light, 2 dark)
+  GtkOverride: Boolean = False;  // Linux: another version of the desktop's GTK theme is in use
+  GtkSysDark: Boolean = False;  // Linux: the desktop's own GTK theme is dark (seen before any change)
+{$ENDIF}
 
 { The colors before themes existed. }
 procedure SetLight;
@@ -144,6 +155,7 @@ begin
   {$IFDEF WINDOWS}
   Result := StartDark;  // dark only when MetaDarkStyle made it so at start
   {$ELSE}
+  if GtkOverride then Exit(StartDark);  // the theme version chosen at start
   C := ColorToRGB(clWindow);
   Result := (Red(C) * 299 + Green(C) * 587 + Blue(C) * 114) div 1000 < 128;  // a dark window color
   {$ENDIF}
@@ -167,7 +179,8 @@ begin
     R.Free;
   end;
   {$ELSE}
-  Result := SystemDrawsDark;
+  if GtkOverride then Result := GtkSysDark  // the desktop's own theme, not the version this program uses
+  else Result := SystemDrawsDark;
   {$ENDIF}
 end;
 
@@ -204,6 +217,9 @@ begin
   except
     Mode := 0;  // unreadable: follow the system
   end;
+  {$IFNDEF WINDOWS}
+  StartMode := Mode;  // for StartThemeAfterInit
+  {$ENDIF}
   {$IFDEF WINDOWS}
   StartDark := (Mode = 2) or ((Mode <> 1) and SystemPrefersDark);
   if StartDark then
@@ -211,6 +227,92 @@ begin
     PreferredAppMode := pamForceDark;  // dark menus, buttons and dialogs for this run
     ApplyMetaDarkStyle(DefaultDark);  // before the first window exists
   end;  // light: nothing is changed, the program looks as without the package
+  {$ENDIF}
+end;
+
+{$IFDEF LCLGTK2}
+{ The name of the GTK theme in use (for example Mint-Y). }
+function GtkThemeName: string;
+var
+  P: Pgchar;  // P: the name, allocated by GTK
+begin
+  Result := '';
+  P := nil;
+  g_object_get(gtk_settings_get_default, 'gtk-theme-name', [@P, nil]);
+  if P <> nil then
+  begin
+    Result := StrPas(P);
+    g_free(P);
+  end;
+end;
+
+{ True when a GTK theme with GTK 2 files is installed under this name. }
+function GtkThemeExists(const Name: string): Boolean;
+var
+  Home: string;  // Home: the user's folder
+begin
+  Home := IncludeTrailingPathDelimiter(GetUserDir);
+  Result := (Name <> '') and (FileExists('/usr/share/themes/' + Name + '/gtk-2.0/gtkrc') or
+    FileExists(Home + '.themes/' + Name + '/gtk-2.0/gtkrc') or
+    FileExists(Home + '.local/share/themes/' + Name + '/gtk-2.0/gtkrc'));
+end;
+
+{ The dark (Dark = True) or light version of the GTK theme Name, or '' when none is installed. }
+function GtkThemeVariant(const Name: string; Dark: Boolean): string;
+var
+  C: array[0..6] of string;  // C: names to try, best first
+  Base: string;  // Base: Name without a dark ending
+  I: Integer;  // I: loop counter
+begin
+  Result := '';
+  if Dark then
+  begin
+    C[0] := Name + '-Dark';
+    C[1] := Name + '-dark';
+    C[2] := StringReplace(Name, 'Light', 'Dark', []);
+    C[3] := StringReplace(Name, 'light', 'dark', []);
+    C[4] := 'Mint-Y-Dark';  // Linux Mint
+    C[5] := 'Adwaita-dark';  // GNOME
+    C[6] := 'Mint-L-Dark';
+  end
+  else
+  begin
+    Base := Name;
+    if SameText(Copy(Base, Length(Base) - 4, 5), '-Dark') then Delete(Base, Length(Base) - 4, 5);
+    C[0] := Base;
+    C[1] := StringReplace(Name, 'Dark', 'Light', []);
+    C[2] := StringReplace(Name, 'dark', 'light', []);
+    C[3] := StringReplace(Name, 'Dark', '', []);
+    C[4] := 'Mint-Y';  // Linux Mint
+    C[5] := 'Adwaita';  // GNOME
+    C[6] := 'Mint-L';
+  end;
+  for I := 0 to High(C) do
+    if (C[I] <> Name) and GtkThemeExists(C[I]) then Exit(C[I]);
+end;
+{$ENDIF}
+
+procedure StartThemeAfterInit;
+{$IFDEF LCLGTK2}
+var
+  Want: Boolean;  // Want: dark wanted
+  V: string;  // V: the theme version to use
+{$ENDIF}
+begin
+  {$IFDEF LCLGTK2}
+  GtkSysDark := SystemDrawsDark or (Pos('dark', LowerCase(GtkThemeName)) > 0);  // the desktop's own theme
+  StartDark := GtkSysDark;
+  Want := (StartMode = 2) or ((StartMode = 0) and GtkSysDark);
+  if Want = GtkSysDark then Exit;  // the desktop already matches
+  V := GtkThemeVariant(GtkThemeName, Want);
+  if V = '' then Exit;  // no such version installed: the desktop's theme stays
+  gtk_settings_set_string_property(gtk_settings_get_default, 'gtk-theme-name', PChar(V), 'PhotoDownloader');  // this program only
+  GtkOverride := True;
+  StartDark := Want;
+  {$ELSE}
+  {$IFNDEF WINDOWS}
+  StartDark := SystemDrawsDark;  // other Linux widgetsets: the desktop decides
+  {$ENDIF}
   {$ENDIF}
 end;
 

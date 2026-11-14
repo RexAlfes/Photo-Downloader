@@ -644,7 +644,6 @@ begin
   else if Sender = miThemeDark then FS.ThemeMode := 2  // always dark
   else FS.ThemeMode := 0;  // follow the system
   SaveSettingsNow;  // remember it (a restart reads it)
-  {$IFDEF WINDOWS}
   // menus, buttons and dialogs were set at start: ask first, so the window does not change halfway
   // before a restart
   if ModeIsDark(TThemeMode(FS.ThemeMode)) <> StartDark then
@@ -656,7 +655,6 @@ begin
     SetStatus('The pictures use the new theme now; menus, buttons and dialogs follow at the next start.');
     Exit;
   end;
-  {$ENDIF}
   ApplyTheme;  // show it
 end;
 
@@ -683,10 +681,8 @@ begin
   if (FS.ThemeMode = 0) and (SystemPrefersDark <> FThemeWasDark) then  // the setting changed
   begin
     ApplyTheme;  // the pictures follow at once
-    {$IFDEF WINDOWS}
     if ThemeDark <> StartDark then
       SetStatus('The pictures use the new theme now; menus, buttons and dialogs follow at the next start.');
-    {$ENDIF}
   end;
 end;
 

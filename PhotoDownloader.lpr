@@ -66,6 +66,7 @@ begin
   if SingleInstanceWanted and ActivateRunningInstance then Halt(0);
   StartTheme(SettingsFileName);  // dark menus, buttons and dialogs (Windows) must be chosen before any window
   Application.Initialize;  // create the application object
+  StartThemeAfterInit;  // Linux: dark or light version of the GTK theme for this program
   {$IFDEF UNIX}
   LoadWindowIcon;  // window and taskbar icon on Linux
   {$ENDIF}
