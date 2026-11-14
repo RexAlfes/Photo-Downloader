@@ -31,8 +31,9 @@ The version is **major.minor.revision.build**. This release is `0.1.5.0` (revisi
 - `PhotoDownloader.0.1.5.0.Win64.exe` – Windows 64-bit (single file)
 - `PhotoDownloader.0.1.5.0.Win64.zip` – Windows 64-bit (zipped copy of the exe)
 - `PhotoDownloader.0.1.5.0.linux64.tar.gz` – Linux 64-bit (unpack, then run `PhotoDownloader`)
-- `User_Manual.0.1.5.docx`, `.odt` and `.md` – User Manual
-- `Plugin_Developer_Manual.0.1.5.docx`, `.odt` and `.md` – for writing plug-ins
+- `User_Manual.docx`, `.odt` and `.md` – User Manual (version 0.1.5)
+- `Plugin_Developer_Manual.docx`, `.odt` and `.md` – for writing plug-ins (version 0.1.5)
+- `Release_Notes_0.1.5.0.md` – these release notes
 
 ### Tested
 Windows 11 and Linux Mint 22.3 (Xfce and Cinnamon, GTK 2): every change above, in the program, by the user. The iPhone has not been tried with Import from Device.
