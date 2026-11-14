@@ -6,8 +6,8 @@
   calls come here: on GTK 2 they use the LCL's own message window (DefaultPromptDialog, the same one
   other widgetsets use), elsewhere the normal MessageDlg.
 
-  GTK's file windows (open, save, choose folder) show Cancel before Open/Save as well; OkFirst moves the
-  Open/Save button to the left when such a window appears. }
+  GTK's file windows (open, save, choose folder) show Cancel before Open/Save as well; OkFirst installs a
+  GTK hook that moves the Open/Save button to the left whenever such a window is shown. }
 unit uMsgDlg;
 
 {$mode objfpc}{$H+}
@@ -26,44 +26,78 @@ function MessageDlg(const aCaption, aMsg: string; DlgType: TMsgDlgType; Buttons:
 function MessageDlg(const aMsg: string; DlgType: TMsgDlgType; Buttons: TMsgDlgButtons;
   HelpCtx: Longint): TModalResult; overload;
 { A file window (TOpenDialog, TSaveDialog, TSelectDirectoryDialog) with Open/Save on the left of Cancel:
-  on GTK 2 it moves the button when the window appears (uses the dialog's OnShow); elsewhere nothing. }
+  on GTK 2 it makes sure the GTK hook that moves the button is installed; elsewhere nothing. }
 procedure OkFirst(D: TCommonDialog);
 
 implementation
 
 {$IFDEF LCLGTK2}
 uses
-  LCLType, LazStringUtils, Forms, glib2, gtk2;
+  SysUtils, LCLType, LazStringUtils, Forms, glib2, gtk2;
+
+const
+  ResponseOk = -5;  // GTK_RESPONSE_OK: Open or Save, as the LCL creates its file windows
+  ResponseAccept = -3;  // GTK_RESPONSE_ACCEPT: the same in file windows made by other code
+
+var
+  ShowHook: gulong = 0;  // the GTK emission hook on "show" (0 = not installed yet)
 
 type
-  { Receives OnShow of the file windows. }
-  TOkFirstHelper = class
-    procedure DialogShow(Sender: TObject);
+  { GTK keeps the response of a dialog button as object data "gtk-dialog-response-data". }
+  PResponseData = ^TResponseData;
+  TResponseData = record
+    ResponseId: gint;
   end;
 
+{ The response id of a dialog button (0 when it has none). }
+function ButtonResponse(W: PGtkWidget): gint;
 var
-  OkFirstHelper: TOkFirstHelper = nil;  // made on first use, freed at the end
-
-{ The GTK window exists now: move its last button (Open or Save; Cancel was added first) to the left. }
-procedure TOkFirstHelper.DialogShow(Sender: TObject);
-var
-  Dlg: PGtkDialog;  // Dlg: the GTK file window
-  Kids, P: PGList;  // Kids, P: the buttons of its button row
-  Last: PGtkWidget;  // Last: the last button
+  D: PResponseData;  // D: GTK's data of the button
 begin
-  if not (Sender is TCommonDialog) or (TCommonDialog(Sender).Handle = 0) then Exit;
-  Dlg := PGtkDialog(TCommonDialog(Sender).Handle);
-  if Dlg^.action_area = nil then Exit;
+  D := PResponseData(g_object_get_data(PGObject(W), 'gtk-dialog-response-data'));
+  if D = nil then Result := 0 else Result := D^.ResponseId;
+end;
+
+{ Moves the Open/Save button of a GTK file window to the left of its button row. Finds it by its
+  response, so calling it again changes nothing. With the environment variable PD_DEBUG_DIALOGS set,
+  it reports on the terminal what it found. }
+procedure OpenFirst(Dlg: PGtkDialog);
+var
+  Kids, P: PGList;  // Kids, P: the buttons of the button row
+  W, Btn: PGtkWidget;  // W: a button; Btn: the Open/Save button
+  Debug: Boolean;  // Debug: report on the terminal
+  N: Integer;  // N: buttons seen
+begin
+  if (Dlg = nil) or (Dlg^.action_area = nil) then Exit;
+  Debug := GetEnvironmentVariable('PD_DEBUG_DIALOGS') <> '';
   Kids := gtk_container_get_children(PGtkContainer(Dlg^.action_area));
-  Last := nil;
+  Btn := nil;
+  N := 0;
   P := Kids;
   while P <> nil do
   begin
-    Last := PGtkWidget(P^.data);
+    W := PGtkWidget(P^.data);
+    if Debug then WriteLn(StdErr, 'PD dialog button ', N, ': response ', ButtonResponse(W));
+    if (ButtonResponse(W) = ResponseOk) or (ButtonResponse(W) = ResponseAccept) then Btn := W;
+    Inc(N);
     P := P^.next;
   end;
-  if Last <> nil then gtk_box_reorder_child(PGtkBox(Dlg^.action_area), Last, 0);  // first = leftmost
+  if Btn <> nil then gtk_box_reorder_child(PGtkBox(Dlg^.action_area), Btn, 0);  // first = leftmost
+  if Debug then WriteLn(StdErr, 'PD dialog: ', N, ' buttons, Open/Save ', BoolToStr(Btn <> nil, 'moved to the left', 'not found'));
   g_list_free(Kids);
+end;
+
+{ GTK emission hook: called whenever a widget is shown; acts on file chooser windows only. }
+function ShowEmitted(ihint: PGSignalInvocationHint; n_param_values: guint; param_values: PGValue;
+  data: gpointer): gboolean; cdecl;
+var
+  Obj: gpointer;  // Obj: the widget being shown
+begin
+  Result := True;  // keep the hook
+  if n_param_values < 1 then Exit;
+  Obj := g_value_get_object(param_values);
+  if (Obj <> nil) and G_TYPE_CHECK_INSTANCE_TYPE(Obj, gtk_file_chooser_dialog_get_type) then
+    OpenFirst(PGtkDialog(Obj));
 end;
 
 const
@@ -140,8 +174,11 @@ procedure OkFirst(D: TCommonDialog);
 begin
   {$IFDEF LCLGTK2}
   if D = nil then Exit;
-  if OkFirstHelper = nil then OkFirstHelper := TOkFirstHelper.Create;
-  D.OnShow := @OkFirstHelper.DialogShow;
+  // a GTK hook on "show" for every file chooser window (installed once, after GTK is running); it does not
+  // depend on the dialog's OnShow, which did not move the button on the user's Linux computer
+  if ShowHook = 0 then
+    ShowHook := g_signal_add_emission_hook(g_signal_lookup('show', gtk_widget_get_type), 0,
+      @ShowEmitted, nil, nil);
   {$ELSE}
   if D = nil then Exit;  // Windows: Open/Save is on the left already
   {$ENDIF}
@@ -157,8 +194,4 @@ begin
   {$ENDIF}
 end;
 
-{$IFDEF LCLGTK2}
-finalization
-  OkFirstHelper.Free;
-{$ENDIF}
 end.
