@@ -12,7 +12,7 @@ Status: built and tested on Linux Mint 22.3 (64-bit) with the LCL GTK 2 widgetse
 ## Build
 The easiest way is the build script, run in the project folder:
 ```
-linux/build.sh              # debug build -> bin/linux/PhotoDownloader
+linux/build.sh              # debug build -> bin/linux-debug/PhotoDownloader
 linux/build.sh release      # Release build (small) -> bin/linux-release/PhotoDownloader
 linux/build.sh both         # debug and Release builds, one after the other, same build number
 linux/build.sh run          # build, then start the program (messages appear in the terminal)
@@ -27,7 +27,7 @@ or, to force a full rebuild:
 ```
 lazbuild -B --ws=gtk2 PhotoDownloader.lpi
 ```
-**Both modes at once in the Lazarus IDE:** Run > Build many modes (Compile many Modes) builds every ticked mode, the active one first. Its choice is kept in the personal session file `PhotoDownloader.lps` (not in Git); when nothing is ticked yet, all modes are ticked. Lazarus does not change the build number (AutoIncrementBuild is off), so both programs carry the number in the project file; after code changes build with `linux/build.sh` (or `windows\build.ps1`) so that the number goes up. For files you publish, use the Release build mode (no debug information, a much smaller program in `bin/linux-release/`): `lazbuild -B --build-mode=Release --ws=gtk2 PhotoDownloader.lpi`. `--ws=gtk2` is recommended and is what the GitHub check builds (lazbuild also uses GTK 2 when no widgetset is given). In the Lazarus IDE the default widgetset on Linux is normally GTK 2 as well. The program is written to `bin/linux/PhotoDownloader`. There is one project file for both systems: it does not name a target system or processor, so it builds for the system you are on. Build on Linux itself: cross compiling from Windows to Linux does not work with the current Lazarus and Free Pascal. Tested on Linux Mint. `cthreads` is already the first unit in the project file under `UNIX`, which the decoder thread needs.
+**Both modes at once in the Lazarus IDE:** Run > Build many modes (Compile many Modes) builds every ticked mode, the active one first. Its choice is kept in the personal session file `PhotoDownloader.lps` (not in Git); when nothing is ticked yet, all modes are ticked. Lazarus does not change the build number (AutoIncrementBuild is off), so both programs carry the number in the project file; after code changes build with `linux/build.sh` (or `windows\build.ps1`) so that the number goes up. For files you publish, use the Release build mode (no debug information, a much smaller program in `bin/linux-release/`): `lazbuild -B --build-mode=Release --ws=gtk2 PhotoDownloader.lpi`. `--ws=gtk2` is recommended and is what the GitHub check builds (lazbuild also uses GTK 2 when no widgetset is given). In the Lazarus IDE the default widgetset on Linux is normally GTK 2 as well. The debug program is written to `bin/linux-debug/PhotoDownloader`, the Release program to `bin/linux-release/PhotoDownloader` (until 2026-11-14 the debug mode was called Default and wrote to `bin/linux/`; that folder can be deleted, and a menu entry made with `install-desktop.sh` from there should be made again). There is one project file for both systems: it does not name a target system or processor, so it builds for the system you are on. Build on Linux itself: cross compiling from Windows to Linux does not work with the current Lazarus and Free Pascal. Tested on Linux Mint. `cthreads` is already the first unit in the project file under `UNIX`, which the decoder thread needs.
 
 ## Differences from Windows
 - Settings: `~/.config/<application name>/PhotoDownloader.ini`; thumbnail cache in `$XDG_CACHE_HOME` or `~/.cache/PhotoDownloader/thumbcache`, EXIF cache `exifcache.txt` beside it.
@@ -60,7 +60,7 @@ cp libexample_plugin.so "$HOME/.config/Photo Downloader/plugins/"
 `-Cg` makes position-independent code, which a shared library needs. The plug-in folder is the `plugins` folder next to the settings file (File > Status shows where the settings file is; on Linux it is normally `~/.config/Photo Downloader/`), or a `plugins` folder next to the program. See `docs/Plugin_Developer_Manual.md`.
 
 ## Linux test checklist (features added since the last Linux test, 0.1.0.58)
-Build with `lazbuild -B --ws=gtk2 PhotoDownloader.lpi`, start `bin/linux/PhotoDownloader` from a terminal (messages appear there), and turn on Help > Logging.
+Build with `lazbuild -B --ws=gtk2 PhotoDownloader.lpi`, start `bin/linux-debug/PhotoDownloader` from a terminal (messages appear there), and turn on Help > Logging.
 
 | # | Test | Expected |
 |---|---|---|

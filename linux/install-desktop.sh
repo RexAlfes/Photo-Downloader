@@ -51,7 +51,7 @@ if [ "$1" = "--remove" ]; then
   RM_EXE="$2"                                               # program file whose icon is to be cleared
   if [ -z "$RM_EXE" ] || [ "$RM_EXE" = "--no-file-icon" ]; then
     # no path given: look in the same places as for the install
-    for C in "$HERE/PhotoDownloader" "$HERE/../bin/linux/PhotoDownloader" "$HERE/../PhotoDownloader"; do
+    for C in "$HERE/PhotoDownloader" "$HERE/../bin/linux-debug/PhotoDownloader" "$HERE/../bin/linux-release/PhotoDownloader" "$HERE/../bin/linux/PhotoDownloader" "$HERE/../PhotoDownloader"; do
       if [ -e "$C" ]; then RM_EXE="$C"; break; fi
     done
   fi
@@ -73,7 +73,7 @@ fi
 EXE="$1"                                                    # first argument = path of the program
 if [ -z "$EXE" ] || [ "$EXE" = "--no-file-icon" ]; then
   EXE=""
-  for C in "$HERE/PhotoDownloader" "$HERE/../bin/linux/PhotoDownloader" "$HERE/../PhotoDownloader"; do
+  for C in "$HERE/PhotoDownloader" "$HERE/../bin/linux-debug/PhotoDownloader" "$HERE/../bin/linux-release/PhotoDownloader" "$HERE/../bin/linux/PhotoDownloader" "$HERE/../PhotoDownloader"; do
     if [ -x "$C" ]; then EXE="$C"; break; fi                # first executable found
   done
 fi

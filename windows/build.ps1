@@ -3,7 +3,7 @@
 
     windows\build.ps1                 Release and debug builds, with the same build number
     windows\build.ps1 -Mode Release   Release build only (small)  -> bin\win64-release\PhotoDownloader.exe
-    windows\build.ps1 -Mode Default   debug build only            -> bin\win64\PhotoDownloader.exe
+    windows\build.ps1 -Mode Debug     debug build only            -> bin\win64-debug\PhotoDownloader.exe
     windows\build.ps1 -NoGit          build without pulling and pushing the build number
 
   The build number: one number per version of the program code. build-stamp.txt holds the number and a
@@ -16,7 +16,7 @@
   Linux: linux/build.sh (computes the same fingerprint).
 #>
 param(
-  [ValidateSet('Both', 'Release', 'Default')] [string]$Mode = 'Both',  # which build modes
+  [ValidateSet('Both', 'Release', 'Debug', 'Default')] [string]$Mode = 'Both',  # which build modes (Default = Debug, the old name)
   [switch]$NoGit  # no pull before and no push after
 )
 $ErrorActionPreference = 'Stop'
@@ -82,7 +82,7 @@ $minor = [regex]::Match($lpiText, '<MinorVersionNr Value="(\d+)"/>').Groups[1].V
 $rev = [regex]::Match($lpiText, '<RevisionNr Value="(\d+)"/>').Groups[1].Value
 $ver = "0.$minor.$rev.$built"
 
-$modes = switch ($Mode) { 'Both' { @('Release', 'Default') } default { @($Mode) } }
+$modes = switch ($Mode) { 'Both' { @('Release', 'Debug') } 'Default' { @('Debug') } default { @($Mode) } }
 $failed = $false
 foreach ($m in $modes) {
   Write-Host "Building Photo Downloader $ver ($m) ..."

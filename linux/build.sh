@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds Photo Downloader on Linux from the command line (GTK 2 widgetset).
 #
-#   linux/build.sh            debug build (Default mode)  -> bin/linux/PhotoDownloader
+#   linux/build.sh            debug build (Debug mode)    -> bin/linux-debug/PhotoDownloader
 #   linux/build.sh release    Release build (small)       -> bin/linux-release/PhotoDownloader
 #   linux/build.sh both       both, one after the other, with the same build number
 #   linux/build.sh run        debug build, then start the program
@@ -21,14 +21,14 @@
 set -e
 cd "$(dirname "$0")/.."    # the project folder (this script lies in linux/)
 
-MODES=Default   # build modes, in order: Default (debug information) and/or Release
+MODES=Debug     # build modes, in order: Debug (debug information) and/or Release
 RUN=0           # 1 = start the program after building
 SYNC=1          # 1 = pull before and push the build number after the build
 for A in "$@"; do
   case "$A" in
     release|Release|--release) MODES=Release ;;
-    debug|default|Default) MODES=Default ;;
-    both|all|--both) MODES="Default Release" ;;
+    debug|Debug|default|Default) MODES=Debug ;;
+    both|all|--both) MODES="Debug Release" ;;
     run|--run) RUN=1 ;;
     --no-git|nogit|no-git) SYNC=0 ;;
     -h|--help|help) sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
@@ -95,7 +95,7 @@ build_one() {
   if [ "$MODE" = Release ]; then
     OUT=bin/linux-release/PhotoDownloader
   else
-    OUT=bin/linux/PhotoDownloader
+    OUT=bin/linux-debug/PhotoDownloader
   fi
   [ -n "$FIRST_OUT" ] || FIRST_OUT=$OUT
   LOG=$(mktemp)    # the full compiler output, shown only when the build fails

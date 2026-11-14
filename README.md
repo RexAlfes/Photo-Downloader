@@ -41,7 +41,7 @@ Open `PhotoDownloader.lpi` in Lazarus 4.8 and press F9. The same project file bu
 
 Build on the system you want the program for: cross compiling does not work with the current Lazarus and Free Pascal.
 
-**Build modes.** *Default* (used by F9 and plain `lazbuild`) includes debug information for finding errors: the exe is about 30 MB, in `bin/<system>/`. *Release* leaves the debug information out and strips symbols: about 4 MB, in `bin/<system>-release/`. Use it for the files you publish:
+**Build modes.** *Debug* (used by F9 and plain `lazbuild`) includes debug information for finding errors: the exe is about 30 MB, in `bin/<system>-debug/` (`bin/win64-debug/`, `bin/linux-debug/`). *Release* leaves the debug information out and strips symbols: about 4 MB, in `bin/<system>-release/`. Use it for the files you publish:
 
     lazbuild -B --build-mode=Release PhotoDownloader.lpi                (Windows)
     lazbuild -B --build-mode=Release --ws=gtk2 PhotoDownloader.lpi      (Linux)

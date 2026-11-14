@@ -20,7 +20,7 @@
       <AutoIncrementBuild Value="False"/>
       <MinorVersionNr Value="1"/>
       <RevisionNr Value="4"/>
-      <BuildNr Value="49"/>
+      <BuildNr Value="50"/>
       <Attributes pvaPreRelease="True"/>
       <StringTable FileDescription="Photo Downloader" ProductName="Photo Downloader"/>
     </VersionInfo>
@@ -62,7 +62,7 @@
       <Macro39 Name="LCLWidgetType" Value="gtk2"/>
     </MacroValues>
     <BuildModes>
-      <Item Name="Default" Default="True"/>
+      <Item Name="Debug" Default="True"/>
       <Item Name="Release">
         <MacroValues Count="4">
           <Macro15 Name="LCLWidgetType" Value="gtk2"/>
@@ -248,12 +248,12 @@
   <CompilerOptions>
     <Version Value="11"/>
     <Target>
-      <Filename Value="bin/$(TargetOS)/PhotoDownloader"/>
+      <Filename Value="bin/$(TargetOS)-debug/PhotoDownloader"/>
     </Target>
     <SearchPaths>
       <IncludeFiles Value="$(ProjOutDir);third_party/XelHeic;third_party/metadarkstyle"/>
       <OtherUnitFiles Value="third_party/XelHeic;third_party/metadarkstyle"/>
-      <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)"/>
+      <UnitOutputDirectory Value="lib/$(TargetCPU)-$(TargetOS)-debug"/>
     </SearchPaths>
     <CodeGeneration>
       <SmartLinkUnit Value="True"/>
