@@ -70,6 +70,8 @@ Each picture card shows its number, file name and size, the date and time it was
 
 **Date list.** Selecting pictures highlights their dates in the list. Clicking dates selects all pictures of those dates. If a highlighted date is out of sight, the list scrolls to it. Hide or show the list with View > Image Date Selector (Ctrl+Tab).
 
+**Light or dark.** View > Theme offers **Follow Windows** (the default; on Linux **Follow System**), **Light** and **Dark**. Follow Windows uses the app mode chosen in Windows Settings > Personalization > Colors and changes within a few seconds when you change it there. Dark colors the picture area, the date list, the window background and, on Windows 10 and 11, the title bar; every text keeps a contrast of at least 4.5:1. Menus, buttons and dialog windows keep the Windows look (they stay light). On Linux, a dark desktop theme already makes the whole window dark, and the picture area follows it.
+
 ## 3. Quick start: your first download
 
 1. Start the program. In the **Job Code** window, type a short name for this shoot, for example `Smith Wedding`, and enter the folder to load. Click **OK**.
@@ -392,7 +394,7 @@ A **profile** is a saved set of preferences – useful if you use several camera
 - A profile holds all preferences, including the **plug-ins**: which are switched on, their order, and the values entered in a plug-in's window (with the download path it set). Loading a profile switches the plug-ins on or off as saved; a plug-in library that is missing on this computer is switched off with a message.
 - With "Prompt for user profile at start-up", a list appears each time the program starts.
 - **There is always a profile in use.** When no profile is chosen at start-up (the list is closed without a choice, or the prompt is off and no profile is in use or its file was deleted), Photo Downloader uses the profile **Default**. If there is no Default profile yet, your current settings are saved as Default.
-- **Unsaved changes.** When you exit, load another profile or start a new one, after changing settings that a profile keeps, Photo Downloader asks whether to save the changes to the profile in use: **Yes** saves them, **No** drops them (the profile's saved settings come back), **Cancel** keeps the program open. Not counted as changes: the last source folder, the job code and job code history, the next sequence number, the view options (list or cards, thumbnail size, Fit to Window, shown files and date list) and logging. The automatic sequence's exit step closes the program without asking.
+- **Unsaved changes.** When you exit, load another profile or start a new one, after changing settings that a profile keeps, Photo Downloader asks whether to save the changes to the profile in use: **Yes** saves them, **No** drops them (the profile's saved settings come back), **Cancel** keeps the program open. Not counted as changes: the last source folder, the job code and job code history, the next sequence number, the view options (list or cards, thumbnail size, Fit to Window, shown files, date list and theme) and logging. The automatic sequence's exit step closes the program without asking.
 - File > **Export Settings** saves a copy of your settings to a file you choose.
 
 ## 14. Choosing file types

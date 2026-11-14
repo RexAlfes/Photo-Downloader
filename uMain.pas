@@ -8,7 +8,8 @@ uses
   Classes, SysUtils, Contnrs, Math, Forms, Controls, Graphics, Dialogs, Menus,
   ExtCtrls, StdCtrls, ComCtrls, LCLType, LCLIntf, LazFileUtils, IniFiles,
   uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uLrCat, uSingle, uRotate, uSafeDel, uSplash, uPlugins, uExtPlugin, uIccEmbed, uJpegDpi,
-  uDevices, uDeviceDlg;  // phones and cameras by USB: Shell access and the import window
+  uDevices, uDeviceDlg,  // phones and cameras by USB: Shell access and the import window
+  uTheme;  // light and dark colors
 
 type
   { Which files a download takes: dsAuto = the selected ones, or all when nothing is selected (automation);
@@ -45,6 +46,9 @@ type
     FLrOutDir: string;  // folder last chosen for the JPG files made from .lrprev previews
     miPopView, miPopLocation, miPopDestLoc, miPopProps, miPopDownload, miPopDelete: TMenuItem;  // pop-up menu items
     miPopShowDown, miPopShowDup, miPopList, miPopSmall, miPopMedium, miPopLarge, miPopFit: TMenuItem;  // pop-up copies of the View menu items
+    miThemeSys, miThemeLight, miThemeDark: TMenuItem;  // View > Theme choices
+    FThemeTimer: TTimer;  // looks for a change of the system's light/dark setting
+    FThemeWasDark: Boolean;  // the system setting last seen
     miAuto, miPlugins, miEject, miShowDown, miShowDup, miList, miSmall, miMedium, miLarge, miFit, miDateSel, miLogging: TMenuItem;  // menu items that are checked or switched
     pnlLeft, pnlStatus, pnlButtons: TPanel;  // left panel, status panel and button panel
     lblDate, lblStatus: TLabel;  // labels for the date list and the status
@@ -67,6 +71,9 @@ type
     procedure SetViewMode(M: Integer);
     procedure SetThumbPreset(Size: Integer);
     procedure UpdateViewChecks;
+    procedure ApplyTheme;  // colors of the theme in the window, the grid and the title bar
+    procedure ThemeClick(Sender: TObject);  // View > Theme: Follow system / Light / Dark
+    procedure ThemeTimerTick(Sender: TObject);  // follows a change of the system setting
     procedure ThumbSizeChanged(Sender: TObject);
     procedure SetStatus(const S: string);
     procedure UpdateCaption;
@@ -237,6 +244,9 @@ begin
   FTimer := TTimer.Create(Self);  // create the start-up timer
   FTimer.Interval := 150;  // fire after 150 ms
   FTimer.OnTimer := @StartupTimer;  // start-up work
+  FThemeTimer := TTimer.Create(Self);  // follows the system's light/dark setting
+  FThemeTimer.Interval := 2000;  // a look every 2 seconds (one registry value)
+  FThemeTimer.OnTimer := @ThemeTimerTick;
 end;
 
 { Frees the lists and the settings. }
@@ -307,7 +317,7 @@ end;
 procedure TMainForm.BuildMenu;
 var
   MM: TMainMenu;  // MM: the main menu
-  MFile, MEdit, MView, MHelp, Cam: TMenuItem;  // menu items that are used below
+  MFile, MEdit, MView, MHelp, Cam, MTheme: TMenuItem;  // menu items that are used below
 begin
   MM := TMainMenu.Create(Self);  // create the main menu
   Menu := MM;  // attach it to the form
@@ -363,6 +373,13 @@ begin
     ShortCut(VK_F, [ssCtrl]));
   AddMenu(MView, '-', nil, 0);  // separator
   miDateSel := AddMenu(MView, 'Image Date Selector', @DateSelClick, ShortCut(VK_TAB, [ssCtrl]));  // show or hide the date list
+  AddMenu(MView, '-', nil, 0);  // separator
+  MTheme := AddMenu(MView, 'Theme', nil, 0);  // light or dark colors
+  miThemeSys := AddMenu(MTheme, {$IFDEF WINDOWS}'Follow Windows'{$ELSE}'Follow System'{$ENDIF}, @ThemeClick, 0);  // the system's light/dark setting
+  miThemeLight := AddMenu(MTheme, 'Light', @ThemeClick, 0);  // always light
+  miThemeDark := AddMenu(MTheme, 'Dark', @ThemeClick, 0);  // always dark
+  miThemeSys.RadioItem := True; miThemeLight.RadioItem := True; miThemeDark.RadioItem := True;  // one of the three
+  miThemeSys.GroupIndex := 7; miThemeLight.GroupIndex := 7; miThemeDark.GroupIndex := 7;
 
   MHelp := AddMenu(MM.Items, '&Help', nil, 0);  // Help menu
   AddMenu(MHelp, 'Contents', @HelpContentsClick, 0);  // help contents
@@ -587,6 +604,53 @@ begin
   miPopFit.Checked := Cards and FS.FitWindow;
 end;
 
+{ Applies the theme (View > Theme) to the window, the date list, the grid and the title bar. Menus and
+  buttons keep the system's look. }
+procedure TMainForm.ApplyTheme;
+begin
+  SetTheme(TThemeMode(FS.ThemeMode));  // pick the colors
+  Color := Th.Panel;  // window background
+  pnlLeft.Color := Th.Panel;  // date list panel
+  pnlStatus.Color := Th.Panel;  // status bar
+  pnlButtons.Color := Th.Panel;  // button panel
+  lblDate.Font.Color := Th.PanelText;  // date list heading
+  lblStatus.Font.Color := Th.PanelText;  // status text
+  if ThemeDark then
+  begin
+    lstDates.Color := Th.Back;  // dark date list
+    lstDates.Font.Color := Th.Text;
+  end
+  else
+  begin
+    lstDates.Color := clDefault;  // the system's list colors
+    lstDates.Font.Color := clDefault;
+  end;
+  FView.Color := Th.Back;  // grid background
+  FView.Invalidate;  // draw the cards again
+  ApplyTitleBar(Self, ThemeDark);  // dark title bar on Windows
+  miThemeSys.Checked := FS.ThemeMode = 0;  // mark the choice
+  miThemeLight.Checked := FS.ThemeMode = 1;
+  miThemeDark.Checked := FS.ThemeMode = 2;
+  FThemeWasDark := SystemPrefersDark;  // the system setting now
+  FThemeTimer.Enabled := FS.ThemeMode = 0;  // only following the system needs a look now and then
+end;
+
+{ View > Theme: Follow system, Light or Dark. }
+procedure TMainForm.ThemeClick(Sender: TObject);
+begin
+  if Sender = miThemeLight then FS.ThemeMode := 1  // always light
+  else if Sender = miThemeDark then FS.ThemeMode := 2  // always dark
+  else FS.ThemeMode := 0;  // follow the system
+  ApplyTheme;  // show it
+  SaveSettingsNow;  // remember it
+end;
+
+{ Follows the system: when its light/dark setting changed, the colors change too. }
+procedure TMainForm.ThemeTimerTick(Sender: TObject);
+begin
+  if (FS.ThemeMode = 0) and (SystemPrefersDark <> FThemeWasDark) then ApplyTheme;  // the setting changed
+end;
+
 { Window width (client area) needed for Cols thumbnail columns. The grid loses the width of its
   vertical scroll bar and, on the left, the date list and its splitter. }
 function ThumbClientWidth(View: TPhotoView; PaneW: Integer; Cols: Integer): Integer;
@@ -672,6 +736,7 @@ begin
   pnlLeft.Visible := FS.ShowDateSelector;  // show or hide the date list
   splLeft.Visible := FS.ShowDateSelector;  // show or hide the splitter
   SetViewMode(FS.ViewMode);  // apply the view mode
+  ApplyTheme;  // light or dark colors
   btnCustom.Visible := FS.CustomEnabled;  // show the custom button
   btnCustom.Caption := FS.CustomCaption;  // its caption
   UpdateMenus;  // update the menus

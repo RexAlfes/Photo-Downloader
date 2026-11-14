@@ -5,7 +5,7 @@ unit uPhotoView;
 interface
 
 uses
-  Classes, SysUtils, Math, Types, Controls, Graphics, StdCtrls, ExtCtrls, Forms, LCLType, uItems;
+  Classes, SysUtils, Math, Types, Controls, Graphics, StdCtrls, ExtCtrls, Forms, LCLType, uItems, uTheme;
 
 const
   MinThumbSize = 64;  // smallest thumbnail box in pixels (the Small preset)
@@ -98,16 +98,6 @@ type
 
 implementation
 
-const
-  ColNormal = $00EBEBEF;      // BGR of RGB(239,235,235)
-  ColProblem = $006060FF;     // RGB(255,96,96)
-  ColSelected = $00FAD7BE;    // RGB(190,215,250)
-  ColSelProblem = $009664EB;  // RGB(235,100,150)
-  ColDownloaded = $00C8C8C8;  // RGB(200,200,200): already downloaded
-  ColSelDownloaded = $00CDB4A0;  // RGB(160,180,205)
-  ColDuplicate = $00AAECFF;     // RGB(255,236,170): duplicate file (amber)
-  ColSelDuplicate = $008CCDEB;  // RGB(235,205,140): selected duplicate file
-
 { Creates the grid: item list, scroll bar and the timer for postponed thumbnails. }
 constructor TPhotoView.Create(AOwner: TComponent);
 begin
@@ -121,7 +111,7 @@ begin
   FLineH := 15;  // default text line height
   FSortCol := -1;  // no sort column
   TabStop := True;  // the control can take the keyboard focus
-  Color := clWindow;  // white background
+  Color := Th.Back;  // background of the theme (uTheme)
   ControlStyle := ControlStyle + [csOpaque];   // paint covers everything; avoids flicker
   FScroll := TScrollBar.Create(Self);  // scroll bar
   FScroll.Parent := Self;  // place it inside the grid
@@ -510,8 +500,8 @@ begin
     end;
   end;
   C.Brush.Style := bsSolid;  // restore the fill
-  C.Font.Color := clBlack;  // restore the text color
-  C.Pen.Color := clGray;  // restore the outline color
+  C.Font.Color := uTheme.Th.Text;  // restore the text color
+  C.Pen.Color := uTheme.Th.Frame;  // restore the outline color
 end;
 
 { Draws the tile of a scan item (a whole scan folder): a stack of three photo frames in blue, the word
@@ -543,8 +533,8 @@ begin
   if Item.Members <> nil then Txt := IntToStr(Item.Members.Count) + ' files' else Txt := '';
   C.TextOut(X + (W - C.TextWidth(Txt)) div 2, Y + H - C.TextHeight(Txt) - 2, Txt);
   C.Brush.Style := bsSolid;  // restore the fill
-  C.Font.Color := clBlack;  // restore the text color
-  C.Pen.Color := clGray;  // restore the outline color
+  C.Font.Color := Th.Text;  // restore the text color
+  C.Pen.Color := Th.Frame;  // restore the outline color
 end;
 
 { Draws the tile of a file that is no picture, video or audio (listed in a folder copied whole): a light
@@ -573,8 +563,8 @@ begin
   C.Font.Color := $00505050;  // dark gray text
   C.TextOut(PX + (PW - C.TextWidth(Ext)) div 2, PY + (PH - C.TextHeight(Ext)) div 2, Ext);  // extension in the middle
   C.Brush.Style := bsSolid;  // restore the fill
-  C.Font.Color := clBlack;  // restore the text color
-  C.Pen.Color := clGray;  // restore the outline color
+  C.Font.Color := Th.Text;  // restore the text color
+  C.Pen.Color := Th.Frame;  // restore the outline color
 end;
 
 { Draws the default tile of an audio file: a dark tile with a music note, the extension and the size. }
@@ -604,8 +594,8 @@ begin
   Txt := Item.SizeText;  // file size
   C.TextOut(X + W - C.TextWidth(Txt) - 4, Y + H - C.TextHeight(Txt) - 4, Txt);  // size, bottom right
   C.Brush.Style := bsSolid;  // restore the fill
-  C.Font.Color := clBlack;  // restore the text color
-  C.Pen.Color := clGray;  // restore the outline color
+  C.Font.Color := Th.Text;  // restore the text color
+  C.Pen.Color := Th.Frame;  // restore the outline color
 end;
 
 { Draws a picture's thumbnail (loading it if allowed) or a gray placeholder with its extension. }
@@ -647,7 +637,7 @@ begin
       Canvas.StretchDraw(Rect(X, Y, X + W, Y + H), Item.Thumb);  // draw the thumbnail
       // thin frame so an almost white photo is still recognizable as a thumbnail
       Canvas.Brush.Style := bsClear;  // no fill for the frame
-      Canvas.Pen.Color := clGray;  // gray frame
+      Canvas.Pen.Color := Th.Frame;  // thin frame
       Canvas.Rectangle(X - 1, Y - 1, X + W + 1, Y + H + 1);  // draw the frame
       Canvas.Brush.Style := bsSolid;  // restore the fill
       if Item.IsVideo then DrawVideoMark(Canvas, Item, X, Y, W, H, False);  // play mark and length on the frame
@@ -664,8 +654,8 @@ begin
   else
   begin
     // placeholder for raw files / unreadable images
-    Canvas.Brush.Color := $00D2D2D2;       // gray: no preview available (or not loaded yet)
-    Canvas.Pen.Color := clGray;  // gray outline
+    Canvas.Brush.Color := Th.Placeholder;  // gray: no preview available (or not loaded yet)
+    Canvas.Pen.Color := Th.Frame;  // outline
     Canvas.Rectangle(X, Y, X + FThumbBox * 3 div 4, Y + FThumbBox * 2 div 3);  // draw the placeholder rectangle
     if Item.ThumbTried then  // rendering was tried and failed: cross out the box
     begin
@@ -676,10 +666,10 @@ begin
       Canvas.MoveTo(X + FThumbBox * 3 div 4 - 1, Y + 1);  // top right corner
       Canvas.LineTo(X + 1, Y + FThumbBox * 2 div 3 - 1);  // to the bottom left corner
       Canvas.Pen.Width := 1;  // restore the pen width
-      Canvas.Pen.Color := clGray;  // restore the pen color
+      Canvas.Pen.Color := Th.Frame;  // restore the pen color
     end;
     Canvas.Brush.Style := bsClear;  // no fill for the text
-    Canvas.Font.Color := clBlack;  // black text
+    Canvas.Font.Color := Th.Text;  // text of the theme
     Canvas.TextOut(X + 4, Y + 4, UpperCase(Copy(ExtractFileExt(Item.FileName), 2, 6)));  // show the file extension
     Canvas.Brush.Style := bsSolid;  // restore the fill
   end;
@@ -733,18 +723,18 @@ var
 begin
   Inner := Rect(R.Left, R.Top, R.Right - 1, R.Bottom - 1);  // area inside the card
   if Item.IsProblem then  // picture has a problem
-    if Item.Selected then Bg := ColSelProblem else Bg := ColProblem  // choose the problem color
+    if Item.Selected then Bg := Th.SelProblem else Bg := Th.Problem  // choose the problem color
   else if Item.Status = isDuplicate then  // duplicate of another file
-    if Item.Selected then Bg := ColSelDuplicate else Bg := ColDuplicate  // choose the duplicate color
+    if Item.Selected then Bg := Th.SelDuplicate else Bg := Th.Duplicate  // choose the duplicate color
   else if Item.Status = isDownloaded then  // already downloaded
-    if Item.Selected then Bg := ColSelDownloaded else Bg := ColDownloaded  // choose the downloaded color
+    if Item.Selected then Bg := Th.SelDownloaded else Bg := Th.Downloaded  // choose the downloaded color
   else
-    if Item.Selected then Bg := ColSelected else Bg := ColNormal;  // choose the normal color
+    if Item.Selected then Bg := Th.Selected else Bg := Th.Normal;  // choose the normal color
   Canvas.Brush.Style := bsSolid;  // solid fill
   Canvas.Brush.Color := Bg;  // fill color
   Canvas.Pen.Color := Bg;  // outline color
   Canvas.FillRect(Inner);  // paint the background
-  Canvas.Font.Color := clBlack;  // black text
+  Canvas.Font.Color := Th.Text;  // text of the theme
 
   Line1 := Format('%d) %s (%s)', [Item.Index, Item.FileName, Item.SizeText]);  // name, number and size
   Line2 := FormatDateTime('mm"/"dd"/"yyyy hh":"nn":"ss', Item.CaptureTime);  // capture date and time
@@ -775,7 +765,7 @@ begin
     DrawThumb(Item, TX, TY);  // draw the thumbnail
     Canvas.Brush.Color := Bg;  // restore the card colors
     Canvas.Pen.Color := Bg;  // restore the card colors
-    Canvas.Font.Color := clBlack;  // black text
+    Canvas.Font.Color := Th.Text;  // text of the theme
     MaxW := Inner.Right - 2;  // right limit of the text
     Y := TY;  // first text line position
     Line1 := FitName(Format('%d) ', [Item.Index]), ChangeFileExt(Item.FileName, ''), '',
@@ -809,20 +799,20 @@ var
   I, Right, TW, AX, AY: Integer;  // I: column, Right: right edge of the heading, TW: text width, AX and AY: sort arrow position
 begin
   Canvas.Brush.Style := bsSolid;  // solid fill
-  Canvas.Brush.Color := clBtnFace;  // header color
-  Canvas.Pen.Color := clBtnFace;  // header outline color
+  Canvas.Brush.Color := Th.Header;  // header color
+  Canvas.Pen.Color := Th.Header;  // header outline color
   Canvas.FillRect(Rect(0, 0, ClientWidth - FScroll.Width, FHdrH));  // paint the header band
-  Canvas.Pen.Color := clBtnShadow;  // line color
+  Canvas.Pen.Color := Th.HeaderLine;  // line color
   Canvas.MoveTo(0, FHdrH - 1);  // start of the bottom line
   Canvas.LineTo(ClientWidth - FScroll.Width, FHdrH - 1);  // draw the bottom line
-  Canvas.Font.Color := clBtnText;  // header text color
+  Canvas.Font.Color := Th.HeaderText;  // header text color
   for I := 0 to 4 do  // each column
   begin
     if I < 4 then Right := HdrLeft[I + 1] - 4 else Right := ClientWidth - FScroll.Width;  // right edge of this heading
     if HdrLeft[I] > ClientWidth - FScroll.Width then Break;  // column starts outside the visible width: stop
     if I > 0 then  // not the first column
     begin
-      Canvas.Pen.Color := clBtnShadow;  // separator color
+      Canvas.Pen.Color := Th.HeaderLine;  // separator color
       Canvas.MoveTo(HdrLeft[I] - 4, 2);  // start of the separator
       Canvas.LineTo(HdrLeft[I] - 4, FHdrH - 3);  // draw the separator
     end;
@@ -836,8 +826,8 @@ begin
       if AX + 6 < Right then  // the arrow fits
       begin
         Canvas.Brush.Style := bsSolid;  // solid fill for the arrow
-        Canvas.Brush.Color := clBtnShadow;  // arrow color
-        Canvas.Pen.Color := clBtnShadow;  // arrow outline color
+        Canvas.Brush.Color := Th.HeaderLine;  // arrow color
+        Canvas.Pen.Color := Th.HeaderLine;  // arrow outline color
         if FSortDesc then  // descending
           Canvas.Polygon([Point(AX - 4, AY - 2), Point(AX + 4, AY - 2), Point(AX, AY + 3)])  // arrow pointing down
         else
@@ -857,7 +847,7 @@ begin
   if not FLaidOut then DoLayout;  // compute the layout if it has not been done
   FLoadBudget := 6;  // up to six thumbnails may be decoded in this paint
   FNeedMore := False;  // nothing postponed yet
-  Canvas.Brush.Color := clWindow;  // white background
+  Canvas.Brush.Color := Th.Back;  // background of the theme
   Canvas.FillRect(ClientRect);  // clear everything
   if (FItems.Count = 0) or (FCellH <= 0) then  // nothing to draw
   begin
@@ -878,7 +868,7 @@ begin
       if Focused and (I = FFocusIdx) then  // focused card
       begin
         Canvas.Brush.Style := bsClear;  // no fill for the frame
-        Canvas.Pen.Color := clHighlight;  // highlight color
+        Canvas.Pen.Color := Th.Focus;  // focus frame color
         Canvas.Rectangle(R.Left, R.Top, R.Right - 1, R.Bottom - 1);  // draw the focus frame
       end;
     end;

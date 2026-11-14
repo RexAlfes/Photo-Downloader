@@ -95,6 +95,7 @@ type
     // View state
     ShowDownloaded, ShowDuplicates, ShowDateSelector: Boolean;  // which pictures the grid shows
     ViewMode: Integer;              // 0 list, 1 thumbnail cards
+    ThemeMode: Integer;             // View > Theme: 0 follow the system, 1 light, 2 dark (uTheme.TThemeMode)
     FitWindow: Boolean;             // thumbnail view "Fit to Window" (default): cards share the window width, thumbnails at most 160 pixels
     ThumbSize: Integer;             // thumbnail box in pixels, 64..320 (presets: 64 small, 160 medium, 320 large)
     LoggingOn: Boolean;             // write thumbnail.log (Help > Logging)
@@ -348,6 +349,7 @@ begin
   ShowDuplicates := True;  // show duplicates
   ShowDateSelector := True;  // show the date selector
   ViewMode := 1;  // thumbnail cards
+  ThemeMode := 0;  // follow the system
   ThumbSize := 160;  // medium thumbnails
   FitWindow := True;  // thumbnails fit the window width by default
   for I := 0 to FileTypeCount - 1 do TypeOn[I] := FileTypeDefaultOn(I);  // application default for each file type
@@ -461,6 +463,8 @@ begin
     ShowDuplicates := ReadBool('View', 'ShowDuplicates', ShowDuplicates);  // load: show duplicates
     ShowDateSelector := ReadBool('View', 'ShowDateSelector', ShowDateSelector);  // load: show the date selector
     ViewMode := ReadInteger('View', 'ThumbView', ViewMode);  // load: view mode (0 list, otherwise cards)
+    ThemeMode := ReadInteger('View', 'Theme', ThemeMode);  // load: theme (0 system, 1 light, 2 dark)
+    if (ThemeMode < 0) or (ThemeMode > 2) then ThemeMode := 0;  // keep it in range
     if ViewMode < 0 then ViewMode := 1;  // keep the view mode in range
     if ValueExists('View', 'ThumbSize') then  // thumbnail size saved by this version
       ThumbSize := ReadInteger('View', 'ThumbSize', ThumbSize)
@@ -583,6 +587,7 @@ begin
     WriteBool('View', 'ShowDuplicates', ShowDuplicates);  // save: show duplicates
     WriteBool('View', 'ShowDateSelector', ShowDateSelector);  // save: show the date selector
     WriteInteger('View', 'ThumbView', ViewMode);  // save: view mode (0 list, 1 cards)
+    WriteInteger('View', 'Theme', ThemeMode);  // save: theme (0 system, 1 light, 2 dark)
     WriteInteger('View', 'ThumbSize', ThumbSize);  // save: thumbnail size in pixels
     WriteBool('View', 'FitToWindow', FitWindow);  // save: Fit to Window
     for I := 0 to FileTypeCount - 1 do  // each file type group

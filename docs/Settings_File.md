@@ -79,6 +79,7 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 | `[View]` | `ShowDownloaded` | True/False | 1 | Show already downloaded images |
 | `[View]` | `ShowDuplicates` | True/False | 1 | Show duplicate images |
 | `[View]` | `ShowDateSelector` | True/False | 1 | Show the date / job code list |
+| `[View]` | `Theme` | number | 0 | View > Theme: 0 follow the system (Windows app mode or a dark GTK theme), 1 light, 2 dark |
 | `[View]` | `ThumbView` | number | 1 | View: 0 list, 1 thumbnail cards (build 57; before that 1 meant small and 2 large thumbnails, which are read as sizes 64 and 160) |
 | `[View]` | `ThumbSize` | number | 160 | Thumbnail box in pixels, 64 to 320 (presets: Small 64, Medium 160, Large 320; Ctrl + mouse wheel sets any value in steps of 16) |
 | `[View]` | `FitToWindow` | True/False | 1 | Thumbnail cards share the window width, thumbnails 64 to 160 pixels (default for new settings; a settings file written by an older build keeps 0) |

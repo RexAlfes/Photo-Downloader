@@ -10,7 +10,7 @@ interface
 
 uses
   Classes, SysUtils, StrUtils, Math, Forms, Controls, Graphics, ExtCtrls, StdCtrls, Menus, LCLType, LCLIntf, FPImage, LazFileUtils,
-  uSettings, uItems, uExif, uScale, uDialogs, uHeic, uWebP, uLrPrev;
+  uSettings, uItems, uExif, uScale, uDialogs, uHeic, uWebP, uLrPrev, uTheme;
 
 procedure ShowImageViewer(Items: TList; StartIndex: Integer);
 
@@ -419,6 +419,8 @@ begin
   end;
   F := TViewerForm.CreateViewer(Application, Items, StartIndex);  // create the viewer
   try
+    F.HandleNeeded;  // the window exists, so its title bar can be themed
+    ApplyTitleBar(F, ThemeDark);  // dark title bar with the dark theme
     F.ShowModal;  // show it and wait until it closes
   finally
     F.Free;  // free the form
