@@ -210,6 +210,10 @@
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>
+        <Filename Value="uCrashLog.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
         <Filename Value="uWebP.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>

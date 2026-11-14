@@ -418,6 +418,8 @@ View > **File Types…** (or right-click > File Types…) selects which kinds of
 
 Help > **Logging (for troubleshooting)** writes problems to a file named `thumbnail.log` in the settings folder: pictures that could not be shown (with the reason and the first bytes of the file), failed copies, and failed rotations. The log stops growing at about 200 KB.
 
+**Crash log.** When the program shows an error message such as "Access violation", it first writes the error and the chain of calls that led to it to `crash.log` (Windows: in the settings folder; Linux: `~/.cache/PhotoDownloader/crash.log`, and also to the terminal when the program was started from one). Send this file with a problem report. Builds made with the Default build mode (as `linux/build.sh` does) show the source lines.
+
 - Help > **Save log file…** saves a copy with the program version and the time at the top. Attach it when you report a problem.
 - File > **Status** shows the number of files by status, the job code, the next sequence number, an example name and the **settings file location** – click the path to open its folder.
 

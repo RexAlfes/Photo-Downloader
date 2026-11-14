@@ -15,7 +15,8 @@ uses
   {$IFDEF LCLGTK2}
   gtk2,  // GTK 2 style settings (ListComboBoxes)
   {$ENDIF}
-  uSettings, uSingle, uSplash, uScale, uVersion, uExif, uItems, uDrives, uPhotoView, uDialogs, uViewer, uMain, uTheme;
+  uSettings, uSingle, uSplash, uScale, uVersion, uExif, uItems, uDrives, uPhotoView, uDialogs, uViewer, uMain, uTheme,
+  uCrashLog;  // writes errors with their call chain to crash.log (and the terminal on Linux)
 
 {$R *.res}
 
