@@ -236,6 +236,10 @@ begin
   FDateKeys := TStringList.Create;  // list of the image dates
   BuildMenu;  // build the menu
   BuildUI;  // build the controls
+  FThemeTimer := TTimer.Create(Self);  // follows the system's light/dark setting
+  FThemeTimer.Interval := 2000;  // a look every 2 seconds (one registry value)
+  FThemeTimer.Enabled := False;  // ApplyTheme switches it on when following the system
+  FThemeTimer.OnTimer := @ThemeTimerTick;  // before ApplyState, which calls ApplyTheme
   ApplyState;  // apply the saved window state
   if not FS.FitWindow then  // Fit to Window adapts to the window, so the window keeps its size
     SizeForThumbColumns(WantedColumns(FView.Mode, FView.ThumbSize));  // size the window for the thumbnail columns
@@ -244,9 +248,6 @@ begin
   FTimer := TTimer.Create(Self);  // create the start-up timer
   FTimer.Interval := 150;  // fire after 150 ms
   FTimer.OnTimer := @StartupTimer;  // start-up work
-  FThemeTimer := TTimer.Create(Self);  // follows the system's light/dark setting
-  FThemeTimer.Interval := 2000;  // a look every 2 seconds (one registry value)
-  FThemeTimer.OnTimer := @ThemeTimerTick;
 end;
 
 { Frees the lists and the settings. }
@@ -2670,6 +2671,7 @@ begin
     FPluginErr := '';  // reported
   end;
   FixThumbWidth;  // correct the window width
+  ApplyTitleBar(Self, ThemeDark);  // the window exists now: dark title bar with the dark theme
   {$IFDEF UNIX}
   CenterOnWorkArea;  // GTK: center again now that the window has its final size
   {$ENDIF}
