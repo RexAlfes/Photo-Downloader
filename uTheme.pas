@@ -92,6 +92,11 @@ begin
   end;
   Th.Panel := clDefault;          // the system's colors
   Th.PanelText := clDefault;
+  if StartDark then  // the system colors are dark for this run
+  begin
+    Th.Panel := RGBToColor(240, 240, 240);
+    Th.PanelText := clBlack;
+  end;
 end;
 
 { Dark colors: light text RGB(232,232,232) on backgrounds dark enough for 4.5:1 or more. }

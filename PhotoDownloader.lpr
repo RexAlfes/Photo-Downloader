@@ -61,6 +61,7 @@ end;
 begin
   Application.Title := 'Photo Downloader';  // window and taskbar title
   Application.Scaled := True;  // scale the forms with the system DPI setting
+  WaitForRestart;  // started to replace a closing copy (theme change): wait until it is gone
   // single instance (the default): hand over to the copy that is already running
   if SingleInstanceWanted and ActivateRunningInstance then Halt(0);
   StartTheme(SettingsFileName);  // dark menus, buttons and dialogs (Windows) must be chosen before any window

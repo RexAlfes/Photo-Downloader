@@ -13,12 +13,59 @@ interface
 function ActivateRunningInstance: Boolean;
 { Marks this copy's main window so that later copies can find it. }
 procedure RegisterMainWindow(Wnd: PtrUInt);
+{ Starts a new copy of the program that waits until this one has closed (used to restart after a
+  theme change); the caller then closes this copy. False when it could not be started. }
+function StartRestartedCopy: Boolean;
+{ In a copy started by StartRestartedCopy (parameter --restart=<process id>): waits up to 15 seconds
+  until the old copy has closed, so the single instance check does not hand over to it. }
+procedure WaitForRestart;
 
 implementation
 
-{$IFDEF WINDOWS}
 uses
-  Windows;
+  SysUtils, Process  // the new copy is started with TProcess
+  {$IFDEF WINDOWS}, Windows{$ENDIF};  // mutex, windows and processes
+
+function StartRestartedCopy: Boolean;
+var
+  P: TProcess;  // P: the new copy
+begin
+  Result := False;
+  P := TProcess.Create(nil);
+  try
+    P.Executable := ParamStr(0);  // this program
+    P.Parameters.Add('--restart=' + IntToStr(GetProcessID));  // waits for this copy to end
+    P.Options := [];  // do not wait for it
+    try
+      P.Execute;
+      Result := True;
+    except
+      Result := False;  // could not start
+    end;
+  finally
+    P.Free;  // the new copy keeps running
+  end;
+end;
+
+{$IFDEF WINDOWS}
+procedure WaitForRestart;
+var
+  I: Integer;  // I: parameter number
+  Pid: DWORD;  // Pid: process id of the old copy
+  H: THandle;  // H: the old copy's process
+begin
+  for I := 1 to ParamCount do
+    if Copy(ParamStr(I), 1, 10) = '--restart=' then
+    begin
+      Pid := StrToIntDef(Copy(ParamStr(I), 11, 20), 0);
+      if Pid = 0 then Exit;
+      H := OpenProcess(SYNCHRONIZE, False, Pid);
+      if H = 0 then Exit;  // already gone
+      WaitForSingleObject(H, 15000);  // until it has closed (at most 15 s)
+      CloseHandle(H);
+      Exit;
+    end;
+end;
 
 const
   MutexName = 'PhotoDownloader.SingleInstance';  // name of the system-wide mutex that marks a running copy
@@ -64,6 +111,11 @@ begin
   if Wnd <> 0 then SetPropA(HWND(Wnd), WindowMark, 1);  // store the mark as a window property
 end;
 {$ELSE}
+procedure WaitForRestart;
+begin
+  // Linux: a restart starts the new copy at once (there is no single instance check)
+end;
+
 function ActivateRunningInstance: Boolean;
 begin
   Result := False;            // single instance is only implemented for Windows

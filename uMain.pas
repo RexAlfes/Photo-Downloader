@@ -74,6 +74,7 @@ type
     procedure ApplyTheme;  // colors of the theme in the window, the grid and the title bar
     procedure ThemeClick(Sender: TObject);  // View > Theme: Follow system / Light / Dark
     procedure ThemeTimerTick(Sender: TObject);  // follows a change of the system setting
+    procedure RestartProgram;  // closes and starts the program again (after a theme change)
     procedure ThumbSizeChanged(Sender: TObject);
     procedure SetStatus(const S: string);
     procedure UpdateCaption;
@@ -616,9 +617,9 @@ begin
   pnlButtons.Color := Th.Panel;  // button panel
   lblDate.Font.Color := Th.PanelText;  // date list heading
   lblStatus.Font.Color := Th.PanelText;  // status text
-  if ThemeDark then
+  if ThemeDark or StartDark then  // dark list, or light after a dark start (the system colors are dark then)
   begin
-    lstDates.Color := Th.Back;  // dark date list
+    lstDates.Color := Th.Back;  // date list background of the theme
     lstDates.Font.Color := Th.Text;
   end
   else
@@ -645,15 +646,41 @@ begin
   ApplyTheme;  // show it
   SaveSettingsNow;  // remember it
   {$IFDEF WINDOWS}
-  if ThemeDark <> StartDark then  // menus, buttons and dialogs were set at start
-    SetStatus('The pictures use the new theme now; menus, buttons and dialogs follow at the next start.');
+  if ThemeDark <> StartDark then  // menus, buttons and dialogs were set at start: offer a restart
+    if MessageDlg(AppTitle, 'Menus, buttons and dialog windows change to the new theme when Photo Downloader ' +
+         'starts. Restart Photo Downloader now?', mtConfirmation, [mbYes, mbNo], 0) = mrYes then
+      RestartProgram
+    else
+      SetStatus('The pictures use the new theme now; menus, buttons and dialogs follow at the next start.');
   {$ENDIF}
+end;
+
+{ Closes the program and starts it again, so menus, buttons and dialogs use the new theme. Unsaved
+  profile changes are asked about first; Cancel keeps the program open. }
+procedure TMainForm.RestartProgram;
+begin
+  if not AskSaveProfile then Exit;  // canceled
+  SaveSettingsNow;  // the new theme is read at the next start
+  if not StartRestartedCopy then  // the new copy waits until this one has closed
+  begin
+    MessageDlg(AppTitle, 'Photo Downloader could not be started again. Please start it yourself.', mtError, [mbOK], 0);
+    Exit;
+  end;
+  FAutoClosing := True;  // no further questions while closing
+  Close;  // the new copy starts when this one is gone
 end;
 
 { Follows the system: when its light/dark setting changed, the colors change too. }
 procedure TMainForm.ThemeTimerTick(Sender: TObject);
 begin
-  if (FS.ThemeMode = 0) and (SystemPrefersDark <> FThemeWasDark) then ApplyTheme;  // the setting changed
+  if (FS.ThemeMode = 0) and (SystemPrefersDark <> FThemeWasDark) then  // the setting changed
+  begin
+    ApplyTheme;  // the pictures follow at once
+    {$IFDEF WINDOWS}
+    if ThemeDark <> StartDark then
+      SetStatus('The pictures use the new theme now; menus, buttons and dialogs follow at the next start.');
+    {$ENDIF}
+  end;
 end;
 
 { Window width (client area) needed for Cols thumbnail columns. The grid loses the width of its
