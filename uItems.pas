@@ -446,7 +446,7 @@ var
 
 const
   { Change when ReadExifFromFile changes so that values kept from an older version are read again }
-  ExifCacheVersion = 'PhotoDownloader EXIF cache 2';  // first line of the cache file (2: with the time zone)
+  ExifCacheVersion = 'PhotoDownloader EXIF cache 3';  // first line of the cache file (2: with the time zone; 3: directories far into a file)
   ExifCacheMax = 100000;  // largest number of files kept in the cache
 
 type

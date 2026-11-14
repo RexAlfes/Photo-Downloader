@@ -1,6 +1,7 @@
 unit uExif;
 
 {$mode objfpc}{$H+}
+{$POINTERMATH ON}  // PByte indexing (pieces read on demand)
 
 { Minimal EXIF reader. Works on JPEG (APP1 segment) and on TIFF-based raw
   files (NEF, CR2, DNG, ARW ...) where the TIFF header is at offset 0. }
@@ -90,13 +91,49 @@ type
 threadvar
   // set when a read needed bytes past the end of the buffer; ReadExifFromFile then reads more of the file
   TiffMiss: Boolean;
+  // on-demand reading (ReadExifFromFile, last step): the open file, and one byte per 64 KB piece of T.Buf
+  // (1 = read); nil while the whole buffer is filled
+  TiffLazy: TStream;
+  TiffPages: PByte;
+
+const
+  LazyPage = 65536;  // size of a piece read on demand
+
+{ True when the Count bytes at Ofs lie inside the data. While reading on demand, reads the 64 KB pieces
+  that hold them first (DNGLab, for example, writes the first directory at the end of a 30 MB file). }
+function Need(const T: TTiff; Ofs, Count: Int64): Boolean;
+var
+  Pg, Last, P, N: Int64;  // Pg, Last: first and last piece; P, N: position and size of a piece
+begin
+  Result := (Ofs >= 0) and (Count >= 0) and (Ofs + Count <= Length(T.Buf));  // inside the buffer
+  if (not Result) or (TiffLazy = nil) or (Count = 0) then Exit;
+  Pg := Ofs div LazyPage;
+  Last := (Ofs + Count - 1) div LazyPage;
+  while Pg <= Last do
+  begin
+    if TiffPages[Pg] = 0 then  // not read yet
+    begin
+      P := Pg * LazyPage;
+      N := Length(T.Buf) - P;
+      if N > LazyPage then N := LazyPage;
+      try
+        TiffLazy.Position := P;
+        TiffLazy.ReadBuffer(PByte(Pointer(T.Buf))[P], N);  // into its place in the buffer
+      except
+        Exit(False);  // unreadable: treat as outside the data
+      end;
+      TiffPages[Pg] := 1;
+    end;
+    Inc(Pg);
+  end;
+end;
 
 { Reads a 16-bit value at Ofs, in the byte order of the data. }
 function U16(const T: TTiff; Ofs: Integer): Integer;
 begin
   Result := 0;  // zero when outside the data
   if Ofs + 2 > Length(T.Buf) then TiffMiss := True;  // past the end of the buffer
-  if (Ofs < 0) or (Ofs + 2 > Length(T.Buf)) then Exit;  // outside the data
+  if not Need(T, Ofs, 2) then Exit;  // outside the data (read on demand when needed)
   if T.Big then
     Result := (T.Buf[Ofs] shl 8) or T.Buf[Ofs + 1]  // big-endian value
   else
@@ -110,7 +147,7 @@ var
 begin
   Result := 0;  // zero when outside the data
   if Ofs + 4 > Length(T.Buf) then TiffMiss := True;  // past the end of the buffer
-  if (Ofs < 0) or (Ofs + 4 > Length(T.Buf)) then Exit;  // outside the data
+  if not Need(T, Ofs, 4) then Exit;  // outside the data (read on demand when needed)
   B0 := T.Buf[Ofs]; B1 := T.Buf[Ofs + 1]; B2 := T.Buf[Ofs + 2]; B3 := T.Buf[Ofs + 3];  // read the four bytes
   if T.Big then
     Result := (B0 shl 24) or (B1 shl 16) or (B2 shl 8) or B3  // big-endian value
@@ -142,6 +179,7 @@ begin
   end;
   if (P < 0) or (P >= Length(T.Buf)) then Exit;  // position outside the data
   if Cnt > 128 then Cnt := 128;  // limit the length
+  Need(T, P, Min(Cnt, Int64(Length(T.Buf)) - P));  // the text's bytes (read on demand when needed)
   for I := 0 to Integer(Cnt) - 1 do  // every character
   begin
     if P + I >= Length(T.Buf) then  // stop at the end of the data
@@ -1115,10 +1153,12 @@ function ReadExifFromFile(const FileName: string; out Info: TExifInfo): Boolean;
 const
   FirstRead = 65536;  // first read: 64 KB holds the EXIF data of nearly every file
   MaxRead = 262144;  // when the first read was not enough: at most 256 KB
+  MaxLazyFile = 1024 * 1024 * 1024;  // reading on demand is used for files up to 1 GB
 var
   FS: TFileStream;  // FS: the open file
   Len, Old: Integer;  // Len: bytes read; Old: bytes of the first read
   FileLen: Int64;  // FileLen: file size
+  Pages: Int64;  // Pages: 64 KB pieces of the file (reading on demand)
   T: TTiff;  // T: TIFF structure
 
   { clears every field of Info }
@@ -1228,6 +1268,25 @@ begin
       FS.ReadBuffer(T.Buf[Old], Len - Old);  // read the rest
       ClearInfo;  // start over
       Result := ParseBuf;  // read the EXIF data again
+    end;
+    // a TIFF based raw file whose directories lie further on (DNGLab writes the first directory at the end
+    // of the file): read just the 64 KB pieces the directories and texts are in, not the whole file
+    if TiffMiss and (FileLen > Len) and (T.Base = 0) and (FileLen <= MaxLazyFile) then
+    begin
+      Old := Len;  // bytes already read
+      SetLength(T.Buf, FileLen);  // room for the whole file (keeps the bytes already read)
+      Pages := (FileLen + LazyPage - 1) div LazyPage;  // number of 64 KB pieces
+      TiffPages := AllocMem(Pages);  // all unread
+      FillChar(TiffPages^, Old div LazyPage, 1);  // the full pieces read already
+      TiffLazy := FS;  // read the rest on demand
+      try
+        ClearInfo;  // start over
+        Result := ParseBuf;  // read the EXIF data again
+      finally
+        TiffLazy := nil;  // back to plain buffer reads
+        FreeMem(TiffPages);
+        TiffPages := nil;
+      end;
     end;
   finally
     FS.Free;  // close the file
