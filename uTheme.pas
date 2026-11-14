@@ -56,13 +56,16 @@ function ModeIsDark(Mode: TThemeMode): Boolean;
 function SystemPrefersDark: Boolean;
 { True when the system draws its own windows dark already (a dark GTK theme on Linux; never on Windows). }
 function SystemDrawsDark: Boolean;
-{ Makes the title bar of Form dark or light (Windows 10 2004 and later; does nothing elsewhere). }
+{ Makes the title bar of Form dark or light: Windows 10 2004 and later through DWM; Linux (GTK 2) through the
+  _GTK_THEME_VARIANT hint, which GNOME-style window managers (Cinnamon, GNOME, MATE with Marco) follow when
+  the window theme has a dark version. }
 procedure ApplyTitleBar(Form: TCustomForm; Dark: Boolean);
 
 implementation
 
 uses
   {$IFDEF WINDOWS}Windows, Registry, uDarkStyleParams, uMetaDarkStyle, uDarkStyleSchemes,{$ENDIF}
+  {$IFDEF LCLGTK2}glib2, gdk2, gtk2,{$ENDIF}  // GTK 2: the window manager's dark title bar hint
   LCLIntf, IniFiles;
 
 { The colors before themes existed. }
@@ -238,7 +241,22 @@ var
   SetAttr: TDwmSetWindowAttribute;  // SetAttr: DwmSetWindowAttribute
   V: BOOL;  // V: dark or light
 {$ENDIF}
+{$IFDEF LCLGTK2}
+const
+  Variant: array[Boolean] of string = ('light', 'dark');  // value of the hint
+var
+  W: PGtkWidget;  // W: the form's GTK window
+{$ENDIF}
 begin
+  {$IFDEF LCLGTK2}
+  if (Form = nil) or not Form.HandleAllocated then Exit;
+  W := PGtkWidget(Form.Handle);
+  if W^.window = nil then gtk_widget_realize(W);  // the window needs its X window for the hint
+  if W^.window = nil then Exit;
+  gdk_property_change(W^.window, gdk_atom_intern('_GTK_THEME_VARIANT', False),
+    gdk_atom_intern('UTF8_STRING', False), 8, GDK_PROP_MODE_REPLACE,
+    Pguchar(PChar(Variant[Dark])), Length(Variant[Dark]));  // the window manager redraws the title bar
+  {$ENDIF}
   {$IFDEF WINDOWS}
   if (Form = nil) or not Form.HandleAllocated then Exit;
   Lib := LoadLibrary('dwmapi.dll');
