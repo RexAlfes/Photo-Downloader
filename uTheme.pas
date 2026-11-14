@@ -134,7 +134,9 @@ begin
   Th.HeaderText := RGBToColor(225, 225, 225);
   Th.HeaderLine := RGBToColor(95, 95, 95);
   Th.Focus := RGBToColor(110, 170, 240);
-  if SystemDrawsDark then  // a dark GTK theme paints the panels itself
+  // a dark desktop theme paints the panels itself; a theme this program switched to at start does not reach
+  // the system colors the program read while starting, so the panels get the dark colors directly then
+  if SystemDrawsDark {$IFNDEF WINDOWS}and not GtkOverride{$ENDIF} then
   begin
     Th.Panel := clDefault;
     Th.PanelText := clDefault;
