@@ -551,6 +551,7 @@ var
   D: TSelectDirectoryDialog;  // D: folder chooser
 begin
   D := TSelectDirectoryDialog.Create(Self);  // create the chooser
+  OkFirst(D);  // Open/Save on the left on Linux too (uMsgDlg)
   try
     D.Title := 'Select source folder';  // window title
     if (edSource.Text <> '') and DirectoryExists(edSource.Text) then D.InitialDir := edSource.Text;  // start in the current folder when it exists
@@ -849,6 +850,7 @@ var
   H: TTypesHelper;  // H: handler object for the list
   B: TButton;  // B: button being created
   I, RowH, Y: Integer;  // I: loop counter; RowH: height of one list row; Y: top of the buttons
+  TextH, MaxH: Integer;  // TextH: height of a text line; MaxH: largest list height that fits the screen
 begin
   F := TForm.CreateNew(Application);  // create the form
   H := TTypesHelper.Create;  // create the helper
@@ -867,8 +869,15 @@ begin
     // and with larger fonts, so one row is measured once the list exists
     H.List.HandleNeeded;  // create the list so a row can be measured
     RowH := H.List.ItemRect(0).Bottom - H.List.ItemRect(0).Top;  // height of one row
-    if (RowH < 12) or (RowH > 48) then RowH := 18;  // implausible measurement: use a usual row height
+    TextH := H.List.Canvas.TextHeight('Ag');  // height of a line of text in the list
+    if TextH < 8 then TextH := 15;  // not measurable yet
+    // GTK can report a row far taller than it draws (the window then grew past the screen with empty
+    // space below the list): trust the measurement only near the text height
+    if (RowH < 12) or (RowH > TextH * 2 + 4) then RowH := TextH + 8;  // implausible: text height plus a margin
     H.List.Height := FileTypeCount * RowH + (H.List.Height - H.List.ClientHeight) + 4;  // every row plus the border
+    // never taller than the screen: the buttons below must stay reachable (the list then scrolls)
+    MaxH := Screen.WorkAreaHeight - 32 - 78 - 10 - 80;  // work area less the label, the buttons, gaps and the title bar
+    if (MaxH > 120) and (H.List.Height > MaxH) then H.List.Height := MaxH;
     Y := H.List.Top + H.List.Height + 10;  // buttons below the list
     F.ClientHeight := Y + 78;  // room for the two button rows
     B := MkButton(F, 'Select all', 10, Y, 100);  // Select all button
@@ -1876,6 +1885,7 @@ begin
   Rest := Copy(FDestDir, Length(Root) + 1, MaxInt);  // folders built from tokens
   if not UsesLayout(Rest) then Rest := DestTemplate;  // use the folder template the plug-in suggests
   D := TSelectDirectoryDialog.Create(Self);  // create the chooser
+  OkFirst(D);  // Open/Save on the left on Linux too (uMsgDlg)
   try
     D.Title := 'Choose the destination folder to download to';  // window title
     if (Root <> '') and DirectoryExists(Root) then D.InitialDir := Root;  // start in the current destination
@@ -2036,6 +2046,7 @@ begin
   Result := False;  // nothing chosen yet
   FileName := '';  // no file yet
   OD := TOpenDialog.Create(Self);  // create the chooser
+  OkFirst(OD);  // Open/Save on the left on Linux too (uMsgDlg)
   try
     OD.Title := 'Choose an ICC color profile';  // window title
     OD.Filter := 'ICC profiles (*.icc;*.icm)|*.icc;*.icm;*.ICC;*.ICM|All files|*.*';  // profile files
@@ -2488,6 +2499,7 @@ var
   D: TSelectDirectoryDialog;  // D: folder chooser
 begin
   D := TSelectDirectoryDialog.Create(Self);  // create the chooser
+  OkFirst(D);  // Open/Save on the left on Linux too (uMsgDlg)
   try
     D.Title := 'Select backup directory';  // window title
     if D.Execute then  // when the user chose a folder
@@ -2511,6 +2523,7 @@ var
   D: TSelectDirectoryDialog;  // D: folder chooser
 begin
   D := TSelectDirectoryDialog.Create(Self);  // create the chooser
+  OkFirst(D);  // Open/Save on the left on Linux too (uMsgDlg)
   try
     D.Title := 'Select download directory';  // window title
     if D.Execute then  // when the user chose a folder
@@ -2798,6 +2811,7 @@ var
   D: TOpenDialog;  // D: file chooser
 begin
   D := TOpenDialog.Create(Self);  // create the chooser
+  OkFirst(D);  // Open/Save on the left on Linux too (uMsgDlg)
   try
     if D.Execute then edCmd.Text := '"' + D.FileName + '" "%f"';  // build the command line from the chosen program
   finally
@@ -2878,6 +2892,7 @@ var
   Info: TExifInfo;  // Info: EXIF data of the picture
 begin
   D := TOpenDialog.Create(Self);  // create the chooser
+  OkFirst(D);  // Open/Save on the left on Linux too (uMsgDlg)
   try
     D.Title := 'Select an image from the camera';  // window title
     D.Filter := 'Images|*.jpg;*.jpeg;*.nef;*.cr2;*.dng;*.arw;*.tif;*.tiff|All files|*.*';  // file types shown
@@ -3166,6 +3181,7 @@ var
   X: TExtPlugin;  // X: the installed program plug-in
 begin
   OD := TOpenDialog.Create(Self);  // create the chooser
+  OkFirst(OD);  // Open/Save on the left on Linux too (uMsgDlg)
   try
     OD.Title := 'Install plug-in';  // window title
     {$IFDEF WINDOWS}
@@ -3325,6 +3341,7 @@ begin
   if X <> nil then  // choose the program it runs
   begin
     OD := TOpenDialog.Create(Self);  // create the chooser
+    OkFirst(OD);  // Open/Save on the left on Linux too (uMsgDlg)
     try
       OD.Title := 'Program for ' + X.Name;  // window title
       {$IFDEF WINDOWS}

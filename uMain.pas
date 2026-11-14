@@ -1547,6 +1547,7 @@ var
   Err, Dest, Msg, Fails: string;  // Err: error text; Dest: output file; Msg: result text; Fails: names that failed
 begin
   D := TSelectDirectoryDialog.Create(Self);  // create the chooser
+  OkFirst(D);  // Open/Save on the left on Linux too (uMsgDlg)
   try
     D.Title := 'Save .lrprev previews as JPG in folder';  // window title
     if (FLrOutDir <> '') and DirectoryExistsUTF8(FLrOutDir) then D.InitialDir := FLrOutDir;  // start in the last folder
@@ -2851,6 +2852,7 @@ begin
     Exit;
   end;
   D := TSelectDirectoryDialog.Create(Self);  // create the chooser
+  OkFirst(D);  // Open/Save on the left on Linux too (uMsgDlg)
   try
     D.Title := 'Open Source Folder';  // window title
     D.InitialDir := Start;  // start in the last source
@@ -3117,6 +3119,7 @@ var
   D: TSaveDialog;  // D: save dialog
 begin
   D := TSaveDialog.Create(Self);  // create the dialog
+  OkFirst(D);  // Open/Save on the left on Linux too (uMsgDlg)
   try
     D.Title := 'Export Settings';  // window title
     D.FileName := 'PhotoDownloaderSettings.ini';  // suggested name
@@ -3349,6 +3352,7 @@ begin
     Exit;  // done
   end;
   D := TSaveDialog.Create(nil);  // create the dialog
+  OkFirst(D);  // Open/Save on the left on Linux too (uMsgDlg)
   try
     D.Title := 'Save log file';  // window title
     D.FileName := 'PhotoDownloader-log.txt';  // suggested name

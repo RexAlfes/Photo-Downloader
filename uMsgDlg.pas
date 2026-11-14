@@ -4,11 +4,15 @@
   widgetset replaces it with GTK's own message box and adds the buttons back to front (GTK's habit:
   No, Yes), so on Linux Yes was on the right. Units list this unit after Dialogs, so their MessageDlg
   calls come here: on GTK 2 they use the LCL's own message window (DefaultPromptDialog, the same one
-  other widgetsets use), elsewhere the normal MessageDlg. }
+  other widgetsets use), elsewhere the normal MessageDlg.
+
+  GTK's file windows (open, save, choose folder) show Cancel before Open/Save as well; OkFirst moves the
+  Open/Save button to the left when such a window appears. }
 unit uMsgDlg;
 
 {$mode objfpc}{$H+}
 {$WARN 5024 OFF}  // HelpCtx is not used (the program has no help topics); kept so the calls stay the same
+{$WARN 4055 OFF}  // GTK 2: a dialog's handle is the address of its GTK window
 
 interface
 
@@ -21,12 +25,46 @@ function MessageDlg(const aCaption, aMsg: string; DlgType: TMsgDlgType; Buttons:
 { Message box without a caption (the program title is used). }
 function MessageDlg(const aMsg: string; DlgType: TMsgDlgType; Buttons: TMsgDlgButtons;
   HelpCtx: Longint): TModalResult; overload;
+{ A file window (TOpenDialog, TSaveDialog, TSelectDirectoryDialog) with Open/Save on the left of Cancel:
+  on GTK 2 it moves the button when the window appears (uses the dialog's OnShow); elsewhere nothing. }
+procedure OkFirst(D: TCommonDialog);
 
 implementation
 
 {$IFDEF LCLGTK2}
 uses
-  LCLType, LazStringUtils, Forms;
+  LCLType, LazStringUtils, Forms, glib2, gtk2;
+
+type
+  { Receives OnShow of the file windows. }
+  TOkFirstHelper = class
+    procedure DialogShow(Sender: TObject);
+  end;
+
+var
+  OkFirstHelper: TOkFirstHelper = nil;  // made on first use, freed at the end
+
+{ The GTK window exists now: move its last button (Open or Save; Cancel was added first) to the left. }
+procedure TOkFirstHelper.DialogShow(Sender: TObject);
+var
+  Dlg: PGtkDialog;  // Dlg: the GTK file window
+  Kids, P: PGList;  // Kids, P: the buttons of its button row
+  Last: PGtkWidget;  // Last: the last button
+begin
+  if not (Sender is TCommonDialog) or (TCommonDialog(Sender).Handle = 0) then Exit;
+  Dlg := PGtkDialog(TCommonDialog(Sender).Handle);
+  if Dlg^.action_area = nil then Exit;
+  Kids := gtk_container_get_children(PGtkContainer(Dlg^.action_area));
+  Last := nil;
+  P := Kids;
+  while P <> nil do
+  begin
+    Last := PGtkWidget(P^.data);
+    P := P^.next;
+  end;
+  if Last <> nil then gtk_box_reorder_child(PGtkBox(Dlg^.action_area), Last, 0);  // first = leftmost
+  g_list_free(Kids);
+end;
 
 const
   DialogIds: array[mtWarning..mtCustom] of Longint = (idDialogWarning, idDialogError, idDialogInfo,
@@ -98,6 +136,17 @@ begin
   {$ENDIF}
 end;
 
+procedure OkFirst(D: TCommonDialog);
+begin
+  {$IFDEF LCLGTK2}
+  if D = nil then Exit;
+  if OkFirstHelper = nil then OkFirstHelper := TOkFirstHelper.Create;
+  D.OnShow := @OkFirstHelper.DialogShow;
+  {$ELSE}
+  if D = nil then Exit;  // Windows: Open/Save is on the left already
+  {$ENDIF}
+end;
+
 function MessageDlg(const aMsg: string; DlgType: TMsgDlgType; Buttons: TMsgDlgButtons;
   HelpCtx: Longint): TModalResult;
 begin
@@ -108,4 +157,8 @@ begin
   {$ENDIF}
 end;
 
+{$IFDEF LCLGTK2}
+finalization
+  OkFirstHelper.Free;
+{$ENDIF}
 end.
