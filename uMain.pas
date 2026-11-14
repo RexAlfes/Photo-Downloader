@@ -2764,7 +2764,7 @@ begin
       if ChooseFromList('User Profiles', 'Select a profile to load:', L, Choice) and  // ask the user
          FileExistsUTF8(ProfilesDir + Choice + '.ini') then  // profile file exists
       begin
-        FS.LoadFromFile(ProfilesDir + Choice + '.ini');  // load the profile
+        FS.LoadProfileKeepView(ProfilesDir + Choice + '.ini');  // load the profile (theme and view stay)
         FS.PromptProfile := True;       // a profile must not switch the prompt off
         FS.ProfileName := Choice;  // the profile in use
         ReloadPlugins;  // the profile may switch other plug-ins on
@@ -2914,7 +2914,7 @@ var
   PromptWas: Boolean;  // PromptWas: start-up prompt setting before loading
 begin
   PromptWas := FS.PromptProfile;  // remember the prompt setting
-  FS.LoadFromFile(ProfilesDir + Nm + '.ini');  // load the profile
+  FS.LoadProfileKeepView(ProfilesDir + Nm + '.ini');  // load the profile (theme and view stay)
   FS.PromptProfile := PromptWas;      // a profile must not change the start-up prompt setting
   FS.ProfileName := Nm;  // the profile in use
   ReloadPlugins;  // the profile may switch other plug-ins on
@@ -3043,7 +3043,7 @@ begin
   if FileExistsUTF8(Fn) then  // saved before: load it
   begin
     PromptWas := FS.PromptProfile;  // a profile must not change the start-up prompt setting
-    FS.LoadFromFile(Fn);  // load the profile
+    FS.LoadProfileKeepView(Fn);  // load the profile (theme and view stay)
     FS.PromptProfile := PromptWas;  // keep the prompt setting
     FS.ProfileName := 'Default';  // the profile in use
     ReloadPlugins;  // the profile may switch other plug-ins on

@@ -113,6 +113,7 @@ type
     function ProfileText: string;  // the options a profile keeps, as text (session values left out), for comparing
     procedure AssignFrom(Src: TAppSettings);  // copies every option of Src
     function WithProfile(const AFileName: string): TAppSettings;  // a copy with that profile loaded, session values kept (caller frees)
+    procedure LoadProfileKeepView(const AFileName: string);  // loads a profile, keeping the view and window settings (theme, view, window)
     procedure DefaultsKeepSession;  // every option back to its default, session values kept (a new profile)
   end;
 
@@ -750,6 +751,40 @@ begin
     Result.LoadFrom(Prof);  // read back
   finally
     Prof.Free;  // free the ini objects
+    Cur.Free;
+  end;
+end;
+
+{ Loads the profile AFileName but keeps the [View] and [Window] sections as they are: the theme, list or
+  thumbnails, thumbnail size, date list and window place belong to this computer, not to a profile.
+  (Profile files saved before may hold an old [View] section: loading one switched the theme back.) }
+procedure TAppSettings.LoadProfileKeepView(const AFileName: string);
+const
+  Kept: array[0..1] of string = ('View', 'Window');  // sections that stay
+var
+  Cur, Prof: TMemIniFile;  // Cur: these settings; Prof: with the profile loaded
+  L: TStringList;  // L: the keys of a section
+  Sec: string;  // Sec: a kept section
+  J: Integer;  // J: loop counter
+begin
+  Cur := TMemIniFile.Create('');  // no file
+  Prof := TMemIniFile.Create('');  // no file
+  L := TStringList.Create;
+  try
+    SaveTo(Cur);  // these settings
+    LoadFromFile(AFileName);  // the profile
+    SaveTo(Prof);  // as ini
+    for Sec in Kept do
+    begin
+      Prof.EraseSection(Sec);  // drop the profile's values
+      Cur.ReadSection(Sec, L);
+      for J := 0 to L.Count - 1 do
+        Prof.WriteString(Sec, L[J], Cur.ReadString(Sec, L[J], ''));  // put back the current ones
+    end;
+    LoadFrom(Prof);  // read back
+  finally
+    L.Free;
+    Prof.Free;
     Cur.Free;
   end;
 end;
