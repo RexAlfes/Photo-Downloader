@@ -36,7 +36,7 @@ The version is **major.minor.revision.build**. This release is `0.1.5.0` (revisi
 - `Release_Notes_0.1.5.0.md` – these release notes
 
 ### Tested
-Windows 11 and Linux Mint 22.3 (Xfce and Cinnamon, GTK 2): every change above, in the program, by the user. The iPhone has not been tried with Import from Device.
+Windows 11 and Linux Mint 22.3 (Xfce and Cinnamon, GTK 2): every change above, in the program, by the user. Import from Device was also tested with an iPhone after the release (November 14, 2026).
 
 ### Windows security warning
 The `.exe` is not code-signed, so Windows may show **Windows protected your PC** with **Publisher: Unknown publisher**. Click **More info**, then **Run anyway**. See section 1 of the User Manual.
