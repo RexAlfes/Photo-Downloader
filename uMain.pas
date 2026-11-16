@@ -994,10 +994,20 @@ var
   Batch: TThumbBatch;  // Batch: JPEG and RAW thumbnails being prepared on other threads
   T0, T1, T2: QWord;  // T0, T1, T2: tick counts at the start, after the scan and after the destinations (for the log)
   Pooled, PoolThreads: Integer;  // Pooled: thumbnails given to the threads; PoolThreads: number of those threads
+  KindN: array[0..3] of Integer;  // KindN: thumbnails made on the main thread, by kind (0 DNG and TIFF, 1 video, 2 HEIC and AVIF, 3 other)
+  KindMs: array[0..3] of QWord;  // KindMs: the time they took
+  Kind: Integer;  // Kind: kind of the current file
+  TK: QWord;  // TK: tick count before a thumbnail is made
+  NeedIt: Boolean;  // NeedIt: the item has no thumbnail yet
 begin
   Batch := nil;  // nothing prepared yet
   Pooled := 0;  // none yet
   PoolThreads := 0;
+  for Kind := 0 to 3 do
+  begin
+    KindN[Kind] := 0;  // nothing made yet
+    KindMs[Kind] := 0;
+  end;
   DoneN := 0;
   Total := 0;
   if (FDevStage <> '') and not SameText(Path, FDevStage) then LeaveDevice;  // another source: the device is done
@@ -1096,7 +1106,18 @@ begin
             if FCancel then Break;  // stop when canceled
             Batch.Deliver;  // the item gets its thumbnail (when one could be made)
           end;
+          NeedIt := not It.ThumbTried;  // the threads did not make it
+          TK := GetTickCount64;
           EnsureThumb(It, FView.DecodeBox);  // create the thumbnail (nothing to do when the item has it)
+          if NeedIt then  // made here, on the main thread: count it by kind for the log
+          begin
+            if (It.Ext = '.dng') or (It.Ext = '.tif') or (It.Ext = '.tiff') then Kind := 0
+            else if It.IsVideo then Kind := 1
+            else if ExtIn(It.FileName, HeicExts) then Kind := 2
+            else Kind := 3;
+            Inc(KindN[Kind]);
+            KindMs[Kind] := KindMs[Kind] + (GetTickCount64 - TK);
+          end;
           // slow HEIC/AVIF/TIFF thumbnails are now in the disk cache; keep the picture only
           // for the first screens so that thousands of files do not use up Windows handles
           if Heavy and (Kept >= PrerenderKeep) then ReleaseThumb(It) else Inc(Kept);  // keep or release the thumbnail
@@ -1106,6 +1127,9 @@ begin
       LogThumb(Format('version %s, load %s: %d files; reading %d ms, destinations %d ms, thumbnails %d ms (%d of %d rendered, %d on %d threads)',
         [AppVersionString, Path, FItems.Count, T1 - T0, T2 - T1, GetTickCount64 - T2, DoneN, Total, Pooled, PoolThreads]));
       if Pooled > 0 then LogThumb(ThumbStatsText);  // where the threads spent their time
+      if KindN[0] + KindN[1] + KindN[2] + KindN[3] > 0 then  // and what the main thread made, one file at a time
+        LogThumb(Format('thumbnails one at a time: DNG and TIFF %d files %d ms, videos %d files %d ms, HEIC and AVIF %d files %d ms, other %d files %d ms',
+          [KindN[0], KindMs[0], KindN[1], KindMs[1], KindN[2], KindMs[2], KindN[3], KindMs[3]]));
     finally
       FreeAndNil(Batch);  // stop the threads (they finish the file they are at)
       HeicPump := False;  // stop the keep-alive
