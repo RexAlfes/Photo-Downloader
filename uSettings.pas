@@ -74,6 +74,7 @@ type
     WriteExifOwner: Boolean;        // write author/copyright into EXIF on copy
     ExifAuthor, ExifCopyright: string;  // author and copyright text
     FirstRunDone: Boolean;          // False until the first start has completed
+    GvfsNoteOff: Boolean;           // True when the note about slow file manager mounts (Linux, /gvfs/ paths) is not wanted any more
     SingleInstance: Boolean;        // only one copy of the program may run
     WinSafeNames: Boolean;          // replace characters that Windows file names cannot hold (matters on Linux)
     LoadLastAtStartup: Boolean;     // reload the last used source folder when the program starts
@@ -317,6 +318,7 @@ begin
   ExifAuthor := '';  // no author
   ExifCopyright := '';  // no copyright
   FirstRunDone := False;  // first run not done yet
+  GvfsNoteOff := False;  // the note about slow mounts is shown
   LoadLastAtStartup := False;  // do not reload the last source
   SingleInstance := True;  // single instance
   WinSafeNames := True;  // Windows-safe names on
@@ -438,6 +440,7 @@ begin
     ExifAuthor := ReadString('General', 'ExifAuthor', ExifAuthor);  // load: author name
     ExifCopyright := ReadString('General', 'ExifCopyright', ExifCopyright);  // load: copyright text
     FirstRunDone := ReadBool('General', 'FirstRunDone', FirstRunDone);  // load: first start completed
+    GvfsNoteOff := ReadBool('General', 'GvfsNoteOff', GvfsNoteOff);  // load: no note about slow mounts
     LoadLastAtStartup := ReadBool('General', 'LoadLastAtStartup', LoadLastAtStartup);  // load: reload the last source at start-up
     SingleInstance := ReadBool('General', 'SingleInstance', SingleInstance);  // load: allow only one running copy
     WinSafeNames := ReadBool('General', 'WinSafeNames', WinSafeNames);  // load: replace characters Windows cannot store
@@ -563,6 +566,7 @@ begin
     WriteString('General', 'ExifAuthor', ExifAuthor);  // save: author name
     WriteString('General', 'ExifCopyright', ExifCopyright);  // save: copyright text
     WriteBool('General', 'FirstRunDone', FirstRunDone);  // save: first start completed
+    WriteBool('General', 'GvfsNoteOff', GvfsNoteOff);  // save: no note about slow mounts
     WriteBool('General', 'LoadLastAtStartup', LoadLastAtStartup);  // save: reload the last source at start-up
     WriteBool('General', 'SingleInstance', SingleInstance);  // save: allow only one running copy
     WriteBool('General', 'WinSafeNames', WinSafeNames);  // save: replace characters Windows cannot store
@@ -645,8 +649,8 @@ const
   { Session values: they change while working and are not part of what a profile is about, so they do
     not count as unsaved profile changes and stay as they are when a profile is loaded or put back.
     'Section/Key', or 'Section/*' for a whole section. }
-  SessionKeys: array[0..10] of string = (
-    'General/LastSource', 'General/FirstRunDone', 'General/PromptProfile', 'General/ProfileName', 'General/Logging',
+  SessionKeys: array[0..11] of string = (
+    'General/LastSource', 'General/FirstRunDone', 'General/GvfsNoteOff', 'General/PromptProfile', 'General/ProfileName', 'General/Logging',
     'Path/JobCode', 'Path/SeqNext', 'View/*', 'JobHistory/*', 'DateJobCodes/*', 'Window/*');
 
 { Splits a SessionKeys entry into its section and key. }

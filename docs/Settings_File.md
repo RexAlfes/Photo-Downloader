@@ -58,6 +58,7 @@ The exact path in use is shown in the **Status** dialog (line "Settings file:").
 | `[General]` | `ExifAuthor` | text | (empty) | EXIF author text |
 | `[General]` | `ExifCopyright` | text | (empty) | EXIF copyright text |
 | `[General]` | `FirstRunDone` | True/False | 0 | The first-run screen has been shown |
+| `[General]` | `GvfsNoteOff` | True/False | 0 | Linux: the note about slow file manager connections (folders with `/gvfs/` in their path) is not shown any more (0.1.5.11 or later) |
 | `[General]` | `LoadLastAtStartup` | True/False | 0 | Reload the last source folder at start |
 | `[General]` | `SingleInstance` | True/False | 1 | Allow only one running copy |
 | `[General]` | `LastSource` | text | (empty) | Last source folder |

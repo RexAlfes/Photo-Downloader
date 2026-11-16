@@ -35,6 +35,7 @@ type
     FDevDoneKb: Int64;  // KB imported before the current file (progress bar)
     FThumbCols: Integer;            // thumbnail columns the window was sized for
     FCancel: Boolean;  // True when the user pressed Cancel
+    FGvfsNoted: Boolean;  // True once the note about a slow file manager mount was shown in this run
     FSyncing: Boolean;              // true while list/grid selections are being mirrored
     FProg: TForm;  // progress window
     FProgBar: TProgressBar;  // progress bar
@@ -84,6 +85,7 @@ type
     procedure UpdateStatus;
     procedure ScanProgress(Count: Integer);
     procedure ThermalProgress(Done, Total: Integer);  // progress while files are checked for thermal pictures
+    procedure SlowMountNote(const Path: string);  // tells once that a folder on a file manager mount (Linux) is slow to read
     procedure LoadSource(const Path: string);
     procedure AutoDetectSource;
     function ImportFromDevice(const DevName, DevId: string; FolderNames, FolderIds: TStrings; Silent: Boolean): Boolean;  // copies device folders to staging and loads them
@@ -953,6 +955,34 @@ end;
 { loading and filtering                                                   }
 { ====================================================================== }
 
+{ True for a folder reached through the desktop's file manager mount on Linux (GVFS), for example
+  /run/user/1000/gvfs/smb-share:server=nas,share=photos/... or an older ~/.gvfs/... path. }
+function IsGvfsPath(const Path: string): Boolean;
+begin
+  Result := ((Pos('/run/user/', Path) = 1) and (Pos('/gvfs/', Path) > 0)) or (Pos('/.gvfs/', Path) > 0);
+end;
+
+{ Tells the user, once per run, that pictures on a file manager mount are read slowly and that mounting
+  the share directly is much faster. Measured by a user: 355 MB in 48 s through such a mount and in 5 s
+  through a share mounted with mount -t cifs. "Do not show again" switches the note off for good. }
+procedure TMainForm.SlowMountNote(const Path: string);
+begin
+  if FGvfsNoted or FS.GvfsNoteOff or not IsGvfsPath(Path) then Exit;  // shown already, not wanted, or another kind of folder
+  FGvfsNoted := True;  // once per run
+  LogThumb('source on a file manager mount (GVFS), which is slow to read: ' + Path);  // note it in the log
+  if QuestionDlg(AppTitle,
+       'This folder is opened through the file manager''s network connection (its path holds /gvfs/).' + LineEnding + LineEnding +
+       'Reading pictures through such a connection is slow: the first load of a folder can take minutes. ' +
+       'Later loads are fast, because thumbnails are kept on this computer.' + LineEnding + LineEnding +
+       'A share that is mounted directly (mount -t cifs, or a line in /etc/fstab) is read many times faster. ' +
+       'See "Network folders on Linux" in the User Manual.',
+       mtInformation, [mrOK, 'OK', mrIgnore, 'Do not show again'], 0) = mrIgnore then
+  begin
+    FS.GvfsNoteOff := True;  // not wanted any more
+    SaveSettingsNow;  // keep that
+  end;
+end;
+
 { Scans a source folder, renders the first thumbnails and fills the grid. }
 procedure TMainForm.LoadSource(const Path: string);
 const
@@ -1087,6 +1117,7 @@ begin
   end;
   UpdateCaption;  // update the window title
   UpdateMenus;  // update the menus
+  SlowMountNote(Path);  // Linux: a folder on a file manager mount is slow to read
 end;
 
 { Looks for a card reader or removable drive with a DCIM folder and loads it. }
