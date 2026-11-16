@@ -47,6 +47,13 @@ function ExtractEmbeddedJpeg(const FileName: string; Rank: Integer; Deep: Boolea
 function ExtractEmbeddedJpegEx(const FileName: string; Rank: Integer; Deep: Boolean;
   MinSide: Integer; Dest: TStream; out W, H, RefW, RefH: Integer): Boolean;
 
+{ A quick look for an embedded color JPEG preview in the first 256 KB of a file whose long side is at
+  least MinSide pixels: the smallest such preview is copied to Dest. For thumbnails of DNG and TIFF
+  files: many keep a small preview right after the header (a drone's DNG: 320 x 240 pixels, 10 KB, 12 KB
+  into the file), and reading 4 MB to find it took most of the time on a memory card. False when there
+  is none; the caller then searches the usual way. }
+function ExtractQuickPreview(const FileName: string; MinSide: Integer; Dest: TStream; out W, H: Integer): Boolean;
+
 { Copies the small thumbnail that cameras store in the EXIF data of a JPEG (IFD1, usually
   160x120 or 320x240, in the first 64 KB) to Dest. W/H are its size; MainW/MainH the size of
   the photo itself (0 when unknown). False when the file has no such thumbnail. Only the
@@ -1519,6 +1526,34 @@ var
   RefW, RefH: Integer;  // RefW, RefH: not needed here
 begin
   Result := ExtractEmbeddedJpegEx(FileName, Rank, Deep, 0, Dest, W, H, RefW, RefH);  // largest first
+end;
+
+function ExtractQuickPreview(const FileName: string; MinSide: Integer; Dest: TStream; out W, H: Integer): Boolean;
+const
+  QuickBytes = 262144;  // how much of the file is read
+var
+  Buf: TBytes;  // Buf: the start of the file
+  Got, I, Best: Integer;  // Got: bytes read; I: loop counter; Best: the candidate chosen (-1 = none)
+  FLen: Int64;  // FLen: file size
+  C: TJpegCands;  // C: embedded JPEGs found (complete ones only)
+begin
+  Result := False;  // assume none
+  W := 0;  // no size yet
+  H := 0;
+  Buf := nil;  // release any old array
+  C := nil;
+  Got := ReadPrefix(FileName, QuickBytes, Buf, FLen);  // read the start of the file
+  if Got = 0 then Exit;  // nothing read
+  FindJpegs(Buf, Got, C);  // complete JPEGs in it
+  Best := -1;  // none chosen yet
+  for I := 0 to High(C) do
+    if (C[I].Comps = 3) and (C[I].Len >= 1024) and (Max(C[I].W, C[I].H) >= MinSide) then  // a color picture that is big enough
+      if (Best < 0) or (Int64(C[I].W) * C[I].H < Int64(C[Best].W) * C[Best].H) then Best := I;  // the smallest of them decodes fastest
+  if Best < 0 then Exit;  // none
+  Dest.WriteBuffer(Buf[C[Best].Pos], C[Best].Len);  // copy the JPEG
+  W := C[Best].W;  // its size
+  H := C[Best].H;
+  Result := True;  // found
 end;
 
 function ExtractEmbeddedJpegEx(const FileName: string; Rank: Integer; Deep: Boolean;

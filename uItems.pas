@@ -2337,6 +2337,23 @@ begin
         // DNG files are not searched beyond the first 4 MB (they can be very large).
         Deep := Pos(';' + Ext + ';', TiffExts) = 0;  // TIFF and DNG are not searched completely
         Mem := TMemoryStream.Create;  // memory for the preview
+        // TIFF and DNG: first a quick look for a preview near the start of the file that is big enough for
+        // the thumbnail (the search below reads 4 MB of every file, most of the time on a memory card)
+        if (not Deep) and ExtractQuickPreview(Item.FullPath, Box, Mem, W, H) then
+        begin
+          Mem.Position := 0;  // rewind
+          Jpg := TJPEGImage.Create;  // create the JPEG
+          try
+            Jpg.Scale := PickScale(W, H, Box);  // choose the decoding scale
+            Jpg.Performance := jpBestSpeed;  // fastest decoding
+            Jpg.LoadFromStream(Mem);  // decode the preview
+            if (not Jpg.Empty) and (Jpg.Width > 0) then G := Jpg;  // use it as the graphic
+          except
+            // not a picture the decoder reads (raw data can look like one): search the usual way
+          end;
+          if G = nil then FreeAndNil(Jpg);  // free the failed JPEG
+        end;
+        if G = nil then
         for Rank := 0 to 2 do  // try up to three previews
         begin
           Mem.Clear;  // empty the memory
