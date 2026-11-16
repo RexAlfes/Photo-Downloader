@@ -49,12 +49,13 @@ type
     function NextReady: Boolean;  // True when that job is finished
     procedure Deliver;  // gives that job's thumbnail to its item and goes on to the next job
     property Count: Integer read FCount;  // number of items added
+    function ThreadCount: Integer;  // number of threads started
   end;
 
 implementation
 
 const
-  MaxThreads = 8;  // most threads used
+  MaxThreads = 8;  // threads used (fewer only when there are fewer pictures)
   MaxAhead = 48;  // finished thumbnails waiting for the main thread at most (each is a bitmap in memory)
 
 type
@@ -138,11 +139,17 @@ var
   N, I: Integer;  // N: number of threads; I: loop counter
 begin
   if (FCount = 0) or (Length(FThreads) > 0) then Exit;  // nothing to do, or started already
-  N := TThread.ProcessorCount;  // processors of this computer
-  if N < 2 then N := 4;  // unknown (or one): some threads still overlap the reading of the files
-  N := Max(1, Min(Min(MaxThreads, N - 1), FCount));  // one processor stays for the window
+  // Always MaxThreads, whatever the number of processors: most of the time goes into waiting for the files
+  // (a user's log from a network folder: reading 216 s, decoding 28 s), and waiting threads overlap. With
+  // one thread fewer than the processors, a computer with 4 of them loaded that folder with 3 threads.
+  N := Max(1, Min(MaxThreads, FCount));
   SetLength(FThreads, N);
   for I := 0 to N - 1 do FThreads[I] := TThumbThread.Create(Self);  // start them
+end;
+
+function TThumbBatch.ThreadCount: Integer;
+begin
+  Result := Length(FThreads);  // threads started
 end;
 
 function TThumbBatch.IsNext(Item: TImageItem): Boolean;

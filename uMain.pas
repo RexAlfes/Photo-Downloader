@@ -963,10 +963,11 @@ var
   It: TImageItem;  // It: current item
   Batch: TThumbBatch;  // Batch: JPEG and RAW thumbnails being prepared on other threads
   T0, T1, T2: QWord;  // T0, T1, T2: tick counts at the start, after the scan and after the destinations (for the log)
-  Pooled: Integer;  // Pooled: thumbnails given to the threads
+  Pooled, PoolThreads: Integer;  // Pooled: thumbnails given to the threads; PoolThreads: number of those threads
 begin
   Batch := nil;  // nothing prepared yet
   Pooled := 0;  // none yet
+  PoolThreads := 0;
   DoneN := 0;
   Total := 0;
   if (FDevStage <> '') and not SameText(Path, FDevStage) then LeaveDevice;  // another source: the device is done
@@ -1037,6 +1038,7 @@ begin
         DoneN := 0;  // nothing rendered yet
         Pooled := Batch.Count;  // for the log
         Batch.Start;  // begin preparing
+        PoolThreads := Batch.ThreadCount;  // for the log
         Kept := 0;  // none kept yet
         for I := 0 to FItems.Count - 1 do  // every item
         begin
@@ -1071,8 +1073,8 @@ begin
         end;
       end;
       // how long each step took, for problem reports (thumbnail.log, when logging is on)
-      LogThumb(Format('version %s, load %s: %d files; reading %d ms, destinations %d ms, thumbnails %d ms (%d of %d rendered, %d on threads)',
-        [AppVersionString, Path, FItems.Count, T1 - T0, T2 - T1, GetTickCount64 - T2, DoneN, Total, Pooled]));
+      LogThumb(Format('version %s, load %s: %d files; reading %d ms, destinations %d ms, thumbnails %d ms (%d of %d rendered, %d on %d threads)',
+        [AppVersionString, Path, FItems.Count, T1 - T0, T2 - T1, GetTickCount64 - T2, DoneN, Total, Pooled, PoolThreads]));
       if Pooled > 0 then LogThumb(ThumbStatsText);  // where the threads spent their time
     finally
       FreeAndNil(Batch);  // stop the threads (they finish the file they are at)
