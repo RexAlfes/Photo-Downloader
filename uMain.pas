@@ -860,7 +860,7 @@ procedure TMainForm.ThermalProgress(Done, Total: Integer);
 begin
   if FProg = nil then Exit;  // no progress window
   if FProgLbl2 <> nil then
-    FProgLbl2.Caption := Format('Checking for thermal files ({Type} folder): %d of %d', [Done, Total]);  // progress text
+    FProgLbl2.Caption := Format('Analyzing file types: %d of %d', [Done, Total]);  // progress text
   if FProgBar2 <> nil then
   begin
     FProgBar2.Max := Max(1, Total);  // length of the bar
