@@ -10,14 +10,15 @@ unit uThumbPool;
   takes the results in the same order (IsNext, NextReady, Deliver) and turns each into the item's
   bitmap. The threads never touch an item: they get copies of its path, orientation and cache file name.
 
-  Only JPEG and RAW files go this way (uItems.ThumbPoolable). The HEIC/AVIF decoder keeps its working
-  data in shared variables and cannot run more than once at a time; TIFF, DNG, WebP and video
-  thumbnails use window system objects. Those are made on the main thread as before. }
+  JPEG and RAW files and videos go this way (uItems.ThumbPoolable); a video's frame comes from the
+  operating system (uVideoThumb.VideoThumbData). The HEIC/AVIF decoder keeps its working data in shared
+  variables and cannot run more than once at a time; TIFF, DNG and WebP thumbnails use window system
+  objects. Those are made on the main thread as before, and so is a video the system has no frame for. }
 
 interface
 
 uses
-  Classes, SysUtils, Math, uItems;
+  Classes, SysUtils, Math, uItems, uVideoThumb;
 
 type
   { One thumbnail to prepare }
@@ -82,6 +83,8 @@ var
   Ms: TMemoryStream;  // Ms: the finished thumbnail
   Cached: Boolean;  // Cached: it came from the disk cache
 begin
+  VideoThreadBegin;  // this thread may ask the system for video frames
+  try
   while not FBatch.FAbort do
   begin
     I := InterlockedIncrement(FBatch.FNext) - 1;  // take the next job
@@ -98,6 +101,9 @@ begin
     FBatch.FJobs[I].Bmp := Ms;  // the result
     FBatch.FJobs[I].FromCache := Cached;
     InterlockedExchange(FBatch.FJobs[I].Done, 1);  // finished (written last: the main thread reads the result after this)
+  end;
+  finally
+    VideoThreadEnd;  // done with the system's video frames
   end;
 end;
 
@@ -139,6 +145,7 @@ var
   N, I: Integer;  // N: number of threads; I: loop counter
 begin
   if (FCount = 0) or (Length(FThreads) > 0) then Exit;  // nothing to do, or started already
+  VideoThumbPrepare;  // one-time setup for video frames, here on the main thread
   // Always MaxThreads, whatever the number of processors. Only three of them read a photo at a time
   // (uItems.EnterPhotoRead: more made a network folder much slower); the others decode or wait.
   N := Max(1, Min(MaxThreads, FCount));

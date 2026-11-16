@@ -92,7 +92,7 @@ procedure EnsureThumb(Item: TImageItem; Box: Integer);  // Makes sure an item ha
 procedure ReleaseThumb(Item: TImageItem);
 { The file name of the cached thumbnail of an item }
 function ThumbCacheName(Item: TImageItem; Box: Integer): string;
-{ True for the file types whose thumbnail PrepareThumb can make (JPEG, and RAW files with a JPEG preview) }
+{ True for the file types whose thumbnail PrepareThumb can make (JPEG, RAW files with a JPEG preview, and videos) }
 function ThumbPoolable(const FileName: string): Boolean;
 { Makes the upright thumbnail of a JPEG or RAW file, at most Box pixels on its long side, as a BMP in
   memory; nil when it cannot (EnsureThumb then does the file). It reads the disk cache file first
@@ -2695,21 +2695,24 @@ var
 begin
   Ext := ';' + LowerCase(ExtractFileExt(FileName)) + ';';  // extension as it stands in the lists
   Result := (Ext = ';.jpg;') or (Ext = ';.jpeg;') or (Ext = ';.jpe;') or  // JPEG
-    ((Pos(Ext, RawExts) > 0) and (Pos(Ext, TiffExts) = 0));  // RAW (DNG and TIFF look at the plain picture too: main thread)
+    ((Pos(Ext, RawExts) > 0) and (Pos(Ext, TiffExts) = 0)) or  // RAW (DNG and TIFF look at the plain picture too: main thread)
+    (Pos(Ext, VideoExts) > 0);  // a video: its frame comes from the operating system
 end;
 
 var
   { What PrepareThumb did since ThumbStatsText was asked last (its threads add under StatLock) }
   StatLock: TRTLCriticalSection;
   StatFiles, StatCached, StatBytes, StatReadMs, StatWorkMs: Int64;  // files; from the cache; bytes of photos read; ms reading; ms decoding and scaling
+  StatVideos, StatVideoMs: Int64;  // video frames asked for; ms waiting for them
 
 function ThumbStatsText: string;
 begin
   EnterCriticalSection(StatLock);
   try
-    Result := Format('thumbnail threads: %d files (%d from the cache), %.1f MB of photos read, reading %.1f s, decoding %.1f s (summed over the threads)',
-      [StatFiles, StatCached, StatBytes / 1048576, StatReadMs / 1000, StatWorkMs / 1000]);
+    Result := Format('thumbnail threads: %d files (%d from the cache), %.1f MB of photos read, reading %.1f s, decoding %.1f s, %d video frames %.1f s (summed over the threads)',
+      [StatFiles, StatCached, StatBytes / 1048576, StatReadMs / 1000, StatWorkMs / 1000, StatVideos, StatVideoMs / 1000]);
     StatFiles := 0; StatCached := 0; StatBytes := 0; StatReadMs := 0; StatWorkMs := 0;  // count again
+    StatVideos := 0; StatVideoMs := 0;
   finally
     LeaveCriticalSection(StatLock);
   end;
@@ -2717,9 +2720,11 @@ end;
 
 const
   MaxPhotoReads = 3;  // photos the thumbnail threads read at the same time
+  MaxVideoJobs = 4;  // video frames asked for at the same time (each is a request to Windows, or a run of ffmpeg on Linux)
 
 var
   PhotoReads: LongInt = 0;  // threads reading a photo right now
+  VideoJobs: LongInt = 0;  // threads waiting for a video frame right now
 
 { Waits until fewer than MaxPhotoReads threads are reading a photo, then counts this one. A user's logs
   from a Linux network folder (438 MB in 289 photos): 3 threads reading at once took 84 s, 8 threads 592 s,
@@ -2773,7 +2778,12 @@ var
   TStart, TR, ReadMs: QWord;  // TStart: start of the work; TR: start of a read; ReadMs: time spent reading files
   Bytes: Int64;  // Bytes: bytes of the photo read
   Got: Boolean;  // Got: a read gave something
+  IsBmp: Boolean;  // IsBmp: a video frame came as a finished BMP
+  VideoMs: QWord;  // VideoMs: time spent waiting for a video frame
+  IsVideoFile: Boolean;  // IsVideoFile: a video frame was asked for
 begin
+  VideoMs := 0;  // no video yet
+  IsVideoFile := False;
   Result := nil;  // nothing made yet
   FromCache := False;  // not from the cache
   Img := nil;  // nothing created yet
@@ -2795,7 +2805,34 @@ begin
       if Img = nil then
       begin
         Ext := ';' + LowerCase(ExtractFileExt(FullPath)) + ';';  // extension as it stands in the lists
-        if (Ext = ';.jpg;') or (Ext = ';.jpeg;') or (Ext = ';.jpe;') then
+        if Pos(Ext, VideoExts) > 0 then
+        begin
+          // a video: a frame from the operating system (Windows Shell, or ffmpeg on Linux), a few at a time
+          IsVideoFile := True;
+          TR := GetTickCount64;  // the wait for a free place counts as video time, not as decoding
+          while InterlockedIncrement(VideoJobs) > MaxVideoJobs do  // not too many at once
+          begin
+            InterlockedDecrement(VideoJobs);
+            Sleep(2);
+          end;
+          try
+            Whole := VideoThumbData(FullPath, Box, IsBmp);  // the frame as picture data
+            VideoMs := GetTickCount64 - TR;
+          finally
+            InterlockedDecrement(VideoJobs);
+          end;
+          if Whole = nil then Exit;  // the system has none: EnsureThumb tries the cover or .thm file
+          if IsBmp then  // finished: at most Box pixels, upright
+          begin
+            Whole.Position := 0;
+            Result := Whole;
+            Whole := nil;  // the caller owns it now
+            Exit;
+          end;
+          Img := LoadMemImage(Whole, pkJpeg, 0, 0, 0, True);  // decode the frame
+          FreeAndNil(Whole);
+        end
+        else if (Ext = ';.jpg;') or (Ext = ';.jpeg;') or (Ext = ';.jpe;') then
         begin
           // The file is opened as seldom as possible: on a network folder every opening is a trip to the server.
           // fast path: the small thumbnail the camera stored in the EXIF data
@@ -2893,7 +2930,12 @@ begin
     if FromCache then Inc(StatCached);
     Inc(StatBytes, Bytes);
     Inc(StatReadMs, ReadMs);
-    Inc(StatWorkMs, Int64(GetTickCount64 - TStart) - Int64(ReadMs));
+    Inc(StatWorkMs, Int64(GetTickCount64 - TStart) - Int64(ReadMs) - Int64(VideoMs));
+    if IsVideoFile then
+    begin
+      Inc(StatVideos);
+      Inc(StatVideoMs, VideoMs);
+    end;
     LeaveCriticalSection(StatLock);
   end;
 end;

@@ -1068,11 +1068,9 @@ begin
           Heavy := ThumbIsHeavy(It.FileName);  // slow file type
           if (not Heavy) and (Kept >= PrerenderKeep) then Continue;  // rendered later, when it scrolls into view
           Inc(Total);  // rendered now
-          if Kept < PrerenderKeep then
-          begin
-            Inc(Kept);  // a slow file or an ordinary one of the first screens
-            if (not Heavy) and (not It.ThumbTried) and ThumbPoolable(It.FileName) then Batch.Add(It);  // one for the threads
-          end;
+          if Kept < PrerenderKeep then Inc(Kept);  // a slow file or an ordinary one of the first screens
+          // one for the threads: a JPEG or RAW file of the first screens, or a video (videos are all rendered now)
+          if (not It.ThumbTried) and ThumbPoolable(It.FileName) then Batch.Add(It);
         end;
         FProgBar2.Max := Max(1, Total);  // length of the second bar
         DoneN := 0;  // nothing rendered yet
