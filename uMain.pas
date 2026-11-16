@@ -943,7 +943,7 @@ procedure TMainForm.LoadSource(const Path: string);
 const
   PrerenderKeep = 300;  // number of ordinary thumbnails rendered up front
 var
-  I, Kept: Integer;  // I: loop counter; Kept: thumbnails kept
+  I, Kept, Total, DoneN: Integer;  // I: loop counter; Kept: thumbnails kept; Total: thumbnails to render now; DoneN: rendered so far
   Heavy: Boolean;  // Heavy: slow file type
   It: TImageItem;  // It: current item
   Batch: TThumbBatch;  // Batch: JPEG and RAW thumbnails being prepared on other threads
@@ -982,19 +982,28 @@ begin
       if FS.ViewMode <> 0 then  // render thumbnails when not in list view
       begin
         HeicPump := True;  // let slow decoders keep the window alive
-        FProgBar2.Max := Max(1, FItems.Count);  // maximum of the second bar
         // the JPEG and RAW thumbnails of the first screens are prepared on other threads, in the order the
         // loop below asks for them (the same counting as below decides which files those are)
         Batch := TThumbBatch.Create(FView.DecodeBox);
+        // The same pass counts the thumbnails rendered now (the first screens and every slow file), so the
+        // bar shows the work really done: with the file count as its length it hardly moved in a large folder
         Kept := 0;  // none counted yet
+        Total := 0;  // nothing to render yet
         for I := 0 to FItems.Count - 1 do  // every item
         begin
           It := ItemAt(FItems, I);  // current item
           if not ItemVisible(It) then Continue;  // skip hidden items
-          if Kept >= PrerenderKeep then Break;  // the first screens are full
-          Inc(Kept);  // a slow file or an ordinary one of the first screens
-          if (not ThumbIsHeavy(It.FileName)) and (not It.ThumbTried) and ThumbPoolable(It.FileName) then Batch.Add(It);  // one for the threads
+          Heavy := ThumbIsHeavy(It.FileName);  // slow file type
+          if (not Heavy) and (Kept >= PrerenderKeep) then Continue;  // rendered later, when it scrolls into view
+          Inc(Total);  // rendered now
+          if Kept < PrerenderKeep then
+          begin
+            Inc(Kept);  // a slow file or an ordinary one of the first screens
+            if (not Heavy) and (not It.ThumbTried) and ThumbPoolable(It.FileName) then Batch.Add(It);  // one for the threads
+          end;
         end;
+        FProgBar2.Max := Max(1, Total);  // length of the second bar
+        DoneN := 0;  // nothing rendered yet
         Batch.Start;  // begin preparing
         Kept := 0;  // none kept yet
         for I := 0 to FItems.Count - 1 do  // every item
@@ -1005,9 +1014,12 @@ begin
           Heavy := ThumbIsHeavy(It.FileName);  // slow file type
           // ordinary pictures beyond the first screens are rendered when they scroll into view
           if (not Heavy) and (Kept >= PrerenderKeep) then Continue;  // ordinary pictures beyond the first screens are rendered later
-          FProgBar2.Position := I;  // progress position
+          FProgBar2.Position := DoneN;  // progress position
+          Inc(DoneN);  // this one is in work
           FProgLbl2.Caption := Format('Rendering thumbnails: %d of %d  %s',  // progress text
-            [I + 1, FItems.Count, It.FileName]);
+            [DoneN, Total, It.FileName]);
+          FProg.Update;  // draw the text and the bar now (GTK otherwise waits for an idle moment)
+          FProgBar2.Update;
           Application.ProcessMessages;  // let the window update
           if FCancel then Break;  // stop when canceled
           if Batch.IsNext(It) then  // prepared on another thread
