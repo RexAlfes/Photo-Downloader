@@ -947,8 +947,13 @@ var
   Heavy: Boolean;  // Heavy: slow file type
   It: TImageItem;  // It: current item
   Batch: TThumbBatch;  // Batch: JPEG and RAW thumbnails being prepared on other threads
+  T0, T1, T2: QWord;  // T0, T1, T2: tick counts at the start, after the scan and after the destinations (for the log)
+  Pooled: Integer;  // Pooled: thumbnails given to the threads
 begin
   Batch := nil;  // nothing prepared yet
+  Pooled := 0;  // none yet
+  DoneN := 0;
+  Total := 0;
   if (FDevStage <> '') and not SameText(Path, FDevStage) then LeaveDevice;  // another source: the device is done
   FSourcePath := Path;  // remember the source
   FS.LastSource := Path;  // remember it in the settings
@@ -963,7 +968,9 @@ begin
     ShowProgress(0, 'Loading source folder...', True);  // show the progress window
     try
       FProgLbl.Caption := 'Reading files...';  // progress text
+      T0 := GetTickCount64;  // start of the load
       ScanFolder(Path, FS, FItems, @ScanProgress);  // scan the folder
+      T1 := GetTickCount64;  // the scan is done
       FProgBar.Style := pbstNormal;  // progress bar is finished
       FProgBar.Max := 1;  // maximum value
       FProgBar.Position := 1;  // current value
@@ -976,8 +983,16 @@ begin
           FCamera := ItemAt(FItems, I).Camera;  // remember it
           Break;  // stop searching
         end;
+      // each step says what it is doing: comparing with the destination can take long on a network drive
+      if FProgLbl2 <> nil then FProgLbl2.Caption := 'Comparing with the destination folder...';
+      FProg.Update;  // draw the text now
+      Application.ProcessMessages;  // let the window update
       EvaluateItems(FItems, FS);  // work out status and destination
       RebuildDates;  // fill the date list
+      T2 := GetTickCount64;  // the destinations are known
+      if FProgLbl2 <> nil then FProgLbl2.Caption := 'Rendering thumbnails...';
+      FProg.Update;  // draw the text now
+      Application.ProcessMessages;  // let the window update
       // render the thumbnails here, with a progress bar, instead of while the grid paints
       if FS.ViewMode <> 0 then  // render thumbnails when not in list view
       begin
@@ -1004,6 +1019,7 @@ begin
         end;
         FProgBar2.Max := Max(1, Total);  // length of the second bar
         DoneN := 0;  // nothing rendered yet
+        Pooled := Batch.Count;  // for the log
         Batch.Start;  // begin preparing
         Kept := 0;  // none kept yet
         for I := 0 to FItems.Count - 1 do  // every item
@@ -1038,6 +1054,9 @@ begin
           if Heavy and (Kept >= PrerenderKeep) then ReleaseThumb(It) else Inc(Kept);  // keep or release the thumbnail
         end;
       end;
+      // how long each step took, for problem reports (thumbnail.log, when logging is on)
+      LogThumb(Format('load %s: %d files; reading %d ms, destinations %d ms, thumbnails %d ms (%d of %d rendered, %d on threads)',
+        [Path, FItems.Count, T1 - T0, T2 - T1, GetTickCount64 - T2, DoneN, Total, Pooled]));
     finally
       FreeAndNil(Batch);  // stop the threads (they finish the file they are at)
       HeicPump := False;  // stop the keep-alive

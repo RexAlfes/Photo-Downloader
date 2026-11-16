@@ -48,6 +48,7 @@ type
     function IsNext(Item: TImageItem): Boolean;  // True when Item is the job the main thread takes next
     function NextReady: Boolean;  // True when that job is finished
     procedure Deliver;  // gives that job's thumbnail to its item and goes on to the next job
+    property Count: Integer read FCount;  // number of items added
   end;
 
 implementation
