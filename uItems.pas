@@ -99,6 +99,9 @@ function ThumbPoolable(const FileName: string): Boolean;
   (FromCache). It uses no window system objects and no shared data, so several threads may call it at
   once (uThumbPool). }
 function PrepareThumb(const FullPath, CacheFile: string; Orient, Box: Integer; out FromCache: Boolean): TMemoryStream;
+{ What PrepareThumb did since the last call, as text for the log (and starts counting again): files, bytes
+  read from photos, and the time spent reading files and decoding, summed over all threads. }
+function ThumbStatsText: string;
 { Gives an item the thumbnail PrepareThumb made (main thread only); a new one is written to the disk cache. }
 procedure AdoptThumb(Item: TImageItem; Ms: TMemoryStream; FromCache: Boolean; Box: Integer);
 { True for file types that are slow to decode (HEIC, AVIF, TIFF, DNG) }
@@ -2668,6 +2671,23 @@ begin
     ((Pos(Ext, RawExts) > 0) and (Pos(Ext, TiffExts) = 0));  // RAW (DNG and TIFF look at the plain picture too: main thread)
 end;
 
+var
+  { What PrepareThumb did since ThumbStatsText was asked last (its threads add under StatLock) }
+  StatLock: TRTLCriticalSection;
+  StatFiles, StatCached, StatBytes, StatReadMs, StatWorkMs: Int64;  // files; from the cache; bytes of photos read; ms reading; ms decoding and scaling
+
+function ThumbStatsText: string;
+begin
+  EnterCriticalSection(StatLock);
+  try
+    Result := Format('thumbnail threads: %d files (%d from the cache), %.1f MB of photos read, reading %.1f s, decoding %.1f s (summed over the threads)',
+      [StatFiles, StatCached, StatBytes / 1048576, StatReadMs / 1000, StatWorkMs / 1000]);
+    StatFiles := 0; StatCached := 0; StatBytes := 0; StatReadMs := 0; StatWorkMs := 0;  // count again
+  finally
+    LeaveCriticalSection(StatLock);
+  end;
+end;
+
 { Reads a whole file into memory with one read. The JPEG decoder asks for its data in pieces of 4 KB:
   straight from a file on a network folder that is very slow (each piece is a trip to the server,
   above all on Linux), so pictures are decoded from memory. }
@@ -2698,12 +2718,19 @@ var
   Ext: string;  // Ext: file extension
   W, H, RefW, RefH, NW, NH, Rank: Integer;  // W, H: picture size; RefW, RefH: size of the photo; NW, NH: thumbnail size; Rank: preview number
   Sc: Double;  // Sc: scale factor
+  Head: TBytes;  // Head: the first bytes of a photo, for its size
+  TStart, TR, ReadMs: QWord;  // TStart: start of the work; TR: start of a read; ReadMs: time spent reading files
+  Bytes: Int64;  // Bytes: bytes of the photo read
 begin
   Result := nil;  // nothing made yet
   FromCache := False;  // not from the cache
   Img := nil;  // nothing created yet
   Mem := nil;
   Whole := nil;
+  Head := nil;
+  ReadMs := 0;  // nothing read yet
+  Bytes := 0;
+  TStart := GetTickCount64;
   try
     try
       if (CacheFile <> '') and FileExistsUTF8(CacheFile) then  // the finished thumbnail of an earlier load
@@ -2718,23 +2745,31 @@ begin
         Ext := ';' + LowerCase(ExtractFileExt(FullPath)) + ';';  // extension as it stands in the lists
         if (Ext = ';.jpg;') or (Ext = ';.jpeg;') or (Ext = ';.jpe;') then
         begin
-          if SniffFileKind(FullPath) <> 2 then Exit;  // not a JPEG inside: EnsureThumb looks at its content
+          // The file is opened as seldom as possible: on a network folder every opening is a trip to the server.
           // fast path: the small thumbnail the camera stored in the EXIF data
           Mem := TMemoryStream.Create;  // memory for the EXIF thumbnail
+          TR := GetTickCount64;
           if ExtractExifThumb(FullPath, Mem, W, H, RefW, RefH) then
           begin
             Mem.Position := 0;  // rewind
             Img := LoadMemImage(Mem, pkJpeg, 0, 0, 0, True);  // decode the thumbnail
             if Img <> nil then SmallMemThumb(Img, RefW, RefH, Box);  // check its size and shape, cut black bars
           end;
+          ReadMs := ReadMs + (GetTickCount64 - TR);  // the time of the EXIF read (the small decode is in it)
           if Img = nil then  // the photo itself, decoded at reduced size
           begin
-            if not ReadJpegDims(FullPath, W, H) then  // size unknown: quarter size
+            TR := GetTickCount64;
+            Whole := FileToMemory(FullPath);  // read the photo with one read (see FileToMemory)
+            ReadMs := ReadMs + (GetTickCount64 - TR);
+            Bytes := Whole.Size;
+            SetLength(Head, Min(Whole.Size, 262144));  // its start, for the picture size
+            if Length(Head) > 0 then Move(Whole.Memory^, Head[0], Length(Head));
+            if (Length(Head) < 12) or (Head[0] <> $FF) or (Head[1] <> $D8) then Exit;  // not a JPEG inside: EnsureThumb looks at its content
+            if not JpegDimsOfBytes(Head, W, H) then  // size unknown: quarter size
             begin
               W := Box * 4;
               H := Box * 4;
             end;
-            Whole := FileToMemory(FullPath);  // read the photo with one read (see FileToMemory)
             Img := LoadMemImage(Whole, pkJpeg, W, H, Box, True);  // decode it
             FreeAndNil(Whole);  // done with its bytes
           end;
@@ -2746,7 +2781,10 @@ begin
           for Rank := 0 to 2 do
           begin
             Mem.Clear;  // empty the memory
+            TR := GetTickCount64;
             if not ExtractEmbeddedJpegEx(FullPath, Rank, True, Box, Mem, W, H, RefW, RefH) then Break;  // no further preview
+            ReadMs := ReadMs + (GetTickCount64 - TR);
+            Bytes := Bytes + Mem.Size;
             Mem.Position := 0;  // rewind
             Img := LoadMemImage(Mem, pkJpeg, W, H, Box, True);  // reduced-size decode
             if Img = nil then
@@ -2781,6 +2819,13 @@ begin
     Img.Free;  // free the picture
     Mem.Free;  // free the preview memory
     Whole.Free;  // free a file left in memory by a failure
+    EnterCriticalSection(StatLock);  // count the work for the log
+    Inc(StatFiles);
+    if FromCache then Inc(StatCached);
+    Inc(StatBytes, Bytes);
+    Inc(StatReadMs, ReadMs);
+    Inc(StatWorkMs, Int64(GetTickCount64 - TStart) - Int64(ReadMs));
+    LeaveCriticalSection(StatLock);
   end;
 end;
 
@@ -3144,7 +3189,11 @@ begin
   Result := ExtractFilePath(P) + ExtractFileName(MainDest);  // folder of the backup with the file name of the main copy
 end;
 
+initialization
+  InitCriticalSection(StatLock);  // for the thumbnail counters
+
 finalization
+  DoneCriticalSection(StatLock);
   FreeAndNil(ThumbLru);  // free the thumbnail list
   FreeAndNil(ExifCache);  // free the EXIF cache
 

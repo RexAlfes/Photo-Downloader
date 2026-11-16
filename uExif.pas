@@ -77,6 +77,8 @@ function ExtractMovieCover(const FileName: string; Dest: TStream; out IsPng: Boo
 
 { Pixel size of a JPEG file, read from its header only. }
 function ReadJpegDims(const FileName: string; out W, H: Integer): Boolean;  // Reads the pixel size of a JPEG file from its header.
+{ The pixel size of a JPEG whose first bytes are in B (the file need not be opened again); False when B does not start a JPEG. }
+function JpegDimsOfBytes(const B: TBytes; out W, H: Integer): Boolean;
 
 implementation
 
@@ -1377,6 +1379,15 @@ begin
 end;
 
 { Reads the pixel size of a JPEG file from its header. }
+function JpegDimsOfBytes(const B: TBytes; out W, H: Integer): Boolean;
+var
+  Comps: Integer;  // Comps: component count (not used)
+begin
+  W := 0;  // no size yet
+  H := 0;
+  Result := (Length(B) >= 12) and (B[0] = $FF) and (B[1] = $D8) and JpegDims(B, 0, Length(B), W, H, Comps);  // JPEG signature, then the size
+end;
+
 function ReadJpegDims(const FileName: string; out W, H: Integer): Boolean;
 var
   Strm: TFileStream;  // Strm: the open file

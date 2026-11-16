@@ -1071,8 +1071,9 @@ begin
         end;
       end;
       // how long each step took, for problem reports (thumbnail.log, when logging is on)
-      LogThumb(Format('load %s: %d files; reading %d ms, destinations %d ms, thumbnails %d ms (%d of %d rendered, %d on threads)',
-        [Path, FItems.Count, T1 - T0, T2 - T1, GetTickCount64 - T2, DoneN, Total, Pooled]));
+      LogThumb(Format('version %s, load %s: %d files; reading %d ms, destinations %d ms, thumbnails %d ms (%d of %d rendered, %d on threads)',
+        [AppVersionString, Path, FItems.Count, T1 - T0, T2 - T1, GetTickCount64 - T2, DoneN, Total, Pooled]));
+      if Pooled > 0 then LogThumb(ThumbStatsText);  // where the threads spent their time
     finally
       FreeAndNil(Batch);  // stop the threads (they finish the file they are at)
       HeicPump := False;  // stop the keep-alive
