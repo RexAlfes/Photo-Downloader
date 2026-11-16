@@ -69,7 +69,9 @@ var
 
 procedure ScanFolder(const Root: string; S: TAppSettings; Items: TObjectList;  // Scans a folder (DCIM when present) for images and fills Items.
   Progress: TScanProgress);
-procedure EvaluateItems(Items: TObjectList; S: TAppSettings);  // Works out the status and destination of every item.
+{ Works out the status and destination of every item. Progress, when given, is called while the files are
+  checked for thermal pictures (only when the {Type} token is used and files are not known yet). }
+procedure EvaluateItems(Items: TObjectList; S: TAppSettings; Progress: TThermalTick = nil);
 { Gives Dst the creation time of Src (Windows: Explorer's "Date created"; Linux keeps no creation time) and,
   with KeepWrite, also its last write time ("Date modified"). A copy, and every program step that rewrites a
   file, would otherwise get the time of the download. }
@@ -1405,8 +1407,12 @@ begin
   end;
 end;
 
-procedure EvaluateItems(Items: TObjectList; S: TAppSettings);
+procedure EvaluateItems(Items: TObjectList; S: TAppSettings; Progress: TThermalTick = nil);
 var
+  WarmPaths: array of string;  // WarmPaths: the files, for the thermal check
+  WarmSizes: array of Int64;  // WarmSizes: their sizes
+  WarmN: Integer;  // WarmN: number of files read by the thermal check
+  WarmT: QWord;  // WarmT: tick count when the thermal check started
   I, P, J: Integer;  // I: item index; P: position in a list; J: number of the first item with a name
   It: TImageItem;  // It: current item
   Dups, Groups, Firsts: TStringList;  // Dups: keys of pictures seen; Groups: destinations with counts; Firsts: first item per destination
@@ -1469,6 +1475,24 @@ var
   end;
 
 begin
+  // The {Type} token reads part of every photo and video to tell thermal files from color ones. One by
+  // one that takes minutes on a network folder, so the files not known yet are read on several threads first.
+  if Pos('{Type}', WithPluginFolders(S, S.DownloadDir) + S.FileNameMask) > 0 then
+  begin
+    WarmPaths := nil;
+    WarmSizes := nil;
+    SetLength(WarmPaths, Items.Count);
+    SetLength(WarmSizes, Items.Count);
+    for I := 0 to Items.Count - 1 do
+      if not ItemAt(Items, I).IsGroup then  // a scan item is no file
+      begin
+        WarmPaths[I] := ItemAt(Items, I).FullPath;
+        WarmSizes[I] := ItemAt(Items, I).Size;
+      end;
+    WarmT := GetTickCount64;
+    WarmN := ThermalWarm(WarmPaths, WarmSizes, Progress);  // read them
+    if WarmN > 0 then LogThumb(Format('thermal check for {Type}: %d files read in %d ms', [WarmN, GetTickCount64 - WarmT]));
+  end;
   Dups := TStringList.Create;  // keys of pictures seen
   Taken := TStringList.Create;  // names planned for files
   Taken.Sorted := True;  // keep the list sorted

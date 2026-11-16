@@ -12,7 +12,9 @@ unit uThermal;
   A file counts as thermal when its XMP data names a camera source that is not a visible-light camera
   (drone-skydio:CameraSource, for example INFRARED), or when its picture or video is 640 x 512 pixels,
   the size of common thermal cameras. A thermal photo whose XMP data says PhotoKind RJPEG is radiometric.
-  Only .jpg, .jpeg, .dng, .mp4 and .mov files are read; answers are cached by path and size. *)
+  Only .jpg, .jpeg, .dng, .mp4 and .mov files are read; answers are cached by path and size, in memory and
+  in the file thermalcache.txt of the cache folder, so a file is read once only. ThermalWarm reads the files
+  not yet known on several threads: on a network folder each read is a trip to the server. *)
 
 interface
 
@@ -21,18 +23,32 @@ interface
   with the dot. }
 function ThermalSuffix(const Path: string; Size: Int64; const Ext: string): string;
 
+type
+  TThermalTick = procedure(Done, Total: Integer) of object;  // progress of ThermalWarm: files read so far, files to read
+
+{ Reads the files of the list that ThermalSuffix does not know yet, on several threads, and remembers the
+  answers (also on disk). Tick, when given, is called about every 10 ms with the progress. Returns the
+  number of files read. }
+function ThermalWarm(const Paths: array of string; const Sizes: array of Int64; Tick: TThermalTick): Integer;
+{ Writes the answers found since the last call to the cache file. }
+procedure SaveThermalCache;
+
 implementation
 
 uses
-  Classes, SysUtils, StrUtils, LazUTF8, LazFileUtils;
+  Classes, SysUtils, StrUtils, LazUTF8, LazFileUtils, uSettings;
 
 const
   tkColor = 0;  // color (or not checked)
   tkThermal = 1;  // thermal camera
   tkRadiometric = 2;  // thermal photo with temperatures (RJPEG)
 
+  ThermalCacheMax = 100000;  // most answers kept
+  WarmThreads = 8;  // threads ThermalWarm uses (the work is waiting for the disk or the server, not computing)
+
 var
-  Cache: TStringList = nil;  // path|size=kind of the files read so far
+  Cache: TStringList = nil;  // key (path|size) of the files read so far, sorted; the answer is the object (a number)
+  CacheDirty: Boolean = False;  // True when answers were added since the cache file was written
 
 { Reads Count bytes of a file from position Start (negative: counted from the end); '' on failure. }
 function ReadPart(const Path: string; Start: Int64; Count: Integer): RawByteString;
@@ -218,6 +234,80 @@ begin
   if (Result = tkThermal) and (SkydioValue(D, 'PhotoKind') = 'RJPEG') then Result := tkRadiometric;  // with temperatures
 end;
 
+{ True for the file types that are read. E: extension in lower case. }
+function Checked(const E: string): Boolean;
+begin
+  Result := (E = '.jpg') or (E = '.jpeg') or (E = '.dng') or (E = '.mp4') or (E = '.mov');
+end;
+
+{ The cache key of a file. }
+function KeyOf(const Path: string; Size: Int64): string;
+begin
+  Result := Path + '|' + IntToStr(Size);  // the same file
+end;
+
+{ The name of the cache file. }
+function CacheFileName: string;
+begin
+  Result := CacheDir + 'thermalcache.txt';  // next to the EXIF cache
+end;
+
+{ Creates the cache and loads the cache file (lines "kind<tab>key") on first use. }
+procedure NeedCache;
+var
+  L: TStringList;  // L: lines of the file
+  I: Integer;  // I: line
+begin
+  if Cache <> nil then Exit;  // loaded already
+  Cache := TStringList.Create;  // the cache
+  Cache.CaseSensitive := True;  // keys compare exactly
+  Cache.UseLocale := False;  // compare the bytes, not by language rules
+  L := TStringList.Create;
+  try
+    try
+      if FileExistsUTF8(CacheFileName) then L.LoadFromFile(CacheFileName);  // read the file
+      for I := 0 to L.Count - 1 do
+        if (Length(L[I]) > 2) and (L[I][1] in ['0'..'2']) and (L[I][2] = #9) then  // a good line
+          Cache.AddObject(Copy(L[I], 3, MaxInt), TObject(PtrInt(Ord(L[I][1]) - Ord('0'))));  // key and answer
+    except
+      Cache.Clear;  // an unreadable cache is ignored
+    end;
+  finally
+    L.Free;
+  end;
+  Cache.Duplicates := dupIgnore;  // a key is kept only once
+  Cache.Sorted := True;  // sort once after loading, for fast lookups
+end;
+
+procedure SaveThermalCache;
+var
+  L: TStringList;  // L: lines of the file
+  I: Integer;  // I: entry
+begin
+  if (Cache = nil) or not CacheDirty then Exit;  // nothing new
+  L := TStringList.Create;
+  try
+    try
+      for I := 0 to Cache.Count - 1 do
+        L.Add(IntToStr(PtrInt(Cache.Objects[I])) + #9 + Cache[I]);  // answer and key
+      L.SaveToFile(CacheFileName);  // write the file
+      CacheDirty := False;  // same as the file now
+    except
+      // the cache is only a speed-up
+    end;
+  finally
+    L.Free;
+  end;
+end;
+
+{ Remembers the answer for a key. }
+procedure Remember(const Key: string; Kind: Integer);
+begin
+  if Cache.Count > ThermalCacheMax then Cache.Clear;  // keep the cache small
+  Cache.AddObject(Key, TObject(PtrInt(Kind)));  // the answer
+  CacheDirty := True;  // to be written
+end;
+
 function ThermalSuffix(const Path: string; Size: Int64; const Ext: string): string;
 var
   E, Key: string;  // E: extension in lower case; Key: cache key
@@ -225,21 +315,16 @@ var
 begin
   Result := '';  // color
   E := LowerCase(Ext);  // extension
-  if (E <> '.jpg') and (E <> '.jpeg') and (E <> '.dng') and (E <> '.mp4') and (E <> '.mov') then Exit;  // not checked
-  if (Path = '') or not FileExistsUTF8(Path) then Exit;  // an example name: no file to read
-  if Cache = nil then
-  begin
-    Cache := TStringList.Create;  // the cache
-    Cache.Sorted := True;  // fast lookup
-  end;
-  Key := StringReplace(Path, '=', #1, [rfReplaceAll]) + '|' + IntToStr(Size);  // the same file ('=' would split the name)
-  I := Cache.IndexOfName(Key);  // seen before?
-  if I >= 0 then Kind := StrToIntDef(Cache.ValueFromIndex[I], tkColor)  // known answer
+  if not Checked(E) then Exit;  // not checked
+  if Path = '' then Exit;  // an example name: no file to read
+  NeedCache;  // the answers so far
+  Key := KeyOf(Path, Size);  // the same file
+  if Cache.Find(Key, I) then Kind := PtrInt(Cache.Objects[I])  // known answer (the file is not touched)
   else
   begin
+    if not FileExistsUTF8(Path) then Exit;  // an example name: no file to read
     Kind := ThermalKind(Path, E);  // read the file
-    if Cache.Count > 100000 then Cache.Clear;  // keep the cache small
-    Cache.Add(Key + '=' + IntToStr(Kind));  // remember the answer
+    Remember(Key, Kind);  // remember the answer
   end;
   case Kind of
     tkThermal: Result := '-IR';  // thermal
@@ -247,6 +332,85 @@ begin
   end;
 end;
 
+var
+  { The work of one ThermalWarm call (only one runs at a time, from the main thread) }
+  WPaths: array of string;  // the files to read
+  WKinds: array of Integer;  // their answers
+  WNext, WDone: LongInt;  // WNext: files taken by the threads; WDone: files finished
+
+type
+  { A thread that reads files for ThermalWarm }
+  TWarmThread = class(TThread)
+  protected
+    procedure Execute; override;
+  end;
+
+{ Thread body: takes the next file until none is left. }
+procedure TWarmThread.Execute;
+var
+  K: LongInt;  // K: number of the file
+begin
+  repeat
+    K := InterlockedIncrement(WNext) - 1;  // take the next file
+    if K >= Length(WPaths) then Break;  // none left
+    try
+      WKinds[K] := ThermalKind(WPaths[K], LowerCase(ExtractFileExt(WPaths[K])));  // read the file
+    except
+      WKinds[K] := tkColor;  // unreadable: treated as color
+    end;
+    InterlockedIncrement(WDone);  // finished
+  until False;
+end;
+
+function ThermalWarm(const Paths: array of string; const Sizes: array of Int64; Tick: TThermalTick): Integer;
+var
+  Keys: array of string;  // Keys: cache keys of the files to read
+  Th: array of TWarmThread;  // Th: the threads
+  I, N: Integer;  // I: loop counter; N: files to read
+begin
+  Result := 0;  // nothing read yet
+  NeedCache;  // the answers so far
+  WPaths := nil;
+  Keys := nil;
+  Th := nil;
+  N := 0;
+  SetLength(WPaths, Length(Paths));  // room for all
+  SetLength(Keys, Length(Paths));
+  for I := 0 to High(Paths) do  // the files not known yet
+  begin
+    if (Paths[I] = '') or not Checked(LowerCase(ExtractFileExt(Paths[I]))) then Continue;  // not checked
+    Keys[N] := KeyOf(Paths[I], Sizes[I]);
+    if Cache.IndexOf(Keys[N]) >= 0 then Continue;  // known
+    WPaths[N] := Paths[I];
+    Inc(N);
+  end;
+  SetLength(WPaths, N);
+  if N = 0 then Exit;  // every file is known
+  WKinds := nil;
+  SetLength(WKinds, N);
+  WNext := 0;
+  WDone := 0;
+  SetLength(Th, WarmThreads);
+  if N < WarmThreads then SetLength(Th, N);  // not more threads than files
+  for I := 0 to High(Th) do Th[I] := TWarmThread.Create(False);  // start them
+  while WDone < N do  // wait, with the window alive
+  begin
+    if Assigned(Tick) then Tick(WDone, N);
+    Sleep(10);
+  end;
+  for I := 0 to High(Th) do
+  begin
+    Th[I].WaitFor;  // until it has ended
+    Th[I].Free;
+  end;
+  for I := 0 to N - 1 do Remember(Keys[I], WKinds[I]);  // keep the answers
+  SaveThermalCache;  // also for the next start of the program
+  WPaths := nil;
+  WKinds := nil;
+  Result := N;
+end;
+
 finalization
+  SaveThermalCache;  // answers found one by one
   Cache.Free;  // free the cache
 end.

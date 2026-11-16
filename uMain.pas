@@ -83,6 +83,7 @@ type
     procedure UpdateMenus;
     procedure UpdateStatus;
     procedure ScanProgress(Count: Integer);
+    procedure ThermalProgress(Done, Total: Integer);  // progress while files are checked for thermal pictures
     procedure LoadSource(const Path: string);
     procedure AutoDetectSource;
     function ImportFromDevice(const DevName, DevId: string; FolderNames, FolderIds: TStrings; Silent: Boolean): Boolean;  // copies device folders to staging and loads them
@@ -852,6 +853,20 @@ begin
     Caption := T + ' - Folder ' + FSourcePath;  // title with the folder
 end;
 
+{ Shows how many files were checked for thermal pictures (the {Type} token) while destinations are worked out. }
+procedure TMainForm.ThermalProgress(Done, Total: Integer);
+begin
+  if FProg = nil then Exit;  // no progress window
+  if FProgLbl2 <> nil then
+    FProgLbl2.Caption := Format('Checking for thermal files ({Type} folder): %d of %d', [Done, Total]);  // progress text
+  if FProgBar2 <> nil then
+  begin
+    FProgBar2.Max := Max(1, Total);  // length of the bar
+    FProgBar2.Position := Done;  // files read
+  end;
+  Application.ProcessMessages;  // let the window update
+end;
+
 { Shows the number of files found during a scan and lets the user cancel it. }
 procedure TMainForm.ScanProgress(Count: Integer);
 var
@@ -987,8 +1002,9 @@ begin
       if FProgLbl2 <> nil then FProgLbl2.Caption := 'Comparing with the destination folder...';
       FProg.Update;  // draw the text now
       Application.ProcessMessages;  // let the window update
-      EvaluateItems(FItems, FS);  // work out status and destination
+      EvaluateItems(FItems, FS, @ThermalProgress);  // work out status and destination
       RebuildDates;  // fill the date list
+      if FProgBar2 <> nil then FProgBar2.Position := 0;  // the bar starts again for the thumbnails
       T2 := GetTickCount64;  // the destinations are known
       if FProgLbl2 <> nil then FProgLbl2.Caption := 'Rendering thumbnails...';
       FProg.Update;  // draw the text now
