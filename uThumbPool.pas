@@ -139,9 +139,8 @@ var
   N, I: Integer;  // N: number of threads; I: loop counter
 begin
   if (FCount = 0) or (Length(FThreads) > 0) then Exit;  // nothing to do, or started already
-  // Always MaxThreads, whatever the number of processors: most of the time goes into waiting for the files
-  // (a user's log from a network folder: reading 216 s, decoding 28 s), and waiting threads overlap. With
-  // one thread fewer than the processors, a computer with 4 of them loaded that folder with 3 threads.
+  // Always MaxThreads, whatever the number of processors. Only three of them read a photo at a time
+  // (uItems.EnterPhotoRead: more made a network folder much slower); the others decode or wait.
   N := Max(1, Min(MaxThreads, FCount));
   SetLength(FThreads, N);
   for I := 0 to N - 1 do FThreads[I] := TThumbThread.Create(Self);  // start them

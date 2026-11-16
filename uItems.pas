@@ -2698,6 +2698,30 @@ begin
   end;
 end;
 
+const
+  MaxPhotoReads = 3;  // photos the thumbnail threads read at the same time
+
+var
+  PhotoReads: LongInt = 0;  // threads reading a photo right now
+
+{ Waits until fewer than MaxPhotoReads threads are reading a photo, then counts this one. A user's logs
+  from a Linux network folder (438 MB in 289 photos): 3 threads reading at once took 84 s, 8 threads 592 s,
+  because the mount serves one request at a time and jumps between the files. Decoding is not limited. }
+procedure EnterPhotoRead;
+begin
+  while InterlockedIncrement(PhotoReads) > MaxPhotoReads do
+  begin
+    InterlockedDecrement(PhotoReads);  // full: step back
+    Sleep(2);  // and try again shortly
+  end;
+end;
+
+{ This thread has finished reading its photo. }
+procedure LeavePhotoRead;
+begin
+  InterlockedDecrement(PhotoReads);
+end;
+
 { Reads a whole file into memory with one read. The JPEG decoder asks for its data in pieces of 4 KB:
   straight from a file on a network folder that is very slow (each piece is a trip to the server,
   above all on Linux), so pictures are decoded from memory. }
@@ -2731,6 +2755,7 @@ var
   Head: TBytes;  // Head: the first bytes of a photo, for its size
   TStart, TR, ReadMs: QWord;  // TStart: start of the work; TR: start of a read; ReadMs: time spent reading files
   Bytes: Int64;  // Bytes: bytes of the photo read
+  Got: Boolean;  // Got: a read gave something
 begin
   Result := nil;  // nothing made yet
   FromCache := False;  // not from the cache
@@ -2758,19 +2783,30 @@ begin
           // The file is opened as seldom as possible: on a network folder every opening is a trip to the server.
           // fast path: the small thumbnail the camera stored in the EXIF data
           Mem := TMemoryStream.Create;  // memory for the EXIF thumbnail
-          TR := GetTickCount64;
-          if ExtractExifThumb(FullPath, Mem, W, H, RefW, RefH) then
+          EnterPhotoRead;  // not too many photos read at once
+          try
+            TR := GetTickCount64;
+            Got := ExtractExifThumb(FullPath, Mem, W, H, RefW, RefH);
+            ReadMs := ReadMs + (GetTickCount64 - TR);
+          finally
+            LeavePhotoRead;
+          end;
+          if Got then
           begin
             Mem.Position := 0;  // rewind
             Img := LoadMemImage(Mem, pkJpeg, 0, 0, 0, True);  // decode the thumbnail
             if Img <> nil then SmallMemThumb(Img, RefW, RefH, Box);  // check its size and shape, cut black bars
           end;
-          ReadMs := ReadMs + (GetTickCount64 - TR);  // the time of the EXIF read (the small decode is in it)
           if Img = nil then  // the photo itself, decoded at reduced size
           begin
-            TR := GetTickCount64;
-            Whole := FileToMemory(FullPath);  // read the photo with one read (see FileToMemory)
-            ReadMs := ReadMs + (GetTickCount64 - TR);
+            EnterPhotoRead;  // not too many photos read at once
+            try
+              TR := GetTickCount64;
+              Whole := FileToMemory(FullPath);  // read the photo with one read (see FileToMemory)
+              ReadMs := ReadMs + (GetTickCount64 - TR);
+            finally
+              LeavePhotoRead;
+            end;
             Bytes := Whole.Size;
             SetLength(Head, Min(Whole.Size, 262144));  // its start, for the picture size
             if Length(Head) > 0 then Move(Whole.Memory^, Head[0], Length(Head));
@@ -2791,9 +2827,15 @@ begin
           for Rank := 0 to 2 do
           begin
             Mem.Clear;  // empty the memory
-            TR := GetTickCount64;
-            if not ExtractEmbeddedJpegEx(FullPath, Rank, True, Box, Mem, W, H, RefW, RefH) then Break;  // no further preview
-            ReadMs := ReadMs + (GetTickCount64 - TR);
+            EnterPhotoRead;  // not too many photos read at once
+            try
+              TR := GetTickCount64;
+              Got := ExtractEmbeddedJpegEx(FullPath, Rank, True, Box, Mem, W, H, RefW, RefH);
+              ReadMs := ReadMs + (GetTickCount64 - TR);
+            finally
+              LeavePhotoRead;
+            end;
+            if not Got then Break;  // no further preview
             Bytes := Bytes + Mem.Size;
             Mem.Position := 0;  // rewind
             Img := LoadMemImage(Mem, pkJpeg, W, H, Box, True);  // reduced-size decode
