@@ -20,7 +20,7 @@
       <AutoIncrementBuild Value="False"/>
       <MinorVersionNr Value="1"/>
       <RevisionNr Value="5"/>
-      <BuildNr Value="0"/>
+      <BuildNr Value="1"/>
       <Attributes pvaPreRelease="True"/>
       <StringTable FileDescription="Photo Downloader" ProductName="Photo Downloader"/>
     </VersionInfo>

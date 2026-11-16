@@ -275,7 +275,7 @@ For each file the program:
 
 A progress window shows the file being copied and has a **Cancel** button; a cancelled download can simply be started again, and files already copied are recognized as downloaded.
 
-**Verify every copy** is on by default (Preferences > Download Path). **Also save a second copy to a backup folder** makes another copy, using the same patterns, from the verified download before any rotation or metadata is applied. A file whose backup failed is never offered for deletion.
+**Verify every copy** is on by default (Preferences > Download Path). **Also save a second copy to a backup folder** makes another copy, using the same patterns, of the original as it is, before any rotation or metadata is applied; it is written while the file is downloaded and checked the same way. A file whose backup failed is never offered for deletion.
 
 **Auto-rotate.** Downloaded JPEGs are turned upright according to their EXIF orientation without recompressing them (lossless). Up to 15 rows or columns that do not fill a block may be trimmed at one edge, as the standard tool `jpegtran -trim` does. The thumbnails and viewer always show pictures upright regardless of this option.
 

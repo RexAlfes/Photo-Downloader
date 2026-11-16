@@ -1984,6 +1984,8 @@ var
   CR: TCopyResult;  // CR: result of a copy
   Attempt, BackupFail, Verified: Integer;  // Attempt: copy attempt; BackupFail: failed backup copies; Verified: verified copies
   OldOpts: string;  // OldOpts: plug-in values before the plug-ins asked for new ones
+  Dual: string;  // Dual: backup file written in the same pass as the download ('' when it is copied afterwards)
+  DualOk: Boolean;  // DualOk: that backup file is complete and checked
 begin
   Result := False;  // assume failure
   Done := 0; Skipped := 0; Failed := 0; Problems := 0; ExifFail := 0;  // clear the counters
@@ -2089,6 +2091,16 @@ begin
         // copy (and read back to compare checksums); one retry before giving up
         CopyAbort := False;  // clear the abort flag
         CopyPump := @CopyTick;  // let the copy keep the window alive
+        // the backup copy is written from the same blocks as the download, so the source is read only once.
+        // Not when a file with the backup's name exists (it is compared afterwards, below) and not for a
+        // Lightroom preview saved as a .jpg (its picture is taken out of the file)
+        Dual := '';  // backup copied afterwards unless set here
+        DualOk := False;  // no backup yet
+        if FS.BackupOn and (Trim(FS.BackupDir) <> '') and not LrPrevJpgOnly(FS, It) then
+        begin
+          BDest := BackupDestFor(FS, It, FS.SeqNext, FSession + 1, Dest);  // backup destination
+          if ForceDirectoriesUTF8(ExtractFilePath(BDest)) and not FileExistsUTF8(BDest) then Dual := BDest;  // a new file in a folder that can be made
+        end;
         Attempt := 0;  // first attempt
         repeat
           Inc(Attempt);  // count the attempt
@@ -2098,7 +2110,7 @@ begin
           if LrPrevJpgOnly(FS, It) then  // a Lightroom preview downloaded as a .jpg only
             CR := SaveLrPrevJpg(It.FullPath, Dest, FS.VerifyCopy, Hash, Err)  // write its preview picture (Dest ends in .jpg)
           else
-            CR := CopyFileChecked(It.FullPath, Dest, FS.VerifyCopy, Hash, Err);  // copy and verify
+            CR := CopyFileDual(It.FullPath, Dest, Dual, FS.VerifyCopy, Hash, Err, DualOk);  // copy and verify (with the backup when Dual is set)
           if CR = crOk then Break;  // copy is good
           LogThumb('copy failed (' + IntToStr(Attempt) + '): ' + It.FullPath + ' -> ' + Dest + ': ' + Err);  // log the failure
         until (CR = crCanceled) or (Attempt >= 2);  // try twice unless canceled
@@ -2139,7 +2151,9 @@ begin
           BDest := BackupDestFor(FS, It, FS.SeqNext, FSession + 1, Dest);  // backup destination
           CR := crFailed;  // assume failure
           BErr := 'could not create the backup folder';  // reason if the folder cannot be created
-          if ForceDirectoriesUTF8(ExtractFilePath(BDest)) then  // create the backup folder
+          if DualOk then
+            CR := crOk  // written and checked together with the download
+          else if ForceDirectoriesUTF8(ExtractFilePath(BDest)) then  // create the backup folder
           begin
             if FileExistsUTF8(BDest) then  // file exists in the backup folder
             begin

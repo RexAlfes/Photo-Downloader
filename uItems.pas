@@ -128,6 +128,12 @@ var
   read back and compared. On any failure the incomplete or wrong copy is deleted. }
 function CopyFileChecked(const Src, Dst: string; Verify: Boolean; out Hash: string;
   out Err: string): TCopyResult;
+{ Like CopyFileChecked, and writes a second copy (Dst2, the backup; '' for none) from the same blocks, so
+  the source is read only once. Dst2 must not exist yet. Dst2Ok is True when the second copy is complete
+  (and, with Verify, read back and compared); a second copy that fails is deleted and does not fail the
+  first one. }
+function CopyFileDual(const Src, Dst, Dst2: string; Verify: Boolean; out Hash: string;
+  out Err: string; out Dst2Ok: Boolean): TCopyResult;
 { MD5 of a file as 32 hex characters; '' if it cannot be read }
 function HashOfFile(const FileName: string): string;
 { True when Item is a .lrprev file that is downloaded as a .jpg only (Lightroom previews as .jpg, without the original) }
@@ -632,6 +638,51 @@ begin
   end;
 end;
 
+{ ReadMovieHeader through the same cache: a video with the same path, size and time is not opened again.
+  Its entries have keys starting with "movie|", so they never meet the EXIF entries. }
+function CachedMovie(const FullPath: string; Size: Int64; Time: LongInt; out Created: TDateTime;
+  out HasDate: Boolean; out Len: Double): Boolean;
+var
+  Key, Data: string;  // Key: cache key; Data: cached fields
+  I: Integer;  // I: position in the cache
+  E: TExifCacheEntry;  // E: cache entry
+  F: TStringArray;  // F: the cached fields
+  B1, B2: Int64;  // B1, B2: stored bits of the creation time and the length
+  D: Double;  // D: a value whose exact bits are stored
+begin
+  if ExifCache = nil then LoadExifCache;  // load the cache on the first scan
+  Key := 'movie|' + ExifCacheKey(FullPath, Size, Time);  // key of this video
+  if ExifCache.Find(Key, I) then  // the video was read before
+  begin
+    E := TExifCacheEntry(ExifCache.Objects[I]);  // its entry
+    F := E.Data.Split([#9]);  // result, date flag, creation time, length
+    if (Length(F) = 4) and TryStrToInt64('$' + F[2], B1) and TryStrToInt64('$' + F[3], B2) then  // usable data
+    begin
+      Result := F[0] = '1';  // result of ReadMovieHeader
+      HasDate := F[1] = '1';  // date flag
+      Created := PDouble(@B1)^;  // the exact creation time
+      Len := PDouble(@B2)^;  // the exact length
+      E.Used := True;  // seen in this session
+      Exit;  // done without opening the video
+    end;
+  end;
+  Result := ReadMovieHeader(FullPath, Created, HasDate, Len);  // open the video (an exception skips the cache)
+  D := Created;  // creation time, so its exact bits can be stored
+  Data := IntToStr(Ord(Result)) + #9 + IntToStr(Ord(HasDate)) + #9 + IntToHex(PInt64(@D)^, 16) + #9;
+  D := Len;  // length in seconds
+  Data := Data + IntToHex(PInt64(@D)^, 16);
+  if ExifCache.Find(Key, I) then  // replace broken data
+    TExifCacheEntry(ExifCache.Objects[I]).Data := Data
+  else
+  begin
+    E := TExifCacheEntry.Create;  // new entry
+    E.Data := Data;  // its fields
+    E.Used := True;  // seen in this session
+    ExifCache.AddObject(Key, E);  // add it
+  end;
+  ExifCacheDirty := True;  // save it after the scan
+end;
+
 var
   WholeDirs: array of string = nil;  // full paths of the folders of this scan that are copied whole
 
@@ -739,7 +790,7 @@ begin
           end;
         try
           if It.IsVideo then  // MP4, MOV or LRV: read the movie header
-            if ReadMovieHeader(Full, MovCreated, MovHasDate, MovLen) then  // creation time and length
+            if CachedMovie(Full, SR.Size, SR.Time, MovCreated, MovHasDate, MovLen) then  // creation time and length (from the cache when the file is unchanged)
             begin
               It.Duration := MovLen;  // length for the thumbnail badge
               if MovHasDate then It.CaptureTime := PickMovieTime(MovCreated, It.FileTime, MovLen);  // capture date
@@ -2610,19 +2661,34 @@ end;
 { Copies a file and computes the MD5 of the source; with Verify the copy is read back and compared. }
 function CopyFileChecked(const Src, Dst: string; Verify: Boolean; out Hash: string;
   out Err: string): TCopyResult;
+var
+  Ok2: Boolean;  // Ok2: result of the second copy (there is none here)
+begin
+  Result := CopyFileDual(Src, Dst, '', Verify, Hash, Err, Ok2);  // one copy only
+end;
+
+{ Copies a file to Dst and, from the same blocks, to Dst2 (when given), and computes the MD5 of the
+  source; with Verify the copies are read back and compared. }
+function CopyFileDual(const Src, Dst, Dst2: string; Verify: Boolean; out Hash: string;
+  out Err: string; out Dst2Ok: Boolean): TCopyResult;
 const
   BufSize = 262144;  // size of the copy buffer
 var
-  FI, FO: TFileStream;  // FI: source file; FO: destination file
+  FI, FO, FO2: TFileStream;  // FI: source file; FO: destination file; FO2: second copy (nil when none or failed)
   Buf: Pointer;  // Buf: copy buffer
   N: LongInt;  // N: bytes read
   Ctx: TMD5Context;  // Ctx: MD5 state
   Dig: TMD5Digest;  // Dig: MD5 result
   Back: string;  // Back: MD5 of the copy
+  Made2, Whole2: Boolean;  // Made2: the second file was created; Whole2: every block was written to it
 begin
   Result := crFailed;  // assume failure
   Hash := '';  // no hash yet
   Err := '';  // no error yet
+  Dst2Ok := False;  // no second copy yet
+  Made2 := False;  // nothing created yet
+  Whole2 := False;  // nothing written yet
+  FO2 := nil;  // no second file yet
   GetMem(Buf, BufSize);  // reserve the buffer
   try
     try
@@ -2630,6 +2696,15 @@ begin
       try
         FO := TFileStream.Create(Dst, fmCreate);  // create the destination
         try
+          if Dst2 <> '' then  // a second copy is wanted
+            try
+              FO2 := TFileStream.Create(Dst2, fmCreate);  // create it
+              Made2 := True;  // it is on the disk now
+              Whole2 := True;  // complete while every block is written
+            except
+              on E: Exception do
+                LogThumb('second copy could not be created: ' + Dst2 + ': ' + E.Message);  // go on with the first copy alone
+            end;
           MD5Init(Ctx);  // start the MD5
           repeat
             N := FI.Read(Buf^, BufSize);  // read a block
@@ -2637,6 +2712,17 @@ begin
             begin
               MD5Update(Ctx, Buf^, N);  // add it to the MD5
               FO.WriteBuffer(Buf^, N);  // write the block
+              if FO2 <> nil then  // and to the second copy
+                try
+                  FO2.WriteBuffer(Buf^, N);  // write the block
+                except
+                  on E: Exception do  // for example a full backup disk: the first copy goes on
+                  begin
+                    FreeAndNil(FO2);  // close the second file
+                    Whole2 := False;  // it is incomplete
+                    LogThumb('second copy failed while writing: ' + Dst2 + ': ' + E.Message);  // note it in the log
+                  end;
+                end;
             end;
             if Assigned(CopyPump) then CopyPump;  // let the window update
             if CopyAbort then  // canceled by the user
@@ -2649,6 +2735,7 @@ begin
           Hash := MD5Print(Dig);  // hash of the source as hex text
         finally
           FO.Free;  // close the destination
+          FO2.Free;  // close the second copy
         end;
       finally
         FI.Free;  // close the source
@@ -2677,20 +2764,46 @@ begin
       end
       else
         Result := crOk;  // copy is good
+      // the second copy: complete, same size and (with Verify) the same checksum read back
+      if (Result = crOk) and Whole2 and (FileSizeUtf8(Dst2) = FileSizeUtf8(Src)) then
+      begin
+        if Verify then
+        begin
+          Back := HashOfFile(Dst2);  // MD5 of the second copy
+          if CopyAbort then  // canceled while reading back
+          begin
+            Result := crCanceled;  // report cancellation
+            Err := 'canceled';  // reason
+          end
+          else
+            Dst2Ok := Back = Hash;  // good when the checksums match
+        end
+        else
+          Dst2Ok := True;  // good
+      end;
     except
       on E: Exception do
       begin
         Result := crFailed;  // report the failure
         Err := E.Message;  // reason
+        Dst2Ok := False;  // no second copy either
       end;
     end;
   finally
     FreeMem(Buf);  // free the buffer
   end;
   if Result <> crOk then
-    DeleteFileUTF8(Dst)  // remove a bad or incomplete copy
+  begin
+    DeleteFileUTF8(Dst);  // remove a bad or incomplete copy
+    Dst2Ok := False;  // and the second one with it
+  end
   else
     KeepFileTimes(Src, Dst, True);  // the copy keeps the original's creation and modification times
+  if Made2 then
+    if Dst2Ok then
+      KeepFileTimes(Src, Dst2, True)  // the second copy keeps the times too
+    else
+      DeleteFileUTF8(Dst2);  // remove a bad or incomplete second copy
 end;
 
 { Returns the backup path of an item: backup folder from its own mask, file name of the main copy. }
