@@ -24,7 +24,7 @@ function LoadTiffThumb(const FileName: string; MaxSide: Integer; Bmp: TBitmap;
 implementation
 
 uses
-  Math, zstream;
+  Math, zstream, uExif;
 
 const
   WhiteRuns: array[0..103] of Word = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 128, 192, 256, 320, 384, 448, 512, 576, 640, 704, 768, 832, 896, 960, 1024, 1088, 1152, 1216, 1280, 1344, 1408, 1472, 1536, 1600, 1664, 1728, 1792, 1856, 1920, 1984, 2048, 2112, 2176, 2240, 2304, 2368, 2432, 2496, 2560);  // run lengths of the white fax codes
@@ -637,7 +637,7 @@ var
 begin
   Result := False;  // assume failure
   Err := '';  // no error yet
-  Strm := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);  // open the file for reading
+  Strm := OpenBuffered(FileName);  // open the file for reading (through a buffer: many small reads)
   if Strm.Size < 16 then  // too small to be a TIFF
   begin
     Err := 'file too small';

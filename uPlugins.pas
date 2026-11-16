@@ -18,7 +18,7 @@ unit uPlugins;
 interface
 
 uses
-  Classes, SysUtils, Math, dynlibs, FileUtil, LazFileUtils, uSettings, uItems, uExtPlugin;
+  Classes, SysUtils, Math, dynlibs, FileUtil, LazFileUtils, uSettings, uItems, uThermal, uExtPlugin;
 
 const
   PluginApiVersion = 1;  // interface version this program understands
@@ -469,6 +469,9 @@ begin
         'Camera=' + Item.Camera + LineEnding +  // camera model
         'Serial=' + Item.Serial + LineEnding +  // camera serial number
         'Date=' + FormatDateTime('yyyymmdd', Item.NameTime) + LineEnding;  // capture date
+    // a library that asks for it is told whether the file is thermal, so it need not read the file itself
+    if (Item <> nil) and (P.Info.Values['NeedsThermal'] = '1') then
+      Ctx := Ctx + 'Thermal=' + IntToStr(ThermalKindOf(Item.FullPath, Item.Size, Item.Ext)) + LineEnding;  // 0 color, 1 thermal, 2 radiometric
     Root := IncludeTrailingPathDelimiter(ScanRoot);  // the source the file was found in
     if (Item <> nil) and (ScanRoot <> '') and SameText(Copy(IncludeTrailingPathDelimiter(Item.SourceDir), 1, Length(Root)), Root) then
       Ctx := Ctx + 'SourceFolder=' + ExcludeTrailingPathDelimiter(Copy(IncludeTrailingPathDelimiter(Item.SourceDir),
@@ -516,6 +519,22 @@ end;
 
 { The top-level folders of a source that switched-on, loaded libraries want copied whole (WholeFolders=
   lines, names separated by ';'; installed as uItems.PluginWholeFoldersHook). }
+{ True when a switched-on, loaded library asks to be told whether a file is thermal (NeedsThermal=1;
+  installed as uItems.PluginNeedsThermalHook). }
+function AnyNeedsThermal(S: TAppSettings): Boolean;
+var
+  I: Integer;  // I: list index
+  P: TLibPlugin;  // P: one library
+begin
+  Result := False;  // none yet
+  if Libs = nil then Exit;  // no plug-ins
+  for I := 0 to Libs.Count - 1 do
+  begin
+    P := TLibPlugin(Libs[I]);  // the library
+    if P.Loaded and S.PluginEnabled(P.Key) and (P.Info.Values['NeedsThermal'] = '1') then Exit(True);  // it asks
+  end;
+end;
+
 function AllWholeFolders(S: TAppSettings): string;
 var
   I: Integer;  // I: list index
@@ -690,6 +709,7 @@ begin
       end;
   end;
   PluginTokenHook := @LibTokenValue;  // plug-in tokens work from now on
+  PluginNeedsThermalHook := @AnyNeedsThermal;  // files are checked for thermal pictures when a library asks
   // the folders of a layout field are added to the download path when files are copied; a path saved
   // while they were still written into it (Photo Downloader 0.1.4.2 and 0.1.4.3) is cut back once
   for I := 0 to Libs.Count - 1 do
@@ -827,6 +847,7 @@ end;
 
 finalization
   PluginTokenHook := nil;  // no more plug-in tokens
+  PluginNeedsThermalHook := nil;  // no more thermal checks for libraries
   PluginFoldersHook := nil;  // no more plug-in folders
   PluginPathTokenHook := nil;  // no more folder tokens
   PluginScanFoldersHook := nil;  // no more further source folders

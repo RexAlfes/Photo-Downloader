@@ -193,7 +193,7 @@ begin
   try
     try
       Img := TFPMemoryImage.Create(OW, OH);  // picture to fill
-      Strm := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);  // open the file
+      Strm := OpenBuffered(FileName);  // open the file (through a buffer: read row by row)
       try
         SetLength(Sum, OW * 3);  // three sums (red, green, blue) per output pixel
         N := K * K;  // pixels per block

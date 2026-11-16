@@ -77,10 +77,16 @@ function ExtractMovieCover(const FileName: string; Dest: TStream; out IsPng: Boo
 
 { Pixel size of a JPEG file, read from its header only. }
 function ReadJpegDims(const FileName: string; out W, H: Integer): Boolean;  // Reads the pixel size of a JPEG file from its header.
+{ Opens a file for reading through a buffer of 256 KB pieces. The TIFF and DNG readers ask for many small
+  pieces (directories, strips, rows); straight from a file on a network folder each is a trip to the server. }
+function OpenBuffered(const FileName: string): TFileStream;
 { The pixel size of a JPEG whose first bytes are in B (the file need not be opened again); False when B does not start a JPEG. }
 function JpegDimsOfBytes(const B: TBytes; out W, H: Integer): Boolean;
 
 implementation
+
+uses
+  bufstream;  // TBufferedFileStream
 
 { A TIFF structure held in memory. }
 type
@@ -1379,6 +1385,15 @@ begin
 end;
 
 { Reads the pixel size of a JPEG file from its header. }
+function OpenBuffered(const FileName: string): TFileStream;
+var
+  B: TBufferedFileStream;  // B: the file with its buffer
+begin
+  B := TBufferedFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);  // open read-only, others may keep it open
+  B.InitializeCache(262144, 8);  // 8 pieces of 256 KB
+  Result := B;
+end;
+
 function JpegDimsOfBytes(const B: TBytes; out W, H: Integer): Boolean;
 var
   Comps: Integer;  // Comps: component count (not used)

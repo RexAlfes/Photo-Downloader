@@ -146,6 +146,9 @@ var
   { Top-level folders of a source that switched-on plug-ins want copied whole: every file in them, of any
     type and also hidden ones, is listed (names separated by ';', '' = none); set by uPlugins }
   PluginWholeFoldersHook: function(S: TAppSettings): string = nil;
+  { True when a switched-on plug-in wants to be told whether a file is thermal (NeedsThermal=1): the files
+    are then checked on several threads before the destinations are worked out; set by uPlugins }
+  PluginNeedsThermalHook: function(S: TAppSettings): Boolean = nil;
   { The folder the last scan started from (the source), so plug-ins can be told where a file lies in it }
   ScanRoot: string = '';
 { Copies Src to Dst. The MD5 of the source is computed while it is read. With Verify the copy is
@@ -1415,7 +1418,7 @@ var
   WarmPaths: array of string;  // WarmPaths: the files, for the thermal check
   WarmSizes: array of Int64;  // WarmSizes: their sizes
   WarmN: Integer;  // WarmN: number of files read by the thermal check
-  WarmT: QWord;  // WarmT: tick count when the thermal check started
+  WarmT, TA, TB: QWord;  // WarmT: tick count when the thermal check started; TA, TB: start of the names and of the comparison (for the log)
   I, P, J: Integer;  // I: item index; P: position in a list; J: number of the first item with a name
   It: TImageItem;  // It: current item
   Dups, Groups, Firsts: TStringList;  // Dups: keys of pictures seen; Groups: destinations with counts; Firsts: first item per destination
@@ -1478,9 +1481,11 @@ var
   end;
 
 begin
-  // The {Type} token reads part of every photo and video to tell thermal files from color ones. One by
-  // one that takes minutes on a network folder, so the files not known yet are read on several threads first.
-  if Pos('{Type}', WithPluginFolders(S, S.DownloadDir) + S.FileNameMask) > 0 then
+  // The {Type} token, and plug-ins that ask for it (NeedsThermal=1), read part of every photo and video to
+  // tell thermal files from color ones. One by one that takes minutes on a network folder, so the files
+  // not known yet are read on several threads first.
+  if (Pos('{Type}', WithPluginFolders(S, S.DownloadDir) + S.FileNameMask) > 0) or
+     (Assigned(PluginNeedsThermalHook) and PluginNeedsThermalHook(S)) then
   begin
     WarmPaths := nil;
     WarmSizes := nil;
@@ -1494,7 +1499,7 @@ begin
       end;
     WarmT := GetTickCount64;
     WarmN := ThermalWarm(WarmPaths, WarmSizes, Progress);  // read them
-    if WarmN > 0 then LogThumb(Format('thermal check for {Type}: %d files read in %d ms', [WarmN, GetTickCount64 - WarmT]));
+    if WarmN > 0 then LogThumb(Format('thermal check: %d files read in %d ms', [WarmN, GetTickCount64 - WarmT]));
   end;
   Dups := TStringList.Create;  // keys of pictures seen
   Taken := TStringList.Create;  // names planned for files
@@ -1515,6 +1520,7 @@ begin
     Firsts.Sorted := True;  // keep the list sorted
     Firsts.CaseSensitive := False;  // ignore case
 
+    TA := GetTickCount64;  // start of the names
     // pass 1: destination names, duplicates and per-destination counts
     for I := 0 to Items.Count - 1 do  // every item
     begin
@@ -1546,6 +1552,7 @@ begin
 
     for I := 0 to Groups.Count - 1 do Taken.Add(Groups[I]);  // every planned destination name is taken
 
+    TB := GetTickCount64;  // start of the comparison
     // pass 2: compare with what is already on disk
     for I := 0 to Items.Count - 1 do  // every item
     begin
@@ -1600,6 +1607,9 @@ begin
       end;
     end;
 
+    if GetTickCount64 - TA > 2000 then  // a slow evaluation: where the time went
+      LogThumb(Format('destinations of %d files: names (tokens, plug-ins) %d ms, comparing with %d destination folder(s) %d ms',
+        [Items.Count, TB - TA, DestDirs.Count, GetTickCount64 - TB]));
     // pass 3: a scan item is new while any of its files is new, a name clash while any file clashes,
     // and downloaded when all of them are; its destination is the folder its files go to
     for I := 0 to Items.Count - 1 do
@@ -1750,7 +1760,7 @@ begin
   Ms := TMemoryStream.Create;  // stream for the BMP
   try
     try
-      Strm := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);  // open the file
+      Strm := OpenBuffered(FileName);  // open the file (through a buffer: read row by row)
       try
         Ms.WriteBuffer(FH, SizeOf(FH));  // write the file header
         Ms.WriteBuffer(IH, SizeOf(IH));  // write the info header

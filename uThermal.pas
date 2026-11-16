@@ -23,6 +23,9 @@ interface
   with the dot. }
 function ThermalSuffix(const Path: string; Size: Int64; const Ext: string): string;
 
+{ The same answer as a number: 0 color (or not checked), 1 thermal, 2 radiometric thermal photo. }
+function ThermalKindOf(const Path: string; Size: Int64; const Ext: string): Integer;
+
 type
   TThermalTick = procedure(Done, Total: Integer) of object;  // progress of ThermalWarm: files read so far, files to read
 
@@ -308,25 +311,30 @@ begin
   CacheDirty := True;  // to be written
 end;
 
-function ThermalSuffix(const Path: string; Size: Int64; const Ext: string): string;
+function ThermalKindOf(const Path: string; Size: Int64; const Ext: string): Integer;
 var
   E, Key: string;  // E: extension in lower case; Key: cache key
-  I, Kind: Integer;  // I: cache index; Kind: the answer
+  I: Integer;  // I: cache index
 begin
-  Result := '';  // color
+  Result := tkColor;  // color
   E := LowerCase(Ext);  // extension
   if not Checked(E) then Exit;  // not checked
   if Path = '' then Exit;  // an example name: no file to read
   NeedCache;  // the answers so far
   Key := KeyOf(Path, Size);  // the same file
-  if Cache.Find(Key, I) then Kind := PtrInt(Cache.Objects[I])  // known answer (the file is not touched)
+  if Cache.Find(Key, I) then Result := PtrInt(Cache.Objects[I])  // known answer (the file is not touched)
   else
   begin
     if not FileExistsUTF8(Path) then Exit;  // an example name: no file to read
-    Kind := ThermalKind(Path, E);  // read the file
-    Remember(Key, Kind);  // remember the answer
+    Result := ThermalKind(Path, E);  // read the file
+    Remember(Key, Result);  // remember the answer
   end;
-  case Kind of
+end;
+
+function ThermalSuffix(const Path: string; Size: Int64; const Ext: string): string;
+begin
+  Result := '';  // color
+  case ThermalKindOf(Path, Size, Ext) of
     tkThermal: Result := '-IR';  // thermal
     tkRadiometric: Result := '-IR-R';  // radiometric thermal photo
   end;
