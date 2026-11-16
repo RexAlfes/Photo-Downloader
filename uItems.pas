@@ -2644,11 +2644,33 @@ begin
     ((Pos(Ext, RawExts) > 0) and (Pos(Ext, TiffExts) = 0));  // RAW (DNG and TIFF look at the plain picture too: main thread)
 end;
 
+{ Reads a whole file into memory with one read. The JPEG decoder asks for its data in pieces of 4 KB:
+  straight from a file on a network folder that is very slow (each piece is a trip to the server,
+  above all on Linux), so pictures are decoded from memory. }
+function FileToMemory(const FileName: string): TMemoryStream;
+var
+  Fs: TFileStream;  // Fs: the open file
+begin
+  Result := TMemoryStream.Create;  // the file's bytes
+  try
+    Fs := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);  // open the file
+    try
+      Result.SetSize(Fs.Size);  // room for all of it
+      if Result.Size > 0 then Fs.ReadBuffer(Result.Memory^, Result.Size);  // one read
+      Result.Position := 0;  // ready to be read
+    finally
+      Fs.Free;  // close the file
+    end;
+  except
+    FreeAndNil(Result);  // nothing on failure
+    raise;
+  end;
+end;
+
 function PrepareThumb(const FullPath, CacheFile: string; Orient, Box: Integer; out FromCache: Boolean): TMemoryStream;
 var
   Img: TFPMemoryImage;  // Img: the decoded picture
-  Mem: TMemoryStream;  // Mem: an embedded preview
-  Fs: TFileStream;  // Fs: an open file
+  Mem, Whole: TMemoryStream;  // Mem: an embedded preview; Whole: a whole file in memory
   Ext: string;  // Ext: file extension
   W, H, RefW, RefH, NW, NH, Rank: Integer;  // W, H: picture size; RefW, RefH: size of the photo; NW, NH: thumbnail size; Rank: preview number
   Sc: Double;  // Sc: scale factor
@@ -2657,14 +2679,14 @@ begin
   FromCache := False;  // not from the cache
   Img := nil;  // nothing created yet
   Mem := nil;
-  Fs := nil;
+  Whole := nil;
   try
     try
       if (CacheFile <> '') and FileExistsUTF8(CacheFile) then  // the finished thumbnail of an earlier load
       begin
-        Fs := TFileStream.Create(CacheFile, fmOpenRead or fmShareDenyNone);  // open the cache file
-        Img := LoadMemImage(Fs, pkJpeg, 0, 0, 0, True);  // decode it as it is
-        FreeAndNil(Fs);  // close it
+        Whole := FileToMemory(CacheFile);  // read the cache file
+        Img := LoadMemImage(Whole, pkJpeg, 0, 0, 0, True);  // decode it as it is
+        FreeAndNil(Whole);  // done with its bytes
         FromCache := Img <> nil;  // upright already, nothing to save
       end;
       if Img = nil then
@@ -2688,9 +2710,9 @@ begin
               W := Box * 4;
               H := Box * 4;
             end;
-            Fs := TFileStream.Create(FullPath, fmOpenRead or fmShareDenyNone);  // open the photo
-            Img := LoadMemImage(Fs, pkJpeg, W, H, Box, True);  // decode it
-            FreeAndNil(Fs);  // close it
+            Whole := FileToMemory(FullPath);  // read the photo with one read (see FileToMemory)
+            Img := LoadMemImage(Whole, pkJpeg, W, H, Box, True);  // decode it
+            FreeAndNil(Whole);  // done with its bytes
           end;
         end
         else if (Pos(Ext, RawExts) > 0) and (Pos(Ext, TiffExts) = 0) then
@@ -2734,7 +2756,7 @@ begin
   finally
     Img.Free;  // free the picture
     Mem.Free;  // free the preview memory
-    Fs.Free;  // close a file left open by a failure
+    Whole.Free;  // free a file left in memory by a failure
   end;
 end;
 
