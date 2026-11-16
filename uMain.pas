@@ -7,7 +7,7 @@ interface
 uses
   Classes, SysUtils, Contnrs, Math, Forms, Controls, Graphics, Dialogs, Menus,
   ExtCtrls, StdCtrls, ComCtrls, LCLType, LCLIntf, LazFileUtils, IniFiles,
-  uSettings, uItems, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uLrCat, uSingle, uRotate, uSafeDel, uSplash, uPlugins, uExtPlugin, uIccEmbed, uJpegDpi,
+  uSettings, uItems, uThumbPool, uExif, uVersion, uPhotoView, uDialogs, uHeic, uDrives, uViewer, uLrPrev, uLrCat, uSingle, uRotate, uSafeDel, uSplash, uPlugins, uExtPlugin, uIccEmbed, uJpegDpi,
   uDevices, uDeviceDlg,  // phones and cameras by USB: Shell access and the import window
   uTheme,  // light and dark colors
   uMsgDlg;  // MessageDlg with Yes on the left on every system (after Dialogs)
@@ -946,7 +946,9 @@ var
   I, Kept: Integer;  // I: loop counter; Kept: thumbnails kept
   Heavy: Boolean;  // Heavy: slow file type
   It: TImageItem;  // It: current item
+  Batch: TThumbBatch;  // Batch: JPEG and RAW thumbnails being prepared on other threads
 begin
+  Batch := nil;  // nothing prepared yet
   if (FDevStage <> '') and not SameText(Path, FDevStage) then LeaveDevice;  // another source: the device is done
   FSourcePath := Path;  // remember the source
   FS.LastSource := Path;  // remember it in the settings
@@ -981,6 +983,19 @@ begin
       begin
         HeicPump := True;  // let slow decoders keep the window alive
         FProgBar2.Max := Max(1, FItems.Count);  // maximum of the second bar
+        // the JPEG and RAW thumbnails of the first screens are prepared on other threads, in the order the
+        // loop below asks for them (the same counting as below decides which files those are)
+        Batch := TThumbBatch.Create(FView.DecodeBox);
+        Kept := 0;  // none counted yet
+        for I := 0 to FItems.Count - 1 do  // every item
+        begin
+          It := ItemAt(FItems, I);  // current item
+          if not ItemVisible(It) then Continue;  // skip hidden items
+          if Kept >= PrerenderKeep then Break;  // the first screens are full
+          Inc(Kept);  // a slow file or an ordinary one of the first screens
+          if (not ThumbIsHeavy(It.FileName)) and (not It.ThumbTried) and ThumbPoolable(It.FileName) then Batch.Add(It);  // one for the threads
+        end;
+        Batch.Start;  // begin preparing
         Kept := 0;  // none kept yet
         for I := 0 to FItems.Count - 1 do  // every item
         begin
@@ -995,13 +1010,24 @@ begin
             [I + 1, FItems.Count, It.FileName]);
           Application.ProcessMessages;  // let the window update
           if FCancel then Break;  // stop when canceled
-          EnsureThumb(It, FView.DecodeBox);  // create the thumbnail
+          if Batch.IsNext(It) then  // prepared on another thread
+          begin
+            while (not Batch.NextReady) and (not FCancel) do  // wait for it, with the window alive
+            begin
+              Application.ProcessMessages;
+              Sleep(1);
+            end;
+            if FCancel then Break;  // stop when canceled
+            Batch.Deliver;  // the item gets its thumbnail (when one could be made)
+          end;
+          EnsureThumb(It, FView.DecodeBox);  // create the thumbnail (nothing to do when the item has it)
           // slow HEIC/AVIF/TIFF thumbnails are now in the disk cache; keep the picture only
           // for the first screens so that thousands of files do not use up Windows handles
           if Heavy and (Kept >= PrerenderKeep) then ReleaseThumb(It) else Inc(Kept);  // keep or release the thumbnail
         end;
       end;
     finally
+      FreeAndNil(Batch);  // stop the threads (they finish the file they are at)
       HeicPump := False;  // stop the keep-alive
       HideProgress;  // close the progress window
     end;
@@ -1489,7 +1515,7 @@ begin
   miPopDelete.Enabled := NDel > 0;  // delete needs downloaded images
   NLr := 0;  // no selected .lrprev file yet
   for I := 0 to FVisible.Count - 1 do  // every visible item
-    if TImageItem(FVisible[I]).Selected and (Pos(';' + LowerCase(ExtractFileExt(TImageItem(FVisible[I]).FileName)) + ';', LrPrevExts) > 0) then
+    if TImageItem(FVisible[I]).Selected and (ExtIn(TImageItem(FVisible[I]).FileName, LrPrevExts)) then
       Inc(NLr);  // count selected .lrprev files
   miPopLrJpg.Visible := NLr > 0;  // only offered for .lrprev files
   if NLr > 0 then miPopLrJpg.Caption := Format('Save .lrprev preview(s) as JPG... (%d)', [NLr]);  // show how many
@@ -1579,7 +1605,7 @@ begin
     begin
       It := TImageItem(FVisible[I]);  // the item
       if not It.Selected then Continue;  // not selected
-      if Pos(';' + LowerCase(ExtractFileExt(It.FileName)) + ';', LrPrevExts) = 0 then Continue;  // only .lrprev files
+      if not ExtIn(It.FileName, LrPrevExts) then Continue;  // only .lrprev files
       try
         if LrPrevExtract(It.FullPath, Mem, Info, Err) then  // largest level found
         begin
@@ -2127,7 +2153,7 @@ begin
         if FS.VerifyCopy then Inc(Verified);  // count the verified copy
         // "Save both": a .jpg of the Lightroom preview next to the downloaded .lrprev file
         if FS.LrPrevAsJpg and FS.LrPrevKeepBoth and
-           (Pos(';' + LowerCase(ExtractFileExt(It.FileName)) + ';', LrPrevExts) > 0) then
+           (ExtIn(It.FileName, LrPrevExts)) then
         begin
           JDest := ChangeFileExt(Dest, '.jpg');  // same name with .jpg
           if FileExistsUTF8(JDest) then JDest := UniqueName(JDest, True);  // never overwrite: add (1), (2) ...

@@ -16,8 +16,9 @@ type
 
 { Decodes the picture in S (positioned at its start). For JPEG with known SrcW/SrcH the
   decoder shrinks the picture by 2, 4 or 8 while it is still at least Target pixels on
-  its long side. Returns nil if the picture cannot be read. }
-function LoadMemImage(S: TStream; Kind: TPicKind; SrcW, SrcH, Target: Integer): TFPMemoryImage;
+  its long side. Fast (thumbnails) lets the JPEG decoder work for speed instead of quality. Returns nil
+  if the picture cannot be read. }
+function LoadMemImage(S: TStream; Kind: TPicKind; SrcW, SrcH, Target: Integer; Fast: Boolean = False): TFPMemoryImage;
 { The reason the last LoadMemImage call failed (empty after a success) }
 function LoadMemImageError: string;
 { Reads the uncompressed image of a TIFF/DNG file, averaged down to about Target pixels. }
@@ -45,8 +46,8 @@ type
     biClrUsed, biClrImportant: LongWord;
   end;
 
-var
-  GLastError: string = '';  // text of the last decoding error
+threadvar
+  GLastError: string;  // text of the last decoding error (one per thread: thumbnails are decoded on several)
 
 { Returns the reason the last LoadMemImage call failed. }
 function LoadMemImageError: string;
@@ -55,7 +56,7 @@ begin
 end;
 
 { Decodes a JPEG, PNG, BMP or GIF stream into a memory image; JPEGs are shrunk while decoding when the target is much smaller. }
-function LoadMemImage(S: TStream; Kind: TPicKind; SrcW, SrcH, Target: Integer): TFPMemoryImage;
+function LoadMemImage(S: TStream; Kind: TPicKind; SrcW, SrcH, Target: Integer; Fast: Boolean = False): TFPMemoryImage;
 var
   Img: TFPMemoryImage;  // Img: picture being filled
   JR: TFPReaderJPEG;  // JR: JPEG reader
@@ -83,6 +84,7 @@ begin
               else if Ratio >= 4 then JR.Scale := jsQuarter  // 4 or more: decode at 1/4 size
               else if Ratio >= 2 then JR.Scale := jsHalf  // 2 or more: decode at half size
               else JR.Scale := jsFullSize;  // otherwise full size
+              if Fast then JR.Performance := jpBestSpeed;  // thumbnails: fastest decoding
               Img.LoadFromStream(S, JR);  // decode into the picture
             finally
               JR.Free;  // free the reader

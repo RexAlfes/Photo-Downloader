@@ -464,7 +464,7 @@ begin
         'FileName=' + Item.FileName + LineEnding +  // original file name
         'Path=' + Item.FullPath + LineEnding +  // full path, so the plug-in can read the file itself
         'Size=' + IntToStr(Item.Size) + LineEnding +  // file size in bytes
-        'Ext=' + LowerCase(ExtractFileExt(Item.FileName)) + LineEnding +  // extension, lower case, with the dot
+        'Ext=' + Item.Ext + LineEnding +  // extension, lower case, with the dot
         'IsVideo=' + IntToStr(Ord(Item.IsVideo)) + LineEnding +  // 1 for a video
         'Camera=' + Item.Camera + LineEnding +  // camera model
         'Serial=' + Item.Serial + LineEnding +  // camera serial number

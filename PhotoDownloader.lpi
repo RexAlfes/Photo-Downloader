@@ -20,7 +20,7 @@
       <AutoIncrementBuild Value="False"/>
       <MinorVersionNr Value="1"/>
       <RevisionNr Value="5"/>
-      <BuildNr Value="1"/>
+      <BuildNr Value="2"/>
       <Attributes pvaPreRelease="True"/>
       <StringTable FileDescription="Photo Downloader" ProductName="Photo Downloader"/>
     </VersionInfo>
@@ -229,6 +229,10 @@
       </Unit>
       <Unit>
         <Filename Value="uMsgDlg.pas"/>
+        <IsPartOfProject Value="True"/>
+      </Unit>
+      <Unit>
+        <Filename Value="uThumbPool.pas"/>
         <IsPartOfProject Value="True"/>
       </Unit>
       <Unit>

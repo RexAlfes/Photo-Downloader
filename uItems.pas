@@ -5,7 +5,7 @@ unit uItems;
 interface
 
 uses
-  Classes, SysUtils, Contnrs, Math, StrUtils, DateUtils, Graphics, FPReadJPEG,
+  Classes, SysUtils, Contnrs, Math, StrUtils, DateUtils, Graphics, FPImage, FPReadJPEG, uScale,
   LazFileUtils, md5, uSettings, uExif, uThermal, uHeic, uRotate, uTiffRead, uPngFix, uWebP, uVideoThumb, uLrPrev, uLrCat;
 
 type
@@ -15,9 +15,13 @@ type
 
   { TImageItem - one image found on the source }
   TImageItem = class
+  private
+    FFileName, FExt: string;  // FFileName: name only; FExt: its extension in lower case, with the dot
+    FIsJpeg, FIsVideo, FIsAudio, FIsKnown: Boolean;  // what kind of file the extension says, worked out once when the name is set
+    procedure SetFileName(const V: string);  // stores the name and works out the kind of file
   public
     Index: Integer;                 // 1-based number shown in the grid
-    FullPath, FileName, SourceDir: string;  // FullPath: complete path; FileName: name only; SourceDir: folder it was found in
+    FullPath, SourceDir: string;  // FullPath: complete path; SourceDir: folder it was found in
     Size: Int64;  // file size in bytes
     FileTime, CaptureTime: TDateTime;  // FileTime: modification time; CaptureTime: time the picture was taken
     Camera, Make, Serial, Owner: string;  // camera model, camera maker, camera serial number, owner
@@ -49,7 +53,12 @@ type
     function NameTime: TDateTime;  // the time used for names and dates: the scan's time for a file of a scan
     function DurationText: string;  // video length as h:mm:ss or m:ss ('' when unknown)
     function SizeText: string;  // size as text
+    property FileName: string read FFileName write SetFileName;  // name only (setting it works out the kind of file)
+    property Ext: string read FExt;  // extension of the name in lower case, with the dot ('' when there is none)
   end;
+
+{ True when the extension of FileName is in List (a text like ';.jpg;.jpeg;'), in any case. }
+function ExtIn(const FileName, List: string): Boolean;
 
 function ItemAt(L: TObjectList; I: Integer): TImageItem;  // Returns item I of the list as an image item.
 var
@@ -79,6 +88,17 @@ function UniqueName(const Dest: string; NStyle: Boolean = False): string;  // Ma
 procedure EnsureThumb(Item: TImageItem; Box: Integer);  // Makes sure an item has a thumbnail.
 { Frees an item's thumbnail again (it is rendered anew, or read from the disk cache, when needed) }
 procedure ReleaseThumb(Item: TImageItem);
+{ The file name of the cached thumbnail of an item }
+function ThumbCacheName(Item: TImageItem; Box: Integer): string;
+{ True for the file types whose thumbnail PrepareThumb can make (JPEG, and RAW files with a JPEG preview) }
+function ThumbPoolable(const FileName: string): Boolean;
+{ Makes the upright thumbnail of a JPEG or RAW file, at most Box pixels on its long side, as a BMP in
+  memory; nil when it cannot (EnsureThumb then does the file). It reads the disk cache file first
+  (FromCache). It uses no window system objects and no shared data, so several threads may call it at
+  once (uThumbPool). }
+function PrepareThumb(const FullPath, CacheFile: string; Orient, Box: Integer; out FromCache: Boolean): TMemoryStream;
+{ Gives an item the thumbnail PrepareThumb made (main thread only); a new one is written to the disk cache. }
+procedure AdoptThumb(Item: TImageItem; Ms: TMemoryStream; FromCache: Boolean; Box: Integer);
 { True for file types that are slow to decode (HEIC, AVIF, TIFF, DNG) }
 function ThumbIsHeavy(const FileName: string): Boolean;
 { Keeps the thumbnail disk cache below ThumbCacheMaxBytes by deleting the oldest files
@@ -99,7 +119,6 @@ function LoadTiffBitmap(const FileName: string; MaxSide: Integer; Bmp: TBitmap):
 { True if the plain TIFF/DNG image is larger than a JPEG preview of W x H pixels. }
 function TiffRgbIsLarger(const FileName: string; W, H: Integer): Boolean;
 procedure LogThumb(const Msg: string);  // Writes a line to the thumbnail log.
-function CopyFileStream(const Src, Dst: string): Boolean;  // Copies a file with a stream.
 type
   TCopyResult = (crOk, crFailed, crVerifyFailed, crCanceled);  // result of a copy
 var
@@ -208,25 +227,40 @@ begin
   Result := Status = isNameClash;  // only name clashes are problems
 end;
 
+{ True when the extension of FileName is in List (a text like ';.jpg;.jpeg;'), in any case. }
+function ExtIn(const FileName, List: string): Boolean;
+begin
+  Result := Pos(';' + LowerCase(ExtractFileExt(FileName)) + ';', List) > 0;  // look the extension up in the list
+end;
+
+{ Stores the file name and works out once what kind of file its extension says: the type tests are
+  asked for every card that is drawn, sorted or filtered. }
+procedure TImageItem.SetFileName(const V: string);
+begin
+  FFileName := V;  // the name
+  FExt := LowerCase(ExtractFileExt(V));  // its extension
+  FIsJpeg := (FExt = '.jpg') or (FExt = '.jpeg') or (FExt = '.jpe');  // JPEG extensions
+  FIsVideo := Pos(';' + FExt + ';', VideoExts) > 0;  // in the video list
+  FIsAudio := Pos(';' + FExt + ';', AudioExts) > 0;  // in the audio list
+  FIsKnown := Pos(';' + FExt + ';', ImageExts) > 0;  // a type the program scans for
+end;
+
 { True when the file has a JPEG extension. }
 function TImageItem.IsJpeg: Boolean;
-var
-  E: string;  // E: file extension
 begin
-  E := LowerCase(ExtractFileExt(FileName));  // lower case extension
-  Result := (E = '.jpg') or (E = '.jpeg') or (E = '.jpe');  // compare with the JPEG extensions
+  Result := FIsJpeg;  // worked out when the name was set
 end;
 
 { True when the file has a video extension. }
 function TImageItem.IsVideo: Boolean;
 begin
-  Result := Pos(';' + LowerCase(ExtractFileExt(FileName)) + ';', VideoExts) > 0;  // look the extension up in the video list
+  Result := FIsVideo;  // worked out when the name was set
 end;
 
 { True when the file has an audio extension. }
 function TImageItem.IsAudio: Boolean;
 begin
-  Result := Pos(';' + LowerCase(ExtractFileExt(FileName)) + ';', AudioExts) > 0;  // look the extension up in the audio list
+  Result := FIsAudio;  // worked out when the name was set
 end;
 
 { True for a scan item (one folder inside a folder a plug-in wants copied whole). }
@@ -246,7 +280,7 @@ end;
   wants copied whole (for example a drone's scan report, CSV and model files). }
 function TImageItem.IsOther: Boolean;
 begin
-  Result := Pos(';' + LowerCase(ExtractFileExt(FileName)) + ';', ImageExts) = 0;  // not a known type
+  Result := not FIsKnown;  // not a known type (worked out when the name was set)
 end;
 
 { Returns the length of a video as h:mm:ss or m:ss. }
@@ -289,7 +323,7 @@ end;
 { True when the file name has an image extension. }
 function IsImageFile(const Name: string): Boolean;
 begin
-  Result := Pos(';' + LowerCase(ExtractFileExt(Name)) + ';', ImageExts) > 0;  // look the extension up in the list
+  Result := ExtIn(Name, ImageExts);  // look the extension up in the list
 end;
 
 { Compares two items by capture time, then by name. }
@@ -759,7 +793,7 @@ begin
         // A file that opens but cannot be read (a cloud placeholder, a damaged or locked file, a file that
         // shrank) raises a stream read error. Such a file is still listed, with its file time, and the scan goes on.
         try
-          if Pos(';' + LowerCase(ExtractFileExt(SR.Name)) + ';', ExifExts) > 0 then  // file type may carry EXIF data
+          if ExtIn(SR.Name, ExifExts) then  // file type may carry EXIF data
             if CachedExif(Full, SR.Size, SR.Time, Info) then  // read the EXIF data (from the cache when the file is unchanged)
             begin
               if Info.HasDate then  // capture date
@@ -779,7 +813,7 @@ begin
             LogThumb(Full + ': metadata could not be read: ' + E.Message);  // note it in the log
         end;
         // a Lightroom preview: date, camera and the photo's file name from the Lightroom catalog
-        if Pos(';' + LowerCase(ExtractFileExt(SR.Name)) + ';', LrPrevExts) > 0 then  // .lrprev file
+        if ExtIn(SR.Name, LrPrevExts) then  // .lrprev file
           if LrCatLookup(Full, Cat) then  // its photo is in the catalog
           begin
             It.CatalogName := Cat.OrigName;  // file name of the photo
@@ -2160,6 +2194,44 @@ var
   Small: TBitmap;  // Small: bitmap made from a small embedded thumbnail
   RefW, RefH: Integer;  // RefW, RefH: size of the photo (or its largest preview), for the shape check
   K: Integer;  // K: smallest preview side wanted
+
+  { A file whose content (Sniff: 1 TIFF, 3 PNG, 4 BMP, 5 GIF, 6 WebP, 7 HEIC/AVIF) is another kind than its
+    name says. True when the item has its thumbnail and nothing is left to do; otherwise G holds the
+    picture when one could be loaded. }
+  function LoadOtherKind(Kind: Integer): Boolean;
+  begin
+    Result := False;  // the caller goes on with G
+    case Kind of
+      1:  // a TIFF
+        begin
+          Bmp := TBitmap.Create;  // bitmap for the TIFF reader
+          if LoadTiffThumb(Item.FullPath, Box, Bmp, TiffErr) then  // decode the TIFF
+          begin
+            Item.Thumb := Bmp;  // give the bitmap to the item
+            Bmp := nil;  // do not free it below
+            Exit(True);
+          end;
+          FreeAndNil(Bmp);  // free the bitmap
+          LogThumb(Item.FullPath + ': this is a TIFF file with a wrong extension (' + TiffErr + ')');  // log the reason
+        end;
+      3, 4, 5:  // a PNG, BMP or GIF: the content decides, not the name
+        begin
+          Pic := LoadByContent(Item.FullPath, Kind);  // load by content
+          G := Pic.Graphic;  // graphic of the picture
+        end;
+      6:  // a WebP picture
+        Result := TryWebPThumb(Item, Box, False);  // use the WebP decoder
+      7:  // a HEIC or AVIF picture
+        begin
+          Pic := TPicture.Create;  // generic picture for the HEIC decoder
+          if LoadHeicPicture(Item.FullPath, Pic, Box * 2, True) then  // decode the HEIC or AVIF file
+            G := Pic.Graphic  // take its graphic
+          else
+            LogThumb(Item.FullPath + ': HEIC/AVIF file with a wrong extension could not be decoded: ' + HeicLastError);  // log the reason
+        end;
+    end;
+  end;
+
 begin
   Small := nil;  // nothing created yet
   W := 0;  // no width yet
@@ -2169,10 +2241,8 @@ begin
   if Item.ThumbTried then Exit;  // already tried
   Item.ThumbTried := True;  // remember the attempt
   if Item.IsOther then Exit;  // no picture in it: the view draws a file tile
-  Ext := LowerCase(ExtractFileExt(Item.FileName));  // extension in lower case
-  // slow-to-decode types are kept in a small on-disk cache
-  Heavy := (Pos(';' + Ext + ';', HeicExts) > 0) or (Pos(';' + Ext + ';', TiffExts) > 0) or  // HEIC, TIFF, DNG and WebP are slow to decode
-    (Ext = '.webp') or (Pos(';' + Ext + ';', VideoExts) > 0);  // so is asking the system for a video frame
+  Ext := Item.Ext;  // extension in lower case
+  Heavy := ThumbIsHeavy(Item.FileName);  // slow-to-decode types
   // every thumbnail is kept in the disk cache: reading one small file from the cache folder is
   // much faster than reading the photo again from a hard disk, a memory card or a network share
   if LoadCachedThumb(Item, Box) then Exit;  // use the cache
@@ -2187,36 +2257,9 @@ begin
       if (Ext = '.jpg') or (Ext = '.jpeg') or (Ext = '.jpe') then
       begin
         Sniff := SniffFileKind(Item.FullPath);  // kind of file from its content
-        if Sniff in [3, 4, 5] then  // PNG, BMP or GIF
+        if Sniff in [1, 3, 4, 5, 6, 7] then  // not a JPEG at all: another kind of picture with a .jpg name
         begin
-          // not a JPEG at all: a PNG, BMP or GIF with a .jpg name
-          Pic := LoadByContent(Item.FullPath, Sniff);  // load by content
-          G := Pic.Graphic;  // graphic of the picture
-        end
-        else if Sniff = 6 then
-        begin
-          // a WebP picture with another name
-          if TryWebPThumb(Item, Box, False) then Exit;  // use the WebP decoder
-        end
-        else if Sniff = 7 then
-        begin
-          Pic := TPicture.Create;  // generic picture for the HEIC decoder
-          if LoadHeicPicture(Item.FullPath, Pic, Box * 2, True) then  // decode the HEIC or AVIF file
-            G := Pic.Graphic  // take its graphic
-          else
-            LogThumb(Item.FullPath + ': HEIC/AVIF file with a wrong extension could not be decoded: ' + HeicLastError);  // log the reason
-        end
-        else if Sniff = 1 then
-        begin
-          Bmp := TBitmap.Create;  // bitmap for the TIFF reader
-          if LoadTiffThumb(Item.FullPath, Box, Bmp, TiffErr) then  // decode the TIFF
-          begin
-            Item.Thumb := Bmp;  // give the bitmap to the item
-            Bmp := nil;  // do not free it below
-            Exit;
-          end;
-          FreeAndNil(Bmp);  // free the bitmap
-          LogThumb(Item.FullPath + ': this is a TIFF file with a wrong extension (' + TiffErr + ')');  // log the reason
+          if LoadOtherKind(Sniff) then Exit;  // load it by its content
         end
         else
         begin
@@ -2332,18 +2375,9 @@ begin
       else if (Ext = '.png') or (Ext = '.bmp') or (Ext = '.gif') then
       begin
         Sniff := SniffFileKind(Item.FullPath);  // kind of file from its content
-        if Sniff = 1 then  // TIFF
+        if Sniff in [1, 3, 4, 5, 6, 7] then  // the content decides, not the extension (for example a PNG named .bmp)
         begin
-          // a TIFF with a .png/.bmp name
-          Bmp := TBitmap.Create;  // bitmap for the TIFF reader
-          if LoadTiffThumb(Item.FullPath, Box, Bmp, TiffErr) then  // decode the TIFF
-          begin
-            Item.Thumb := Bmp;  // give the bitmap to the item
-            Bmp := nil;  // do not free it below
-            Exit;
-          end;
-          FreeAndNil(Bmp);  // free the bitmap
-          LogThumb(Item.FullPath + ': this is a TIFF file with a wrong extension (' + TiffErr + ')');  // log the reason
+          if LoadOtherKind(Sniff) then Exit;  // load it by its content
         end
         else if Sniff = 2 then
         begin
@@ -2351,25 +2385,6 @@ begin
           Jpg := TJPEGImage.Create;  // create the JPEG
           Jpg.LoadFromFile(Item.FullPath);  // load the file
           G := Jpg;  // use it as the graphic
-        end
-        else if Sniff in [3, 4, 5] then
-        begin
-          // the content decides, not the extension (for example a PNG named .bmp)
-          Pic := LoadByContent(Item.FullPath, Sniff);  // load by content
-          G := Pic.Graphic;  // graphic of the picture
-        end
-        else if Sniff = 6 then
-        begin
-          // a WebP picture with another name
-          if TryWebPThumb(Item, Box, False) then Exit;  // use the WebP decoder
-        end
-        else if Sniff = 7 then
-        begin
-          Pic := TPicture.Create;  // generic picture for the HEIC decoder
-          if LoadHeicPicture(Item.FullPath, Pic, Box * 2, True) then  // decode the HEIC or AVIF file
-            G := Pic.Graphic  // take its graphic
-          else
-            LogThumb(Item.FullPath + ': HEIC/AVIF file with a wrong extension could not be decoded: ' + HeicLastError);  // log the reason
         end
         else
         begin
@@ -2381,11 +2396,8 @@ begin
       else if Ext = '.webp' then
       begin
         Sniff := SniffFileKind(Item.FullPath);  // kind of file from its content
-        if Sniff in [3, 4, 5] then  // PNG, BMP or GIF
-        begin
-          Pic := LoadByContent(Item.FullPath, Sniff);       // the content decides, not the name
-          G := Pic.Graphic;  // graphic of the picture
-        end
+        if Sniff in [3, 4, 5] then  // PNG, BMP or GIF: the content decides, not the name
+          LoadOtherKind(Sniff)
         else if Sniff = 2 then
         begin
           Jpg := TJPEGImage.Create;  // create the JPEG
@@ -2512,7 +2524,7 @@ function ThumbIsHeavy(const FileName: string): Boolean;
 var
   Ext: string;  // Ext: file extension
 begin
-  Ext := LowerCase(ExtractFileExt(FileName));  // extension in lower case
+  Ext := LowerCase(ExtractFileExt(FileName));  // extension in lower case (the one place that says which types are slow)
   Result := (Pos(';' + Ext + ';', HeicExts) > 0) or (Pos(';' + Ext + ';', TiffExts) > 0) or  // HEIC, TIFF, DNG and WebP are slow
     (Ext = '.webp') or (Pos(';' + Ext + ';', VideoExts) > 0);  // so are video frames
 end;
@@ -2525,14 +2537,11 @@ begin
   Item.ThumbTried := False;  // allow a new attempt
 end;
 
-{ Makes the thumbnail of an item and keeps track of the newest ones. }
-procedure EnsureThumb(Item: TImageItem; Box: Integer);
+{ Notes that an item holds a thumbnail now and frees the oldest ones when too many are kept. }
+procedure TrackThumb(Item: TImageItem; Box: Integer);
 var
   Old: TImageItem;  // Old: oldest item with a thumbnail
 begin
-  if Item.ThumbTried then Exit;  // already tried
-  EnsureThumbCore(Item, Box);  // create the thumbnail
-  if Item.Thumb = nil then Exit;  // no thumbnail
   if ThumbLru = nil then ThumbLru := TList.Create;  // create the list on first use
   ThumbLru.Add(Item);  // add the item to the list
   while ThumbLru.Count > Max(300, ThumbKeepMax * 160 div Max(160, Box)) do  // too many thumbnails kept (fewer when they are larger)
@@ -2542,10 +2551,218 @@ begin
   end;
 end;
 
+{ Makes the thumbnail of an item and keeps track of the newest ones. }
+procedure EnsureThumb(Item: TImageItem; Box: Integer);
+begin
+  if Item.ThumbTried then Exit;  // already tried
+  EnsureThumbCore(Item, Box);  // create the thumbnail
+  if Item.Thumb = nil then Exit;  // no thumbnail
+  TrackThumb(Item, Box);  // keep track of it
+end;
+
+{ ---- thumbnails made without window system objects (for several threads) ---- }
+
+{ True when the row (Horiz) or column of Img at position At is close to black (sampled). }
+function MemLineIsDark(Img: TFPMemoryImage; At: Integer; Horiz: Boolean): Boolean;
+const
+  N = 16;  // samples along the line
+var
+  I, X, Y, Sum: Integer;  // I: sample; X, Y: pixel; Sum: brightness total
+  C: TFPColor;  // C: pixel color
+begin
+  Sum := 0;  // nothing added yet
+  for I := 0 to N - 1 do
+  begin
+    if Horiz then
+    begin
+      X := (Img.Width - 1) * I div (N - 1);  // spread along the row
+      Y := At;
+    end
+    else
+    begin
+      X := At;
+      Y := (Img.Height - 1) * I div (N - 1);  // spread along the column
+    end;
+    C := Img.Colors[X, Y];  // pixel color (16 bits per channel)
+    Sum := Sum + (C.Red shr 8) + (C.Green shr 8) + (C.Blue shr 8);  // add its brightness
+  end;
+  Result := Sum < N * 3 * 24;  // average channel below 24: black bar
+end;
+
+{ The same check as SmallThumbBitmap, on a picture in memory: a small embedded thumbnail is used when it
+  is at least Box pixels and has the shape of the photo (RefW x RefH); black bars a camera added are cut
+  off. An unusable one is freed and Img becomes nil. }
+procedure SmallMemThumb(var Img: TFPMemoryImage; RefW, RefH, Box: Integer);
+var
+  Cut: TFPMemoryImage;  // Cut: the picture without bars
+  W, H, CW, CH, Off, X, Y, X0, Y0: Integer;  // W, H: thumbnail size; CW, CH: size without bars; Off: bar thickness; X, Y: pixel; X0, Y0: corner of the middle part
+  Ok: Boolean;  // Ok: the thumbnail can be used
+begin
+  W := Img.Width;
+  H := Img.Height;
+  Ok := (W > 0) and (H > 0) and (Max(W, H) >= Box);  // big enough for the box
+  if Ok and (RefW > 0) and (RefH > 0) and (Abs(Int64(W) * RefH - Int64(H) * RefW) * 50 > Int64(W) * RefH) then  // shapes differ by more than 2%
+  begin
+    CW := W;  // assume no bars
+    CH := H;
+    if Int64(RefW) * H > Int64(RefH) * W then  // the photo is wider: bars at top and bottom
+    begin
+      CH := Max(1, Round(W * RefH / RefW));  // picture height inside the bars
+      Off := (H - CH) div 2;  // bar thickness
+      if (Off >= 2) and not (MemLineIsDark(Img, Off div 2, True) and MemLineIsDark(Img, H - 1 - Off div 2, True)) then Ok := False;  // no bars: shape changed some other way
+    end
+    else
+    begin
+      CW := Max(1, Round(H * RefW / RefH));  // picture width inside the bars
+      Off := (W - CW) div 2;  // bar thickness
+      if (Off >= 2) and not (MemLineIsDark(Img, Off div 2, False) and MemLineIsDark(Img, W - 1 - Off div 2, False)) then Ok := False;  // no bars
+    end;
+    if Ok and (Off >= 2) then  // cut the bars off
+      if Max(CW, CH) < Box then
+        Ok := False  // too small without the bars
+      else
+      begin
+        X0 := (W - CW) div 2;  // corner of the middle part
+        Y0 := (H - CH) div 2;
+        Cut := TFPMemoryImage.Create(CW, CH);  // the middle part
+        for Y := 0 to CH - 1 do
+          for X := 0 to CW - 1 do
+            Cut.Colors[X, Y] := Img.Colors[X0 + X, Y0 + Y];  // copy the pixel
+        Img.Free;  // replace the picture
+        Img := Cut;
+      end;
+  end;
+  if not Ok then FreeAndNil(Img);  // not usable
+end;
+
+function ThumbPoolable(const FileName: string): Boolean;
+var
+  Ext: string;  // Ext: file extension
+begin
+  Ext := ';' + LowerCase(ExtractFileExt(FileName)) + ';';  // extension as it stands in the lists
+  Result := (Ext = ';.jpg;') or (Ext = ';.jpeg;') or (Ext = ';.jpe;') or  // JPEG
+    ((Pos(Ext, RawExts) > 0) and (Pos(Ext, TiffExts) = 0));  // RAW (DNG and TIFF look at the plain picture too: main thread)
+end;
+
+function PrepareThumb(const FullPath, CacheFile: string; Orient, Box: Integer; out FromCache: Boolean): TMemoryStream;
+var
+  Img: TFPMemoryImage;  // Img: the decoded picture
+  Mem: TMemoryStream;  // Mem: an embedded preview
+  Fs: TFileStream;  // Fs: an open file
+  Ext: string;  // Ext: file extension
+  W, H, RefW, RefH, NW, NH, Rank: Integer;  // W, H: picture size; RefW, RefH: size of the photo; NW, NH: thumbnail size; Rank: preview number
+  Sc: Double;  // Sc: scale factor
+begin
+  Result := nil;  // nothing made yet
+  FromCache := False;  // not from the cache
+  Img := nil;  // nothing created yet
+  Mem := nil;
+  Fs := nil;
+  try
+    try
+      if (CacheFile <> '') and FileExistsUTF8(CacheFile) then  // the finished thumbnail of an earlier load
+      begin
+        Fs := TFileStream.Create(CacheFile, fmOpenRead or fmShareDenyNone);  // open the cache file
+        Img := LoadMemImage(Fs, pkJpeg, 0, 0, 0, True);  // decode it as it is
+        FreeAndNil(Fs);  // close it
+        FromCache := Img <> nil;  // upright already, nothing to save
+      end;
+      if Img = nil then
+      begin
+        Ext := ';' + LowerCase(ExtractFileExt(FullPath)) + ';';  // extension as it stands in the lists
+        if (Ext = ';.jpg;') or (Ext = ';.jpeg;') or (Ext = ';.jpe;') then
+        begin
+          if SniffFileKind(FullPath) <> 2 then Exit;  // not a JPEG inside: EnsureThumb looks at its content
+          // fast path: the small thumbnail the camera stored in the EXIF data
+          Mem := TMemoryStream.Create;  // memory for the EXIF thumbnail
+          if ExtractExifThumb(FullPath, Mem, W, H, RefW, RefH) then
+          begin
+            Mem.Position := 0;  // rewind
+            Img := LoadMemImage(Mem, pkJpeg, 0, 0, 0, True);  // decode the thumbnail
+            if Img <> nil then SmallMemThumb(Img, RefW, RefH, Box);  // check its size and shape, cut black bars
+          end;
+          if Img = nil then  // the photo itself, decoded at reduced size
+          begin
+            if not ReadJpegDims(FullPath, W, H) then  // size unknown: quarter size
+            begin
+              W := Box * 4;
+              H := Box * 4;
+            end;
+            Fs := TFileStream.Create(FullPath, fmOpenRead or fmShareDenyNone);  // open the photo
+            Img := LoadMemImage(Fs, pkJpeg, W, H, Box, True);  // decode it
+            FreeAndNil(Fs);  // close it
+          end;
+        end
+        else if (Pos(Ext, RawExts) > 0) and (Pos(Ext, TiffExts) = 0) then
+        begin
+          // RAW: the smallest embedded JPEG preview that is big enough, up to three tries
+          Mem := TMemoryStream.Create;  // memory for the preview
+          for Rank := 0 to 2 do
+          begin
+            Mem.Clear;  // empty the memory
+            if not ExtractEmbeddedJpegEx(FullPath, Rank, True, Box, Mem, W, H, RefW, RefH) then Break;  // no further preview
+            Mem.Position := 0;  // rewind
+            Img := LoadMemImage(Mem, pkJpeg, W, H, Box, True);  // reduced-size decode
+            if Img = nil then
+            begin
+              Mem.Position := 0;  // rewind
+              Img := LoadMemImage(Mem, pkJpeg, 0, 0, 0);  // decoder defaults
+            end;
+            if (Img <> nil) and (Max(W, H) < Max(RefW, RefH)) then  // a smaller preview than the largest one
+              SmallMemThumb(Img, RefW, RefH, Box);  // check its size and shape, cut black bars
+            if Img <> nil then Break;  // this preview worked
+          end;
+        end;
+        if Img = nil then Exit;  // nothing usable: EnsureThumb tries and writes the log
+        OrientMemImage(Img, Orient);  // turn it upright
+      end;
+      W := Img.Width;  // picture size
+      H := Img.Height;
+      if (W <= 0) or (H <= 0) then Exit;  // invalid size
+      Sc := Box / Max(W, H);  // scale factor to fit the box
+      if Sc > 1 then Sc := 1;  // never enlarge
+      NW := Max(1, Round(W * Sc));  // thumbnail size
+      NH := Max(1, Round(H * Sc));
+      Result := TMemoryStream.Create;  // the thumbnail as a BMP
+      if SmoothScaleToBmp(Img, NW, NH, Result) then
+        Result.Position := 0  // ready to be read
+      else
+        FreeAndNil(Result);  // could not be scaled
+    except
+      FreeAndNil(Result);  // any failure: EnsureThumb tries and writes the log
+    end;
+  finally
+    Img.Free;  // free the picture
+    Mem.Free;  // free the preview memory
+    Fs.Free;  // close a file left open by a failure
+  end;
+end;
+
+procedure AdoptThumb(Item: TImageItem; Ms: TMemoryStream; FromCache: Boolean; Box: Integer);
+var
+  B: TBitmap;  // B: the thumbnail bitmap
+begin
+  if Item.ThumbTried or (Ms = nil) then Exit;  // has one already, or nothing was made
+  B := TBitmap.Create;  // bitmap for the thumbnail
+  try
+    Ms.Position := 0;  // from the start
+    B.LoadFromStream(Ms);  // read the BMP
+    if B.Empty then Exit;  // unusable: EnsureThumb makes it
+    Item.Thumb := B;  // give the bitmap to the item
+    B := nil;  // do not free it below
+    Item.ThumbTried := True;  // done
+    if not FromCache then SaveCachedThumb(Item, Box);  // keep a new thumbnail in the cache
+    TrackThumb(Item, Box);  // keep track of it
+  except
+    // unusable: EnsureThumb makes it
+  end;
+  B.Free;  // free an unused bitmap
+end;
+
 function LrPrevJpgOnly(S: TAppSettings; Item: TImageItem): Boolean;
 begin
   Result := S.LrPrevAsJpg and (not S.LrPrevKeepBoth) and  // .jpg wanted instead of the .lrprev file
-    (Pos(';' + LowerCase(ExtractFileExt(Item.FileName)) + ';', LrPrevExts) > 0);  // and this is a .lrprev file
+    (ExtIn(Item.FileName, LrPrevExts));  // and this is a .lrprev file
 end;
 
 function SaveLrPrevJpg(const Src, Dst: string; Verify: Boolean; out Hash: string;
@@ -2583,78 +2800,139 @@ begin
   end;
 end;
 
-{ Copies a file in 256 KB blocks; False (and no destination file) on failure. }
-function CopyFileStream(const Src, Dst: string): Boolean;
 const
-  BufSize = 262144;  // size of the copy buffer
-var
-  FI, FO: TFileStream;  // FI: source file; FO: destination file
-  Buf: Pointer;  // Buf: copy buffer
-  N: LongInt;  // N: bytes read
-begin
-  Result := False;  // assume failure
-  GetMem(Buf, BufSize);  // reserve the buffer
-  try
-    try
-      FI := TFileStream.Create(Src, fmOpenRead or fmShareDenyWrite);  // open the source
-      try
-        FO := TFileStream.Create(Dst, fmCreate);  // create the destination
-        try
-          repeat
-            N := FI.Read(Buf^, BufSize);  // read a block
-            if N > 0 then FO.WriteBuffer(Buf^, N);  // write the block
-          until N <= 0;  // until the end of the file
-        finally
-          FO.Free;  // close the destination
-        end;
-      finally
-        FI.Free;  // close the source
-      end;
-      Result := FileSizeUtf8(Dst) = FileSizeUtf8(Src);  // success when the sizes match
-    except
-      Result := False;  // failure
-    end;
-  finally
-    FreeMem(Buf);  // free the buffer
+  CopyBufSize = 1048576;  // size of the copy and read buffers (1 MB: fewer, larger reads from cards and network drives)
+  HashThreadMin = 4 * 1048576;  // files from this size on are hashed on a second thread
+
+type
+  { Computes an MD5 on a second thread, block by block, while the caller writes the same block (copy) or
+    reads the next one (read-back). Feed hands over a block, which must stay untouched until Wait returns. }
+  THashThread = class(TThread)
+  private
+    FCtx: TMD5Context;  // MD5 state
+    FBuf: Pointer;  // block to hash
+    FLen: PtrUInt;  // its size
+    FGo, FDone: PRTLEvent;  // FGo: a block is ready; FDone: the block is hashed
+    FPending: Boolean;  // True while a block is being hashed (used by the caller's thread only)
+    FQuit: Boolean;  // True when the thread is to end
+  protected
+    procedure Execute; override;
+  public
+    constructor Create;
+    destructor Destroy; override;
+    procedure Feed(Buf: Pointer; Len: PtrUInt);  // hash this block (returns at once)
+    procedure Wait;  // wait until the block given last is hashed
+    function Finish: TMD5Digest;  // the MD5 of all blocks
   end;
-  if not Result then
-    DeleteFileUTF8(Dst);  // remove an incomplete copy
+
+{ Starts the thread with a fresh MD5. }
+constructor THashThread.Create;
+begin
+  MD5Init(FCtx);  // start the MD5
+  FGo := RTLEventCreate;  // signal: block ready
+  FDone := RTLEventCreate;  // signal: block hashed
+  inherited Create(False);  // run
 end;
 
-{ Returns the MD5 of a file as 32 hex characters, or an empty text. }
+{ Ends the thread after its last block. }
+destructor THashThread.Destroy;
+begin
+  Wait;  // the block in work is finished first (its buffer is still the caller's)
+  FQuit := True;  // ask the thread to end
+  RTLEventSetEvent(FGo);  // wake it
+  WaitFor;  // until it has ended
+  RTLEventDestroy(FGo);  // free the signals
+  RTLEventDestroy(FDone);
+  inherited Destroy;
+end;
+
+{ Thread body: hashes each block handed over. }
+procedure THashThread.Execute;
+begin
+  repeat
+    RTLEventWaitFor(FGo);  // wait for a block
+    if FQuit then Break;  // or for the end
+    MD5Update(FCtx, FBuf^, FLen);  // add the block to the MD5
+    RTLEventSetEvent(FDone);  // tell the caller
+  until False;
+end;
+
+{ Hands a block to the thread. }
+procedure THashThread.Feed(Buf: Pointer; Len: PtrUInt);
+begin
+  Wait;  // one block at a time
+  FBuf := Buf;  // the block
+  FLen := Len;  // its size
+  FPending := True;  // in work
+  RTLEventSetEvent(FGo);  // start hashing it
+end;
+
+{ Waits for the block given last. }
+procedure THashThread.Wait;
+begin
+  if not FPending then Exit;  // nothing in work
+  RTLEventWaitFor(FDone);  // until the block is hashed
+  FPending := False;  // done
+end;
+
+{ The MD5 of all blocks. }
+function THashThread.Finish: TMD5Digest;
+begin
+  Wait;  // the last block
+  MD5Final(FCtx, Result);  // finish the MD5 (the thread is idle now)
+end;
+
+{ Returns the MD5 of a file as 32 hex characters, or an empty text. A large file is hashed on a second
+  thread while the next block is read. }
 function HashOfFile(const FileName: string): string;
-const
-  BufSize = 262144;  // size of the read buffer
 var
   F: TFileStream;  // F: the open file
-  Buf: Pointer;  // Buf: read buffer
+  Buf, Buf2, T: Pointer;  // Buf: block being read; Buf2: block being hashed; T: swap helper
   N: LongInt;  // N: bytes read
-  Ctx: TMD5Context;  // Ctx: MD5 state
+  Ctx: TMD5Context;  // Ctx: MD5 state (small files)
   Dig: TMD5Digest;  // Dig: MD5 result
+  HT: THashThread;  // HT: second thread (nil for a small file)
 begin
   Result := '';  // empty by default
-  GetMem(Buf, BufSize);  // reserve the buffer
+  HT := nil;  // no thread yet
+  Buf2 := nil;  // no second buffer yet
+  GetMem(Buf, CopyBufSize);  // reserve the buffer
   try
     try
       F := TFileStream.Create(FileName, fmOpenRead or fmShareDenyNone);  // open the file
       try
-        MD5Init(Ctx);  // start the MD5
+        if F.Size >= HashThreadMin then  // large: hash on a second thread
+        begin
+          GetMem(Buf2, CopyBufSize);  // a second buffer, so reading and hashing overlap
+          HT := THashThread.Create;  // the thread
+        end
+        else
+          MD5Init(Ctx);  // small: hash here
         repeat
-          N := F.Read(Buf^, BufSize);  // read a block
-          if N > 0 then MD5Update(Ctx, Buf^, N);  // add it to the MD5
+          N := F.Read(Buf^, CopyBufSize);  // read a block
+          if N > 0 then
+            if HT <> nil then
+            begin
+              HT.Feed(Buf, N);  // hash it there (waits for the block before)
+              T := Buf; Buf := Buf2; Buf2 := T;  // and read the next block into the other buffer
+            end
+            else
+              MD5Update(Ctx, Buf^, N);  // add it to the MD5
           if Assigned(CopyPump) then CopyPump;  // let the window update
           if CopyAbort then Exit;  // stop when canceled
         until N <= 0;
-        MD5Final(Ctx, Dig);  // finish the MD5
+        if HT <> nil then Dig := HT.Finish else MD5Final(Ctx, Dig);  // finish the MD5
         Result := MD5Print(Dig);  // convert to hex text
       finally
+        HT.Free;  // end the thread (after its last block)
         F.Free;  // close the file
       end;
     except
       Result := '';  // failure
     end;
   finally
-    FreeMem(Buf);  // free the buffer
+    FreeMem(Buf);  // free the buffers
+    if Buf2 <> nil then FreeMem(Buf2);
   end;
 end;
 
@@ -2671,8 +2949,6 @@ end;
   source; with Verify the copies are read back and compared. }
 function CopyFileDual(const Src, Dst, Dst2: string; Verify: Boolean; out Hash: string;
   out Err: string; out Dst2Ok: Boolean): TCopyResult;
-const
-  BufSize = 262144;  // size of the copy buffer
 var
   FI, FO, FO2: TFileStream;  // FI: source file; FO: destination file; FO2: second copy (nil when none or failed)
   Buf: Pointer;  // Buf: copy buffer
@@ -2681,7 +2957,9 @@ var
   Dig: TMD5Digest;  // Dig: MD5 result
   Back: string;  // Back: MD5 of the copy
   Made2, Whole2: Boolean;  // Made2: the second file was created; Whole2: every block was written to it
+  HT: THashThread;  // HT: second thread that hashes a block while it is written (nil for a small file)
 begin
+  HT := nil;  // no thread yet
   Result := crFailed;  // assume failure
   Hash := '';  // no hash yet
   Err := '';  // no error yet
@@ -2689,7 +2967,7 @@ begin
   Made2 := False;  // nothing created yet
   Whole2 := False;  // nothing written yet
   FO2 := nil;  // no second file yet
-  GetMem(Buf, BufSize);  // reserve the buffer
+  GetMem(Buf, CopyBufSize);  // reserve the buffer
   try
     try
       FI := TFileStream.Create(Src, fmOpenRead or fmShareDenyWrite);  // open the source
@@ -2705,12 +2983,14 @@ begin
               on E: Exception do
                 LogThumb('second copy could not be created: ' + Dst2 + ': ' + E.Message);  // go on with the first copy alone
             end;
-          MD5Init(Ctx);  // start the MD5
+          if FI.Size >= HashThreadMin then HT := THashThread.Create  // large: hash on a second thread
+          else MD5Init(Ctx);  // small: hash here
           repeat
-            N := FI.Read(Buf^, BufSize);  // read a block
+            N := FI.Read(Buf^, CopyBufSize);  // read a block
             if N > 0 then
             begin
-              MD5Update(Ctx, Buf^, N);  // add it to the MD5
+              if HT <> nil then HT.Feed(Buf, N)  // hash the block there while it is written here
+              else MD5Update(Ctx, Buf^, N);  // add it to the MD5
               FO.WriteBuffer(Buf^, N);  // write the block
               if FO2 <> nil then  // and to the second copy
                 try
@@ -2723,6 +3003,7 @@ begin
                     LogThumb('second copy failed while writing: ' + Dst2 + ': ' + E.Message);  // note it in the log
                   end;
                 end;
+              if HT <> nil then HT.Wait;  // the block is hashed before the next one is read into the buffer
             end;
             if Assigned(CopyPump) then CopyPump;  // let the window update
             if CopyAbort then  // canceled by the user
@@ -2731,9 +3012,10 @@ begin
               Break;  // stop copying
             end;
           until N <= 0;  // until the end of the file
-          MD5Final(Ctx, Dig);  // finish the MD5
+          if HT <> nil then Dig := HT.Finish else MD5Final(Ctx, Dig);  // finish the MD5
           Hash := MD5Print(Dig);  // hash of the source as hex text
         finally
+          HT.Free;  // end the thread (it finishes its block first, while the buffer still exists)
           FO.Free;  // close the destination
           FO2.Free;  // close the second copy
         end;

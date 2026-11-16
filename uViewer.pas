@@ -195,7 +195,7 @@ begin
   Screen.Cursor := crHourGlass;  // show the hourglass
   try
     FreeAndNil(FSrc);  // free the previous picture
-    Ext := LowerCase(ExtractFileExt(It.FileName));  // file extension in lowercase
+    Ext := It.Ext;  // file extension in lowercase
     IsTiff := Pos(';' + Ext + ';', TiffExtList) > 0;  // is it a TIFF-based extension?
     try
       if (Ext = '.jpg') or (Ext = '.jpeg') or (Ext = '.jpe') then  // named like a JPEG

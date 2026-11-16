@@ -360,7 +360,7 @@ begin
     Width := 440;  // column title
   end;  // column width
 
-  Ext := LowerCase(ExtractFileExt(Item.FileName));  // file extension in lower case
+  Ext := Item.Ext;  // file extension in lower case
   Dims := 'not read';  // size text when the file cannot be read
   W := 0;  // no width yet
   H := 0;  // no height yet
